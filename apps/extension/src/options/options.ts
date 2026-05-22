@@ -13,6 +13,12 @@ const policyVersion = document.querySelector<HTMLElement>("#policyVersion");
 const fileInspection = document.querySelector<HTMLElement>("#fileInspection");
 const lastConfigSync = document.querySelector<HTMLElement>("#lastConfigSync");
 
+/**
+ * Hydrates the options UI from extension-local settings.
+ *
+ * Cached config is rendered only after validation so a malformed stored object
+ * cannot feed bad policy or selector data back into the visible settings.
+ */
 async function loadSettings(): Promise<void> {
   const result = await chrome.storage.local.get([
     STORAGE_KEYS.apiBaseUrl,
@@ -31,6 +37,12 @@ async function loadSettings(): Promise<void> {
   renderLastConfigSync(result[STORAGE_KEYS.lastConfigSyncAt] as string | undefined);
 }
 
+/**
+ * Saves operational settings and optionally stores a trimmed bearer token.
+ *
+ * Token handling goes through the background router so the content script never
+ * needs to touch auth state.
+ */
 async function saveSettings(): Promise<void> {
   await chrome.storage.local.set({
     [STORAGE_KEYS.apiBaseUrl]: apiBaseUrlInput?.value.trim() || DEFAULT_CONFIG.api_base_url,
@@ -46,6 +58,7 @@ async function saveSettings(): Promise<void> {
   setText(connectionStatus, "Saved");
 }
 
+/** Tests the mock or real auth boundary and renders the connection result. */
 async function testConnection(): Promise<void> {
   const response = (await chrome.runtime.sendMessage({ type: "AUTH_ME_REQUEST" })) as AuthMeResponse | NormalizedError;
   if ("status" in response) {
@@ -56,6 +69,12 @@ async function testConnection(): Promise<void> {
   setText(connectionStatus, response.message);
 }
 
+/**
+ * Fetches extension config through mock or real mode and refreshes the UI.
+ *
+ * The background side validates before caching; the options page validates
+ * again before rendering because cached and remote data are both untrusted.
+ */
 async function syncConfig(): Promise<void> {
   const response = (await chrome.runtime.sendMessage({ type: "CONFIG_SYNC_REQUEST" })) as ExtensionConfigResponse | NormalizedError;
   if (isExtensionConfigResponse(response)) {

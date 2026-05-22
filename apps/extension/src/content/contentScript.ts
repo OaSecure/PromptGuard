@@ -32,6 +32,13 @@ function refreshInputMarker(): void {
   document.documentElement.dataset.promptguardInputDetected = candidate ? "true" : "false";
 }
 
+/**
+ * Builds a prompt analysis request from the currently detected input.
+ *
+ * This test-facing helper mirrors the live controller request builder while
+ * preserving the content-script privacy boundary: page context contains only
+ * the origin and service metadata, not the full URL path or query string.
+ */
 export function buildPromptAnalyzeRequest(inputMethod: "CLICK" | "ENTER" | "UNKNOWN" = "UNKNOWN"): AnalyzeRequest | null {
   const config = activeConfig.ai_service_configs.find((item) => item.service === "CHATGPT");
   const candidate = findBestInputCandidate(document, { input: config?.selectors.input ?? DEFAULT_CONFIG.ai_service_configs[0].selectors.input });
@@ -43,6 +50,8 @@ export function buildPromptAnalyzeRequest(inputMethod: "CLICK" | "ENTER" | "UNKN
 
 function installPreflight(root: HTMLElement): void {
   refreshInputMarker();
+  // Config can reload after the first install; disconnect first so one page
+  // action cannot be handled by two generations of hooks.
   watcher?.disconnect();
   watcher = watchInputArea(root, refreshInputMarker);
   preflightController?.disconnect();
@@ -70,6 +79,14 @@ async function loadConfig(): Promise<void> {
   }
 }
 
+/**
+ * Starts DOM preflight protection for the current page.
+ *
+ * Hooks install once with the default config before the async config request
+ * completes, then install again with the fetched config when it is valid.
+ * This keeps early user sends covered even when the background worker or
+ * config API is slow.
+ */
 export async function initializePromptGuardContentScript(root: HTMLElement = defaultContentRoot()): Promise<void> {
   installPreflight(root);
   await loadConfig();
@@ -80,6 +97,12 @@ function defaultContentRoot(): HTMLElement {
   return document.body ?? document.documentElement;
 }
 
+/**
+ * Removes all PromptGuard DOM hooks from the current page.
+ *
+ * Tests and controlled reload paths use this to prove that watchers and
+ * interceptors do not leak between installs.
+ */
 export function shutdownPromptGuardContentScript(): void {
   watcher?.disconnect();
   watcher = undefined;

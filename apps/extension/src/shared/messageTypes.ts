@@ -1,5 +1,12 @@
 import type { ExtensionMessage } from "./types";
 
+/**
+ * Validates messages before the background router acts on them.
+ *
+ * Runtime messages cross the content/background trust boundary, so malformed
+ * payloads must be rejected before they can trigger Analyze calls, storage
+ * writes, or DOM replay decisions.
+ */
 export function isExtensionMessage(value: unknown): value is ExtensionMessage {
   if (!isRecord(value) || typeof value.type !== "string") {
     return false;

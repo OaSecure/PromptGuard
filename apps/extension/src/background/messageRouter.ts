@@ -8,6 +8,12 @@ import { isExtensionConfigResponse } from "../shared/configValidation";
 import { isNormalizedError } from "../shared/errors";
 import type { AuthMeResponse, ExtensionConfigResponse, ExtensionMessage, NormalizedError } from "../shared/types";
 
+/**
+ * Routes one validated extension runtime message to its background handler.
+ *
+ * The service worker performs message shape guarding before this boundary; this
+ * router keeps prompt, file, auth, and config behavior on one explicit switch.
+ */
 export async function routeMessage(message: ExtensionMessage): Promise<unknown> {
   switch (message.type) {
     case "PROMPT_ANALYZE_REQUEST":

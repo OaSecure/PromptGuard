@@ -18,6 +18,12 @@ const FORBIDDEN_KEYS = new Set([
   "text"
 ]);
 
+/**
+ * Redacts forbidden raw-value keys from diagnostic objects.
+ *
+ * This helper is for defensive diagnostics only. It does not authorize logging
+ * raw prompt text, file content, original filenames, or detected raw values.
+ */
 export function sanitizeForDiagnostics(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.map((item) => sanitizeForDiagnostics(item));
@@ -37,6 +43,12 @@ export function sanitizeForDiagnostics(value: unknown): unknown {
   return result;
 }
 
+/**
+ * Detects whether a diagnostic object still contains forbidden raw-value keys.
+ *
+ * Tests use this to catch accidental expansion of logs, snapshots, or error
+ * payloads into privacy-sensitive fields.
+ */
 export function containsForbiddenDiagnosticKey(value: unknown): boolean {
   if (Array.isArray(value)) {
     return value.some((item) => containsForbiddenDiagnosticKey(item));

@@ -1,11 +1,18 @@
 import { isPromptInputElement, type PromptInputElement } from "./promptExtractor";
 import type { PromptInputMethod } from "../shared/types";
 
+/** Describes a user action that may send the current prompt. */
 export interface SendAttempt {
   method: PromptInputMethod;
   target: EventTarget | null;
 }
 
+/**
+ * Configures DOM listeners that pause native prompt sends.
+ *
+ * `shouldBypass` is used during a guarded replay so the extension can hand the
+ * already-approved action back to the page without inspecting its own replay.
+ */
 export interface SendInterceptorOptions {
   document?: Document;
   sendButtonSelectors: string[];
@@ -14,10 +21,17 @@ export interface SendInterceptorOptions {
   shouldBypass?: () => boolean;
 }
 
+/** Owns the lifecycle of prompt send listeners installed on the page. */
 export interface SendInterceptor {
   disconnect(): void;
 }
 
+/**
+ * Classifies a keyboard event as an Enter-based send attempt.
+ *
+ * Modified Enter combinations and IME composition are treated as text entry so
+ * PromptGuard does not block normal multiline or composing-input behavior.
+ */
 export function keyboardSendMethod(event: Pick<KeyboardEvent, "key" | "shiftKey" | "ctrlKey" | "altKey" | "metaKey" | "isComposing">): PromptInputMethod | null {
   if (event.key !== "Enter") {
     return null;
@@ -28,6 +42,14 @@ export function keyboardSendMethod(event: Pick<KeyboardEvent, "key" | "shiftKey"
   return "ENTER";
 }
 
+/**
+ * Installs capture-phase listeners for click and Enter send attempts.
+ *
+ * The listeners call `preventDefault` and `stopImmediatePropagation` only after
+ * confirming that the event is a real send attempt. This preserves ordinary
+ * page behavior while giving the preflight controller the first chance to
+ * inspect outbound prompt text.
+ */
 export function installSendInterceptor(options: SendInterceptorOptions): SendInterceptor {
   const doc = options.document ?? document;
 
@@ -72,6 +94,12 @@ export function installSendInterceptor(options: SendInterceptorOptions): SendInt
   };
 }
 
+/**
+ * Replays the page's native send button after inspection authorizes it.
+ *
+ * The controller wraps this call with the replay bypass flag; without that
+ * guard, this synthetic click would be captured as a new uninspected attempt.
+ */
 export function replaySendAttempt(doc: Document, sendButtonSelectors: string[]): boolean {
   const button = findSendButton(doc, sendButtonSelectors);
   if (!button) {

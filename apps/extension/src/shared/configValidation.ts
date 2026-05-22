@@ -1,5 +1,12 @@
 import type { ExtensionConfigResponse } from "./types";
 
+/**
+ * Validates extension config before cache, render, or hook installation.
+ *
+ * Config controls selectors, timeout, API URL, and file policy. Rejecting
+ * malformed values prevents stale storage or bad server data from disabling
+ * preflight behavior.
+ */
 export function isExtensionConfigResponse(value: unknown): value is ExtensionConfigResponse {
   if (!isRecord(value)) {
     return false;

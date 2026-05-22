@@ -1,17 +1,21 @@
+/** UI state names shown while a preflight decision is pending or applied. */
 export type OverlayDecision = "analyzing" | "warn" | "mask" | "block" | "error";
 
+/** Describes one button rendered in the preflight overlay. */
 export interface OverlayAction {
   label: string;
   variant: "primary" | "secondary" | "danger";
   onClick: () => void;
 }
 
+/** Complete view model for one overlay render. */
 export interface OverlayState {
   decision: OverlayDecision;
   message: string;
   actions: OverlayAction[];
 }
 
+/** Public overlay operations used by prompt and file controllers. */
 export interface PreflightOverlay {
   show(state: OverlayState): void;
   hide(): void;
@@ -20,6 +24,12 @@ export interface PreflightOverlay {
 
 const CONTAINER_ID = "promptguard-preflight-overlay";
 
+/**
+ * Creates or reuses the page-level PromptGuard overlay.
+ *
+ * The overlay renders fixed safe messages from controllers rather than raw
+ * server `user_message` text, keeping detected values out of the DOM.
+ */
 export function createPreflightOverlay(doc: Document = document): PreflightOverlay {
   let container = doc.getElementById(CONTAINER_ID);
   if (!container) {

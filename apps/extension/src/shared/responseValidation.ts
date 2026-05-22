@@ -1,5 +1,11 @@
 import type { AnalyzeResponse, Decision, FilesAnalyzeResponse } from "./types";
 
+/**
+ * Validates a prompt Analyze response before controller action handling.
+ *
+ * A response that does not match this contract cannot authorize send replay,
+ * mask replacement, or block/warn UI decisions.
+ */
 export function isAnalyzeResponse(value: unknown): value is AnalyzeResponse {
   return (
     isRecord(value) &&
@@ -13,6 +19,12 @@ export function isAnalyzeResponse(value: unknown): value is AnalyzeResponse {
   );
 }
 
+/**
+ * Validates a files Analyze response before upload action handling.
+ *
+ * Invalid file responses fail closed so native upload replay happens only after
+ * a well-formed decision.
+ */
 export function isFilesAnalyzeResponse(value: unknown): value is FilesAnalyzeResponse {
   return (
     isRecord(value) &&

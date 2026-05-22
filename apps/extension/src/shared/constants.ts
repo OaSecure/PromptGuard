@@ -1,9 +1,18 @@
 import type { ExtensionConfigResponse } from "./types";
 
+/** Current Chrome Extension package version sent on API requests. */
 export const EXTENSION_VERSION = "0.4.0";
+/** Default policy version used before remote config has been synced. */
 export const DEFAULT_POLICY_VERSION = "v0.4.0-default";
+/** Default fail-closed inspection timeout in milliseconds. */
 export const DEFAULT_TIMEOUT_MS = 3000;
 
+/**
+ * Default extension config used before cached or remote config is available.
+ *
+ * The content script installs hooks with this config at `document_start` so
+ * prompt/file attempts are protected even while background config is loading.
+ */
 export const DEFAULT_CONFIG: ExtensionConfigResponse = {
   api_base_url: "https://promptguard.example.com/api/v1",
   policy_version: DEFAULT_POLICY_VERSION,
@@ -49,6 +58,7 @@ export const DEFAULT_CONFIG: ExtensionConfigResponse = {
   }
 };
 
+/** Storage keys used for extension-local operational settings only. */
 export const STORAGE_KEYS = {
   apiBaseUrl: "promptguard.apiBaseUrl",
   accessToken: "promptguard.accessToken",

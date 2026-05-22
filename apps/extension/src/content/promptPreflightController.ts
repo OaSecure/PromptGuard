@@ -8,8 +8,16 @@ import { createPreflightOverlay, type PreflightOverlay } from "./preflightOverla
 import { extractPromptText, type PromptInputElement } from "./promptExtractor";
 import { installSendInterceptor, replaySendAttempt, type SendAttempt, type SendInterceptor } from "./sendInterceptor";
 
+/** Sends one prompt inspection request through the background boundary. */
 export type PromptAnalyzeSender = (request: AnalyzeRequest) => Promise<AnalyzeResponse | NormalizedError>;
 
+/**
+ * Configures the prompt preflight controller.
+ *
+ * `getContext` is evaluated at send time so the request uses the current page
+ * origin and browser locale without storing page-specific state in the
+ * controller.
+ */
 export interface PromptPreflightControllerOptions {
   document?: Document;
   config: ExtensionConfigResponse;
@@ -18,10 +26,18 @@ export interface PromptPreflightControllerOptions {
   overlay?: PreflightOverlay;
 }
 
+/** Owns the lifecycle of prompt preflight hooks and UI state. */
 export interface PromptPreflightController {
   disconnect(): void;
 }
 
+/**
+ * Starts prompt-send inspection for the configured service selectors.
+ *
+ * The controller is the policy boundary between DOM events and native page
+ * send behavior: it blocks first, asks Analyze, then replays only when the
+ * validated decision authorizes that action.
+ */
 export function startPromptPreflightController(options: PromptPreflightControllerOptions): PromptPreflightController {
   const doc = options.document ?? document;
   const overlay = options.overlay ?? createPreflightOverlay(doc);
@@ -83,6 +99,8 @@ export function startPromptPreflightController(options: PromptPreflightControlle
   function handleDecision(response: AnalyzeResponse, input: PromptInputElement, attempt: SendAttempt): void {
     switch (response.decision.action) {
       case "Allow":
+        // Treat contradictory Allow responses as unsafe because replaying the
+        // original prompt is the irreversible page action.
         if (response.decision.allow_original_send === false) {
           showFailClosed("Inspection did not authorize sending the original prompt.", () => void handleAttempt(attempt));
           return;
@@ -136,6 +154,8 @@ export function startPromptPreflightController(options: PromptPreflightControlle
 
   function replay(_attempt: SendAttempt): void {
     overlay.hide();
+    // The bypass flag is scoped to the replay call so user-initiated sends
+    // after this moment are inspected again.
     replaying = true;
     const replayed = replaySendAttempt(doc, selectors.send_button);
     replaying = false;
@@ -177,6 +197,13 @@ function safeDecisionMessage(response: AnalyzeResponse): string {
   }
 }
 
+/**
+ * Builds the Analyze request for one prompt send attempt.
+ *
+ * The raw text is included only as transient request payload. The context uses
+ * origin-level page metadata so URL paths, queries, and fragments do not cross
+ * the extension boundary.
+ */
 export function buildPromptAnalyzeRequest(
   input: PromptInputElement,
   inputMethod: AnalyzeRequest["prompt"]["input_method"],

@@ -1,8 +1,13 @@
+/** Policy actions that can be returned by prompt or file analysis. */
 export type DecisionAction = "Allow" | "Warn" | "Mask" | "Block";
+/** Risk labels used by Analyze responses and mock decisions. */
 export type RiskLevel = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+/** AI service surfaces supported by the MVP. */
 export type AiService = "CHATGPT";
+/** User interaction that started a prompt inspection request. */
 export type PromptInputMethod = "CLICK" | "ENTER" | "UNKNOWN";
 
+/** Metadata summary for one policy detection without raw detected values. */
 export interface DetectionSummary {
   type: string;
   label: string;
@@ -12,6 +17,7 @@ export interface DetectionSummary {
   source: string;
 }
 
+/** Analyze decision that controls whether the original action may continue. */
 export interface Decision {
   risk_score: number;
   risk_level: RiskLevel;
@@ -21,6 +27,7 @@ export interface Decision {
   allow_original_upload?: boolean;
 }
 
+/** Prompt inspection request sent from content script to background analysis. */
 export interface AnalyzeRequest {
   prompt: {
     text: string;
@@ -32,6 +39,7 @@ export interface AnalyzeRequest {
   client_request_id: string;
 }
 
+/** Prompt inspection response consumed by the prompt preflight controller. */
 export interface AnalyzeResponse {
   event_id: string;
   request_id: string;
@@ -42,6 +50,7 @@ export interface AnalyzeResponse {
   partial_result: boolean;
 }
 
+/** Text-file inspection request sent from content script to background analysis. */
 export interface FilesAnalyzeRequest {
   files: Array<{
     client_file_id: string;
@@ -56,6 +65,7 @@ export interface FilesAnalyzeRequest {
   client_request_id: string;
 }
 
+/** Per-file result metadata returned without original filenames. */
 export interface FileAnalyzeResult {
   client_file_id: string;
   extension: string;
@@ -64,6 +74,7 @@ export interface FileAnalyzeResult {
   detections: DetectionSummary[];
 }
 
+/** File inspection response consumed by the upload preflight controller. */
 export interface FilesAnalyzeResponse {
   event_id: string;
   request_id: string;
@@ -73,6 +84,7 @@ export interface FilesAnalyzeResponse {
   partial_result: boolean;
 }
 
+/** Page and extension metadata attached to inspection requests. */
 export interface ExtensionContext {
   ai_service: AiService;
   ai_service_domain: string;
@@ -82,14 +94,17 @@ export interface ExtensionContext {
   locale: string;
 }
 
+/** Policy version reference used to correlate requests with server policy. */
 export interface PolicyRef {
   version: string;
 }
 
+/** Policy version status returned by Analyze responses. */
 export interface PolicyStatus extends PolicyRef {
   latest_version: string;
 }
 
+/** Remote or cached config that controls selectors, timeouts, and file policy. */
 export interface ExtensionConfigResponse {
   api_base_url: string;
   policy_version: string;
@@ -98,6 +113,7 @@ export interface ExtensionConfigResponse {
   file_upload: FileUploadPolicy;
 }
 
+/** Selector and domain config for one supported AI service. */
 export interface AiServiceConfig {
   service: AiService;
   domains: string[];
@@ -109,6 +125,7 @@ export interface AiServiceConfig {
   };
 }
 
+/** File limits and allow/exclude lists used before reading file contents. */
 export interface FileUploadPolicy {
   enabled: boolean;
   max_file_size_bytes: number;
@@ -118,6 +135,7 @@ export interface FileUploadPolicy {
   excluded_extensions: string[];
 }
 
+/** Auth identity response used by the options-page connection test. */
 export interface AuthMeResponse {
   id: string;
   workspace_id: string;
@@ -127,6 +145,7 @@ export interface AuthMeResponse {
   policy_version: string;
 }
 
+/** Prompt inspection lifecycle names used by tests and state documentation. */
 export type PromptInspectionState =
   | "IDLE"
   | "USER_ATTEMPT_SEND"
@@ -139,6 +158,7 @@ export type PromptInspectionState =
   | "REPLAYING"
   | "ERROR";
 
+/** File inspection lifecycle names used by tests and state documentation. */
 export type FileInspectionState =
   | "IDLE"
   | "USER_ATTEMPT_ATTACH"
@@ -153,6 +173,7 @@ export type FileInspectionState =
   | "REATTACH_FALLBACK"
   | "ERROR";
 
+/** Runtime message union exchanged between content/options and background. */
 export type ExtensionMessage =
   | { type: "PROMPT_ANALYZE_REQUEST"; payload: AnalyzeRequest }
   | { type: "PROMPT_ANALYZE_RESULT"; payload: AnalyzeResponse | NormalizedError }
@@ -165,6 +186,7 @@ export type ExtensionMessage =
   | { type: "GET_CONFIG_REQUEST" }
   | { type: "GET_CONFIG_RESULT"; payload: ExtensionConfigResponse | NormalizedError };
 
+/** Safe error shape that avoids echoing raw thrown or server text. */
 export interface NormalizedError {
   code: "VALIDATION_ERROR" | "NETWORK_ERROR" | "TIMEOUT" | "UNAUTHORIZED" | "SERVER_ERROR" | "UNKNOWN_ERROR";
   message: string;

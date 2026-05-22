@@ -36,6 +36,7 @@ function actionFromText(text: string): DecisionAction {
   return "Allow";
 }
 
+/** Returns a stable mock identity for options-page connection checks. */
 export async function mockAuthMe(): Promise<AuthMeResponse> {
   return {
     id: "mock_user",
@@ -47,10 +48,17 @@ export async function mockAuthMe(): Promise<AuthMeResponse> {
   };
 }
 
+/** Returns the default extension config for mock-mode development. */
 export async function mockConfig() {
   return DEFAULT_CONFIG;
 }
 
+/**
+ * Produces a deterministic prompt Analyze response for local development.
+ *
+ * Trigger words let tests exercise Allow, Warn, Mask, and Block without a
+ * server while keeping the response shape aligned with the real client path.
+ */
 export async function mockPromptAnalyze(request: AnalyzeRequest): Promise<AnalyzeResponse> {
   const action = actionFromText(request.prompt.text);
   const risk = riskForAction(action);
@@ -86,6 +94,12 @@ export async function mockPromptAnalyze(request: AnalyzeRequest): Promise<Analyz
   };
 }
 
+/**
+ * Produces a deterministic text-file Analyze response for local development.
+ *
+ * The mock inspects transient request text only in memory and returns decisions
+ * through generated client file IDs rather than original filenames.
+ */
 export async function mockFilesAnalyze(request: FilesAnalyzeRequest): Promise<FilesAnalyzeResponse> {
   const hasSecretContext = request.files.some((file) => file.extension === ".env" || file.content_text.toLowerCase().includes("database_url"));
   const hasWarningContext = request.files.some((file) => file.content_text.toLowerCase().includes("token"));

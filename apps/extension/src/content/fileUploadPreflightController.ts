@@ -8,8 +8,15 @@ import { installFileUploadInterceptor, replayFileUploadAttempt, type FileUploadI
 import { readAllowedTextFiles } from "./textFileReader";
 import { createPreflightOverlay, type PreflightOverlay } from "./preflightOverlay";
 
+/** Sends one text-file inspection request through the background boundary. */
 export type FilesAnalyzeSender = (request: FilesAnalyzeRequest) => Promise<FilesAnalyzeResponse | NormalizedError>;
 
+/**
+ * Configures the text-file upload preflight controller.
+ *
+ * `getContext` runs at attach time so each file inspection request carries the
+ * current service domain and extension version without persisting page state.
+ */
 export interface FileUploadPreflightControllerOptions {
   document?: Document;
   config: ExtensionConfigResponse;
@@ -18,10 +25,18 @@ export interface FileUploadPreflightControllerOptions {
   overlay?: PreflightOverlay;
 }
 
+/** Owns the lifecycle of file upload preflight hooks and UI state. */
 export interface FileUploadPreflightController {
   disconnect(): void;
 }
 
+/**
+ * Starts text-file inspection for input and drop attach attempts.
+ *
+ * The controller validates policy before reading content, reads only supported
+ * text files in memory, and replays the attach attempt only after a validated
+ * Allow or confirmed Warn decision.
+ */
 export function startFileUploadPreflightController(options: FileUploadPreflightControllerOptions): FileUploadPreflightController {
   const doc = options.document ?? document;
   const overlay = options.overlay ?? createPreflightOverlay(doc);
@@ -86,6 +101,8 @@ export function startFileUploadPreflightController(options: FileUploadPreflightC
   function handleDecision(response: FilesAnalyzeResponse, attempt: FileUploadAttempt): void {
     switch (response.decision.action) {
       case "Allow":
+        // A false authorization flag overrides the Allow action because the
+        // native file attach is the irreversible page action.
         if (response.decision.allow_original_upload === false) {
           showFailClosed("File inspection did not authorize attaching the original files.", () => void handleAttempt(attempt));
           return;
@@ -111,6 +128,8 @@ export function startFileUploadPreflightController(options: FileUploadPreflightC
 
   function replayOrFallback(attempt: FileUploadAttempt): void {
     overlay.hide();
+    // Keep the bypass window as small as possible so only this approved replay
+    // skips interception.
     replaying = true;
     const replayed = replayFileUploadAttempt(attempt);
     replaying = false;
@@ -151,6 +170,12 @@ export function startFileUploadPreflightController(options: FileUploadPreflightC
   };
 }
 
+/**
+ * Builds a files Analyze request from already-read text file entries.
+ *
+ * Original filenames are intentionally absent; file results are correlated
+ * through generated client IDs and metadata that is safe to send.
+ */
 export function buildFilesAnalyzeRequest(
   files: FilesAnalyzeRequest["files"],
   context: ExtensionContext,
