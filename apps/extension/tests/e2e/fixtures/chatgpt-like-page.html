@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>ChatGPT-like Fixture</title>
+  </head>
+  <body>
+    <main>
+      <section id="conversation">
+        <article>Earlier message</article>
+        <article>Another long conversation item</article>
+      </section>
+      <form id="composer">
+        <textarea id="prompt-textarea" aria-label="Prompt" rows="4"></textarea>
+        <div id="contenteditable-prompt" contenteditable="true" aria-label="Prompt editor"></div>
+        <input id="file-input" type="file" multiple />
+        <div data-testid="drop-zone">Drop files here</div>
+        <button type="submit" data-testid="send-button">Send</button>
+      </form>
+      <button id="rerender" type="button">Re-render</button>
+    </main>
+    <script>
+      window.fixtureSubmits = 0;
+      document.querySelector("#composer").addEventListener("submit", (event) => {
+        event.preventDefault();
+        window.fixtureSubmits += 1;
+      });
+    </script>
+  </body>
+</html>

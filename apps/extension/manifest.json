@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "PromptGuard",
+  "version": "0.4.0",
+  "description": "DOM preflight prompt and text-file inspection for PromptGuard.",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://chatgpt.com/*",
+    "https://chat.openai.com/*",
+    "https://promptguard.example.com/*"
+  ],
+  "background": {
+    "service_worker": "serviceWorker.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*"
+      ],
+      "js": ["contentScript.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "options_page": "src/options/options.html",
+  "action": {
+    "default_title": "PromptGuard"
+  }
+}

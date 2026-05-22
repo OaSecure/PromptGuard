@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PromptGuard Options</title>
+    <link rel="stylesheet" href="./options.css" />
+  </head>
+  <body>
+    <main class="options-shell">
+      <h1>PromptGuard</h1>
+      <section class="settings-panel">
+        <label for="apiBaseUrl">API URL</label>
+        <input id="apiBaseUrl" name="apiBaseUrl" type="url" autocomplete="off" />
+
+        <label class="toggle-row" for="mockMode">
+          <input id="mockMode" name="mockMode" type="checkbox" />
+          <span>Mock API mode</span>
+        </label>
+
+        <label for="token">Access token</label>
+        <input id="token" name="token" type="password" autocomplete="off" />
+
+        <div class="button-row">
+          <button id="saveSettings" type="button">Save</button>
+          <button id="testConnection" type="button">Test connection</button>
+          <button id="syncConfig" type="button">Sync config</button>
+        </div>
+      </section>
+
+      <section class="status-panel" aria-live="polite">
+        <dl>
+          <div>
+            <dt>Status</dt>
+            <dd id="connectionStatus">Not checked</dd>
+          </div>
+          <div>
+            <dt>Policy version</dt>
+            <dd id="policyVersion">Unknown</dd>
+          </div>
+          <div>
+            <dt>File inspection</dt>
+            <dd id="fileInspection">Unknown</dd>
+          </div>
+          <div>
+            <dt>Last config sync</dt>
+            <dd id="lastConfigSync">Never</dd>
+          </div>
+        </dl>
+      </section>
+
+      <p class="privacy-note">
+        Prompt and file contents are inspected only for the request and are not saved by extension storage.
+      </p>
+    </main>
+    <script type="module" src="./options.ts"></script>
+  </body>
+</html>

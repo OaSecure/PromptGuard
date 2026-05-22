@@ -1,0 +1,14 @@
+# Extension generated output and dependencies
+apps/extension/node_modules/
+apps/extension/dist/
+
+# Local environment and logs
+.env
+.env.*
+*.log
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

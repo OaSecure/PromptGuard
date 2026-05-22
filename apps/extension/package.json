@@ -1,0 +1,21 @@
+{
+  "name": "@promptguard/extension",
+  "version": "0.4.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.287",
+    "@types/node": "^22.10.5",
+    "@vitejs/plugin-legacy": "^6.0.0",
+    "jsdom": "^26.0.0",
+    "typescript": "^5.8.3",
+    "vite": "^6.0.7",
+    "vitest": "^3.0.4"
+  }
+}
