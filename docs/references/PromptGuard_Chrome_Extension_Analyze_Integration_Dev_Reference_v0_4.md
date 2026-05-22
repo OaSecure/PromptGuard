@@ -1591,3 +1591,363 @@ MVP 기준은 fixture E2E 통과 + 실제 ChatGPT smoke test로 둔다.
 - DNR은 declarative rule 기반 요청 차단/수정 API이며 요청 내용을 직접 읽고 분석하는 목적과 다르다.
 - FileReader/File API는 사용자가 선택하거나 drag/drop한 File 객체 내용을 비동기로 읽을 수 있지만, 사용자가 명시적으로 선택하지 않은 로컬 파일을 임의로 읽는 용도는 아니다.
 
+---
+
+# 29. 현재 구현 설명
+
+이 섹션은 2026-05-22 기준 repository에 반영된 Chrome Extension MVP 구현 스냅샷이다. 위 섹션들의 기준은 구현 계약이고, 이 섹션은 실제 파일과 동작을 설명한다.
+
+## 29.1 구현된 전체 구성
+
+현재 구현은 `apps/extension` 아래 Manifest V3 + TypeScript + Vite 구조로 구성된다.
+
+| 영역 | 구현 파일 | 역할 |
+|---|---|---|
+| Manifest | `apps/extension/manifest.json` | Chrome MV3 선언, storage permission, ChatGPT content script match, service worker 등록 |
+| Content script entry | `apps/extension/src/content/contentScript.ts` | config 로드, prompt preflight controller 설치, file upload preflight controller 설치 |
+| Background worker | `apps/extension/src/background/serviceWorker.ts`, `messageRouter.ts` | content/options 메시지 수신, API/mock/store 라우팅 |
+| Prompt analyze | `promptPreflightController.ts`, `sendInterceptor.ts`, `promptExtractor.ts`, `maskedTextInjector.ts` | click/Enter 전송 보류, prompt 분석 요청, Allow/Warn/Mask/Block 처리 |
+| File analyze | `fileUploadPreflightController.ts`, `fileUploadInterceptor.ts`, `fileUploadSnapshot.ts`, `textFileReader.ts` | file input/drop 보류, 텍스트 파일 정책 검사, 메모리 읽기, `/files/analyze` 요청 |
+| API client | `apiClient.ts`, `promptAnalyzeClient.ts`, `fileAnalyzeClient.ts` | real API/mock API 분기, timeout, error normalization |
+| Options page | `options.html`, `options.ts`, `options.css` | API URL, token 저장, mock mode, connection test, config sync |
+| Shared contract | `shared/types.ts`, `messageTypes.ts`, `responseValidation.ts`, `configValidation.ts` | request/response/message/config 런타임 검증 |
+| Privacy guard | `sanitize.ts`, `privacyRegression.test.ts` | 진단 payload에서 금지 key redaction 및 회귀 테스트 |
+
+## 29.2 런타임 데이터 흐름
+
+1. `contentScript.ts`가 `DEFAULT_CONFIG`로 먼저 DOM hook을 설치한다.
+2. content script가 service worker에 `GET_CONFIG_REQUEST`를 보내고, 유효한 config를 받으면 controller를 재설치한다.
+3. prompt 전송 시도는 `sendInterceptor.ts`에서 click 또는 Enter capture 단계로 보류된다.
+4. `promptPreflightController.ts`가 현재 input에서 prompt text를 추출해 `PROMPT_ANALYZE_REQUEST` 메시지를 보낸다.
+5. `messageRouter.ts`는 mock mode이면 `mockApi.ts`, real mode이면 `postJson("/prompts/analyze")`로 라우팅한다.
+6. 응답은 `responseValidation.ts`로 검증한 뒤 action별 UX로 분기한다.
+7. file input/drop 시도는 `fileUploadInterceptor.ts`에서 capture 단계로 보류된다.
+8. `fileUploadPreflightController.ts`가 파일 정책을 먼저 검사하고, 허용된 텍스트 파일만 메모리에서 읽어 `FILES_ANALYZE_REQUEST`를 보낸다.
+9. 파일 분석 응답이 Allow/Warn이면 원래 첨부를 replay 시도하고, replay가 불가능하면 재첨부 fallback panel을 표시한다.
+10. Block, timeout, validation error, network error는 전송 또는 첨부를 재개하지 않는 fail-closed 경로로 처리한다.
+
+## 29.2.1 모듈 의존 flowchart
+
+```mermaid
+graph TD
+  Manifest["manifest.json"] --> ContentEntry["content/contentScript.ts"]
+  Manifest --> WorkerEntry["background/serviceWorker.ts"]
+  Manifest --> OptionsPage["options/options.html + options.ts"]
+
+  ContentEntry --> PromptController["content/promptPreflightController.ts"]
+  ContentEntry --> FileController["content/fileUploadPreflightController.ts"]
+  ContentEntry --> Detector["content/domDetector.ts"]
+  ContentEntry --> MutationWatcher["content/mutationWatcher.ts"]
+
+  PromptController --> SendInterceptor["content/sendInterceptor.ts"]
+  PromptController --> PromptExtractor["content/promptExtractor.ts"]
+  PromptController --> MaskInjector["content/maskedTextInjector.ts"]
+  PromptController --> Overlay["content/preflightOverlay.ts"]
+  PromptController --> ResponseValidation["shared/responseValidation.ts"]
+  PromptController --> RuntimeMessage["chrome.runtime.sendMessage"]
+
+  FileController --> FileInterceptor["content/fileUploadInterceptor.ts"]
+  FileController --> FileSnapshot["content/fileUploadSnapshot.ts"]
+  FileController --> FilePolicy["shared/filePolicy.ts"]
+  FileController --> TextReader["content/textFileReader.ts"]
+  FileController --> Overlay
+  FileController --> ResponseValidation
+  FileController --> RuntimeMessage
+
+  RuntimeMessage --> Router["background/messageRouter.ts"]
+  WorkerEntry --> Router
+  Router --> PromptClient["background/promptAnalyzeClient.ts"]
+  Router --> FileClient["background/fileAnalyzeClient.ts"]
+  Router --> ConfigStore["background/configStore.ts"]
+  Router --> AuthStore["background/authStore.ts"]
+  Router --> MockApi["background/mockApi.ts"]
+
+  PromptClient --> ApiClient["background/apiClient.ts"]
+  FileClient --> ApiClient
+  PromptClient --> MockApi
+  FileClient --> MockApi
+  ConfigStore --> ConfigValidation["shared/configValidation.ts"]
+  Router --> MessageTypes["shared/messageTypes.ts"]
+  OptionsPage --> Router
+```
+
+| 박스 | 의미 | 주요 함수/진입점 |
+|---|---|---|
+| `manifest.json` | Chrome이 어떤 extension entry를 로드할지 선언한다. | content script match, service worker, options page |
+| `contentScript.ts` | 페이지에 설치되는 최상위 entry다. prompt/file controller를 설치하고 config 재로드 후 재설치한다. | `initializePromptGuardContentScript()`, `installPreflight()`, `loadConfig()` |
+| `promptPreflightController.ts` | prompt 전송 전 분석 상태머신의 중심이다. | `startPromptPreflightController()`, `handleAttempt()`, `handleDecision()`, `buildPromptAnalyzeRequest()` |
+| `fileUploadPreflightController.ts` | 파일 첨부 전 분석 상태머신의 중심이다. | `startFileUploadPreflightController()`, `handleAttempt()`, `handleDecision()`, `buildFilesAnalyzeRequest()` |
+| `messageRouter.ts` | content/options 메시지를 background 기능으로 라우팅한다. | `routeMessage()` |
+| `apiClient.ts` | real API 호출의 공통 boundary다. | `postJson()`, `getJson()`, `apiUrl()` |
+| `mockApi.ts` | 서버가 준비되지 않은 상태에서 동일한 message/API flow를 테스트하게 한다. | `mockPromptAnalyze()`, `mockFilesAnalyze()`, `mockConfig()`, `mockAuthMe()` |
+| `shared/*Validation.ts` | 외부 입력과 runtime message를 사용 전에 shape guard로 검증한다. | `isExtensionMessage()`, `isAnalyzeResponse()`, `isFilesAnalyzeResponse()`, `isExtensionConfigResponse()` |
+
+## 29.2.2 Content script startup flowchart
+
+```mermaid
+graph TD
+  PageStart["Chrome loads contentScript.ts at document_start"] --> Init["initializePromptGuardContentScript(root)"]
+  Init --> FirstInstall["installPreflight(root) with DEFAULT_CONFIG"]
+  FirstInstall --> MarkInput["refreshInputMarker()"]
+  FirstInstall --> WatchDom["watchInputArea(root, refreshInputMarker)"]
+  FirstInstall --> PromptHook["startPromptPreflightController(DEFAULT_CONFIG)"]
+  FirstInstall --> FileHook["startFileUploadPreflightController(DEFAULT_CONFIG)"]
+  FirstInstall --> LoadConfig["loadConfig()"]
+  LoadConfig --> GetConfigMessage["send GET_CONFIG_REQUEST"]
+  GetConfigMessage --> ConfigValid{"isExtensionConfigResponse(response)?"}
+  ConfigValid -->|yes| ReplaceConfig["activeConfig = response"]
+  ConfigValid -->|no/catch| KeepDefault["activeConfig = DEFAULT_CONFIG"]
+  ReplaceConfig --> Reinstall["installPreflight(root) again"]
+  KeepDefault --> Reinstall
+  Reinstall --> DisconnectOld["disconnect previous watcher/controllers"]
+  DisconnectOld --> InstallFresh["install fresh watcher/controllers with activeConfig"]
+```
+
+| 박스 | 모듈/함수 | 설명 |
+|---|---|---|
+| `contentScript.ts at document_start` | `manifest.json` content script | 페이지가 완전히 안정화되기 전부터 preflight hook을 준비한다. |
+| `initializePromptGuardContentScript()` | `contentScript.ts` | 최초 설치와 config 로드 후 재설치를 조율한다. |
+| `installPreflight()` | `contentScript.ts` | watcher, prompt controller, file controller를 한 번에 설치한다. 기존 controller가 있으면 먼저 해제한다. |
+| `refreshInputMarker()` | `contentScript.ts` + `domDetector.ts` | 현재 DOM에서 입력창 후보를 찾고 `documentElement.dataset.promptguardInputDetected`를 갱신한다. |
+| `watchInputArea()` | `mutationWatcher.ts` | DOM 변경 시 입력창 탐지를 다시 수행한다. |
+| `GET_CONFIG_REQUEST` | `chrome.runtime.sendMessage` -> `messageRouter.ts` | background에 cached config를 요청한다. |
+| `isExtensionConfigResponse()` | `configValidation.ts` | config shape가 유효할 때만 active config로 사용한다. |
+
+## 29.2.3 Prompt preflight flowchart
+
+```mermaid
+graph TD
+  UserSend["User clicks send or presses Enter"] --> Capture["sendInterceptor capture listener"]
+  Capture --> Bypass{"replaying or text-entry Enter?"}
+  Bypass -->|yes| Native["let page handle normally"]
+  Bypass -->|no| StopNative["preventDefault + stopImmediatePropagation"]
+  StopNative --> OnAttempt["onSendAttempt(attempt)"]
+  OnAttempt --> Busy{"analyzing?"}
+  Busy -->|yes| BusyOverlay["show analyzing overlay"]
+  Busy -->|no| FindInput["findBestInputCandidate()"]
+  FindInput --> HasInput{"input found?"}
+  HasInput -->|no| PromptFail["fail-closed error overlay"]
+  HasInput -->|yes| BuildRequest["buildPromptAnalyzeRequest()"]
+  BuildRequest --> SendMessage["PROMPT_ANALYZE_REQUEST"]
+  SendMessage --> Router["messageRouter.routeMessage()"]
+  Router --> AnalyzePrompt["promptAnalyzeClient.analyzePrompt()"]
+  AnalyzePrompt --> Mode{"mockMode?"}
+  Mode -->|yes| MockPrompt["mockApi.mockPromptAnalyze()"]
+  Mode -->|no| PostPrompt["apiClient.postJson('/prompts/analyze')"]
+  MockPrompt --> ValidateResponse["isAnalyzeResponse()"]
+  PostPrompt --> ValidateResponse
+  ValidateResponse --> Valid{"valid and before timeout?"}
+  Valid -->|no| PromptFail
+  Valid -->|yes| Decision{"decision.action"}
+  Decision -->|Allow| AllowFlag{"allow_original_send !== false?"}
+  AllowFlag -->|yes| ReplaySend["replaySendAttempt() once"]
+  AllowFlag -->|no| PromptFail
+  Decision -->|Warn| WarnPanel["show Warn panel"]
+  WarnPanel --> ConfirmWarn["user clicks Continue"]
+  ConfirmWarn --> ReplaySend
+  Decision -->|Mask| MaskPanel["show Mask panel"]
+  MaskPanel --> ApplyMask["applyMaskedPrompt(masked_prompt)"]
+  ApplyMask --> ManualResend["user reviews and sends again manually"]
+  Decision -->|Block| BlockPanel["show Block panel"]
+  PromptFail --> NoSend["original send is not replayed"]
+  BlockPanel --> NoSend
+```
+
+| 박스 | 모듈/함수 | 설명 |
+|---|---|---|
+| `sendInterceptor capture listener` | `installSendInterceptor()` | send button click과 Enter keydown을 capture 단계에서 잡는다. Shift+Enter와 composition 중 Enter는 제외한다. |
+| `onSendAttempt(attempt)` | `startPromptPreflightController()` 내부 | native send를 보류한 뒤 prompt 분석 flow로 넘긴다. |
+| `findBestInputCandidate()` | `domDetector.ts` | config selector 기준으로 textarea/contenteditable 후보를 찾는다. |
+| `buildPromptAnalyzeRequest()` | `promptPreflightController.ts` | prompt text, input method, origin-only context, policy version, client request id를 만든다. |
+| `PROMPT_ANALYZE_REQUEST` | `messageTypes.ts` + `chrome.runtime.sendMessage` | content script에서 background worker로 분석 요청을 넘기는 message boundary다. |
+| `analyzePrompt()` | `promptAnalyzeClient.ts` | mock API 또는 real API 호출을 선택한다. |
+| `postJson('/prompts/analyze')` | `apiClient.ts` | bearer token, extension headers, timeout signal로 서버에 POST한다. |
+| `isAnalyzeResponse()` | `responseValidation.ts` | 서버/mock 응답이 action 처리에 필요한 shape인지 검증한다. |
+| `replaySendAttempt()` | `sendInterceptor.ts` | 허가된 Allow 또는 확인된 Warn에서만 원래 send button을 한 번 재실행한다. |
+| `applyMaskedPrompt()` | `maskedTextInjector.ts` | 입력창 값을 `masked_prompt`로 치환한다. 자동 전송은 하지 않는다. |
+| `fail-closed error overlay` | `preflightOverlay.ts` | timeout, validation error, input 미탐지, API 실패 시 원래 전송을 재개하지 않는다. |
+
+## 29.2.4 File upload preflight flowchart
+
+```mermaid
+graph TD
+  UserAttach["User selects files or drops files"] --> FileCapture["fileUploadInterceptor capture listener"]
+  FileCapture --> FileBypass{"replaying?"}
+  FileBypass -->|yes| NativeAttach["let page handle normally"]
+  FileBypass -->|no| StopAttach["preventDefault + stopImmediatePropagation"]
+  StopAttach --> FileAttempt["onFileAttempt(attempt)"]
+  FileAttempt --> FileBusy{"analyzing?"}
+  FileBusy -->|yes| FileBusyOverlay["show analyzing overlay"]
+  FileBusy -->|no| Snapshot["createFileUploadSnapshots(files)"]
+  Snapshot --> Policy["validateFilePolicy()"]
+  Policy --> PolicyAllowed{"all allowed?"}
+  PolicyAllowed -->|no| PolicyBlock["show policy block panel"]
+  PolicyAllowed -->|yes| ReadText["readAllowedTextFiles()"]
+  ReadText --> TextOk{"text read succeeds?"}
+  TextOk -->|no| FileFail["fail-closed error overlay"]
+  TextOk -->|yes| BuildFilesRequest["buildFilesAnalyzeRequest()"]
+  BuildFilesRequest --> FilesMessage["FILES_ANALYZE_REQUEST"]
+  FilesMessage --> Router["messageRouter.routeMessage()"]
+  Router --> AnalyzeFiles["fileAnalyzeClient.analyzeFiles()"]
+  AnalyzeFiles --> FileMode{"mockMode?"}
+  FileMode -->|yes| MockFiles["mockApi.mockFilesAnalyze()"]
+  FileMode -->|no| PostFiles["apiClient.postJson('/files/analyze')"]
+  MockFiles --> ValidateFiles["isFilesAnalyzeResponse()"]
+  PostFiles --> ValidateFiles
+  ValidateFiles --> FilesValid{"valid and before timeout?"}
+  FilesValid -->|no| FileFail
+  FilesValid -->|yes| FileDecision{"decision.action"}
+  FileDecision -->|Allow| UploadFlag{"allow_original_upload !== false?"}
+  UploadFlag -->|yes| ReplayAttach["replayFileUploadAttempt()"]
+  UploadFlag -->|no| FileFail
+  FileDecision -->|Warn| FileWarn["show Warn panel"]
+  FileWarn --> ConfirmFileWarn["user clicks Continue"]
+  ConfirmFileWarn --> ReplayAttach
+  ReplayAttach --> ReplayOk{"replay succeeded?"}
+  ReplayOk -->|yes| NativeAttach
+  ReplayOk -->|no| ReattachFallback["show reattach fallback panel"]
+  FileDecision -->|Mask/Block| FileBlock["show Block panel"]
+  FileFail --> NoAttach["original attach is not replayed"]
+  FileBlock --> NoAttach
+```
+
+| 박스 | 모듈/함수 | 설명 |
+|---|---|---|
+| `fileUploadInterceptor capture listener` | `installFileUploadInterceptor()` | file input change와 drop event를 capture 단계에서 잡는다. |
+| `createFileUploadSnapshots()` | `fileUploadSnapshot.ts` | `File` 객체와 policy 판단용 name/size/type metadata, `client_file_id`를 묶는다. |
+| `validateFilePolicy()` | `filePolicy.ts` | file count, total size, single file size, extension, MIME, enabled flag를 검사한다. |
+| `readAllowedTextFiles()` | `textFileReader.ts` | 허용된 파일만 메모리에서 텍스트로 읽고, binary-like content는 거부한다. |
+| `buildFilesAnalyzeRequest()` | `fileUploadPreflightController.ts` | extension, MIME, size, content text, context, policy, request id를 만든다. 파일명 원문은 넣지 않는다. |
+| `FILES_ANALYZE_REQUEST` | `messageTypes.ts` + `chrome.runtime.sendMessage` | content script에서 background worker로 파일 분석 요청을 넘기는 message boundary다. |
+| `analyzeFiles()` | `fileAnalyzeClient.ts` | mock API 또는 real `/files/analyze` 호출을 선택한다. |
+| `isFilesAnalyzeResponse()` | `responseValidation.ts` | file decision, file results, policy status shape를 검증한다. |
+| `replayFileUploadAttempt()` | `fileUploadInterceptor.ts` | input change replay만 시도한다. drop replay는 fallback으로 남긴다. |
+| `reattach fallback panel` | `fileUploadPreflightController.ts` + `preflightOverlay.ts` | 분석은 통과했지만 page uploader state를 재현하지 못한 경우 사용자에게 다시 첨부하게 한다. |
+
+## 29.2.5 Options/config flowchart
+
+```mermaid
+graph TD
+  OptionsLoad["Options page loads"] --> LoadSettings["loadSettings()"]
+  LoadSettings --> StorageRead["chrome.storage.local.get()"]
+  StorageRead --> ConfigGuard["isExtensionConfigResponse(cachedConfig)"]
+  ConfigGuard --> RenderConfig["renderConfig() + renderLastConfigSync()"]
+  UserSave["User clicks Save"] --> SaveSettings["saveSettings()"]
+  SaveSettings --> StorageSet["store apiBaseUrl + mockMode"]
+  SaveSettings --> TokenPresent{"token entered?"}
+  TokenPresent -->|yes| AuthLogin["AUTH_LOGIN_REQUEST"]
+  TokenPresent -->|no| SavedStatus["connectionStatus = Saved"]
+  AuthLogin --> Router["messageRouter.routeMessage()"]
+  Router --> SaveToken["authStore.saveAccessToken()"]
+  TestConnection["User clicks Test connection"] --> AuthMe["AUTH_ME_REQUEST"]
+  AuthMe --> Router
+  Router --> AuthBoundary["mockAuthMe() or getJson('/auth/me')"]
+  AuthBoundary --> RenderAuth["connection status + policy version"]
+  SyncButton["User clicks Sync config"] --> SyncMessage["CONFIG_SYNC_REQUEST"]
+  SyncMessage --> Router
+  Router --> SyncConfig["syncConfig()"]
+  SyncConfig --> ConfigBoundary["mockConfig() or getJson('/config/extension')"]
+  ConfigBoundary --> ConfigValid{"isExtensionConfigResponse()?"}
+  ConfigValid -->|yes| SaveConfig["configStore.saveConfig()"]
+  ConfigValid -->|no| ConfigError["safe error message"]
+  SaveConfig --> RenderConfig
+```
+
+| 박스 | 모듈/함수 | 설명 |
+|---|---|---|
+| `loadSettings()` | `options.ts` | stored API URL, mock mode, cached config, last sync time을 읽어 화면에 표시한다. |
+| `saveSettings()` | `options.ts` | API URL과 mock mode를 저장하고, token이 있으면 background에 저장을 요청한다. |
+| `AUTH_LOGIN_REQUEST` | `messageTypes.ts` -> `messageRouter.ts` | options page가 token을 직접 처리하지 않고 background store로 넘긴다. |
+| `authStore.saveAccessToken()` | `authStore.ts` | token trim 후 storage에 저장하고, 빈 token이면 auth state를 비운다. |
+| `AUTH_ME_REQUEST` | `messageRouter.ts` | mock 또는 real `/auth/me`로 연결 상태를 확인한다. |
+| `CONFIG_SYNC_REQUEST` | `messageRouter.ts` | mock 또는 real `/config/extension`에서 selector, timeout, file policy를 가져온다. |
+| `configStore.saveConfig()` | `configStore.ts` | 검증된 config만 cache하고 last sync time을 기록한다. |
+| `renderConfig()` | `options.ts` | policy version과 file inspection enabled 상태를 화면에 반영한다. |
+
+## 29.3 Prompt preflight 구현
+
+`promptPreflightController.ts`는 prompt 전송 전 통제의 중심이다.
+
+- `analyzing` flag로 중복 분석과 double-submit을 막는다.
+- `replaying` flag로 extension이 재개한 send event가 다시 hook에 잡혀 무한 루프를 만들지 않게 한다.
+- input 후보를 찾지 못하거나 응답 검증에 실패하면 overlay error 상태를 띄우고 전송하지 않는다.
+- `Allow`는 `allow_original_send !== false`일 때만 원래 send를 replay한다.
+- `Warn`은 사용자가 Continue를 눌러야 replay한다.
+- `Mask`는 `applyMaskedPrompt()`로 입력창만 치환하고 자동 replay하지 않는다.
+- `Block`은 retry/cancel만 제공하며 원래 send를 replay하지 않는다.
+- timeout은 `withTimeout()`으로 controller 레벨에서 한 번 더 감싸며, 실패 시 원문을 보내지 않는다.
+
+`sendInterceptor.ts`는 click과 Enter를 capture한다. Shift+Enter와 IME composition 중 Enter는 텍스트 입력으로 남겨 전송 hook에서 제외한다.
+
+## 29.4 File upload preflight 구현
+
+`fileUploadPreflightController.ts`는 텍스트 기반 파일 업로드 검사 MVP를 담당한다.
+
+- `fileUploadInterceptor.ts`는 `input[type=file]` change와 drop event를 capture 단계에서 잡는다.
+- `fileUploadSnapshot.ts`는 `File` 객체와 policy 검사용 metadata를 snapshot으로 만든다.
+- `filePolicy.ts`는 enabled, 파일 수, 파일당 크기, 총 크기, 확장자, MIME을 검사한다.
+- `textFileReader.ts`는 허용된 파일만 비동기로 읽고, NUL 또는 과도한 control character가 있으면 텍스트가 아닌 것으로 판단한다.
+- 파일 분석 요청은 `client_file_id`, extension, MIME, size, 일시적 content text만 포함한다.
+- 파일명 원문은 API payload에 넣지 않는다.
+- 파일 Mask는 MVP에서 지원하지 않으며, 서버가 Mask를 반환해도 file flow에서는 Block으로 취급한다.
+- drop replay는 안정적으로 재현하기 어려우므로 성공 판정을 내리지 않고 재첨부 fallback UX로 보낸다.
+
+## 29.5 Options/config 구현
+
+`options.ts`는 extension 설정과 서버 연결 상태를 관리한다.
+
+- API base URL과 mock mode를 `chrome.storage.local`에 저장한다.
+- token이 입력되면 `AUTH_LOGIN_REQUEST`를 통해 background store에 저장한다.
+- `AUTH_ME_REQUEST`로 연결 상태와 policy version을 확인한다.
+- `CONFIG_SYNC_REQUEST`로 `/config/extension` 또는 mock config를 가져온다.
+- config는 `isExtensionConfigResponse()` 검증을 통과한 경우에만 cache한다.
+
+기본값은 mock mode enabled다. 서버 API가 아직 준비되지 않아도 extension hook, UX, message protocol, response validation, fixture/E2E를 먼저 개발하고 검증할 수 있다.
+
+## 29.6 API/mock 분기
+
+`promptAnalyzeClient.ts`와 `fileAnalyzeClient.ts`는 같은 패턴을 사용한다.
+
+- `getSettings()`로 mock mode, API base URL, cached config를 읽는다.
+- mock mode이면 `mockPromptAnalyze()` 또는 `mockFilesAnalyze()`를 호출한다.
+- real mode이면 `getAuthState()`에서 token을 읽고 `postJson()`으로 API를 호출한다.
+- `apiClient.ts`는 `AbortController` timeout, auth header, extension version header, HTTP status별 normalized error를 처리한다.
+
+mock prompt는 테스트용 trigger text로 Allow/Warn/Mask/Block을 반환한다. mock file analyze는 확장자와 텍스트 내용의 위험 신호를 기준으로 Allow/Warn/Block을 반환한다.
+
+## 29.7 Privacy 구현 상태
+
+현재 구현은 저장소와 진단 경로에서 민감 원문을 남기지 않는 방향으로 구성되어 있다.
+
+- `chrome.storage.local`에는 API base URL, mock mode, access token, config cache, last config sync time만 저장한다.
+- prompt text와 file content는 분석 요청 payload 구성에만 사용하고 storage에 저장하지 않는다.
+- `sanitizeForDiagnostics()`는 금지 key를 redaction한다.
+- `containsForbiddenDiagnosticKey()`와 privacy regression test로 금지 key가 진단 snapshot에 남는지 확인한다.
+- context에는 full URL 대신 origin만 포함한다.
+- 파일명 원문은 분석 payload에 포함하지 않고, file policy 판단에만 로컬에서 사용한다.
+
+주의: API request payload에는 분석을 위해 prompt text 또는 text file content가 일시적으로 포함된다. 금지사항은 이를 storage, log, diagnostic, test snapshot, console output 등에 저장하거나 남기는 것이다.
+
+## 29.8 테스트와 검증 상태
+
+현재 테스트 구성은 unit, fixture E2E, privacy regression, static check를 포함한다.
+
+| 검증 | 파일/명령 | 목적 |
+|---|---|---|
+| Unit test | `npm test` | controller, validators, stores, API client, message protocol 검증 |
+| Typecheck | `npm run typecheck` | TypeScript type safety 검증 |
+| Build | `npm run build` | MV3 bundle 생성 검증 |
+| Fixture E2E | `tests/e2e/extension.spec.ts` | ChatGPT-like page에서 prompt/file flow 검증 |
+| Wrapper check | `python tests/run_extension_checks.py file-upload-preflight` | typecheck, unit, build, E2E/static checks 일괄 실행 |
+| Privacy regression | `tests/unit/privacyRegression.test.ts` | 금지 key와 seed content가 diagnostic/storage/test snapshot에 남지 않는지 검증 |
+
+2026-05-22 기준 `python apps/extension/tests/run_extension_checks.py file-upload-preflight`가 통과했다.
+
+## 29.9 아직 남은 구현/검증 항목
+
+- 실제 self-host API와 `/prompts/analyze`, `/files/analyze`, `/config/extension` schema를 맞춰 통합 검증한다.
+- 실제 ChatGPT DOM에서 smoke test를 수행한다.
+- file input replay 안정성을 더 검증하고, 실패 시 재첨부 안내 UX 문구를 다듬는다.
+- 서버 response의 `user_message`를 그대로 보여줄지, extension 측 safe message만 사용할지 최종 정책을 확정한다.
+- name hash 또는 client file identity 정책은 서버 logging 정책과 함께 재검토한다.
+- multi-service adapter, PDF/Office/OCR/archive/binary/malware scan은 여전히 MVP 밖이다.
