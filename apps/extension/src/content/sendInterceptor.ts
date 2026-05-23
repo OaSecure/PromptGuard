@@ -1,4 +1,4 @@
-import { isPromptInputElement, type PromptInputElement } from "./promptExtractor";
+import { extractPromptText, isPromptInputElement, type PromptInputElement } from "./promptExtractor";
 import type { PromptInputMethod } from "../shared/types";
 
 /** Describes a user action that may send the current prompt. */
@@ -43,6 +43,20 @@ export function keyboardSendMethod(event: Pick<KeyboardEvent, "key" | "shiftKey"
 }
 
 /**
+ * Checks whether Enter is likely controlling an in-composer picker.
+ *
+ * ChatGPT uses isolated `@...` tokens to open and navigate GPT mentions. Those
+ * Enter presses must stay with the page instead of being treated as prompt
+ * sends. Email-like text is not a picker token because it does not start with
+ * `@`, so it remains eligible for Analyze.
+ */
+export function isLikelyComposerPickerEnter(input: PromptInputElement): boolean {
+  const textBeforeCaret = getTextBeforeCaret(input);
+  const tokenMatch = /(?:^|\s)(@\S*)$/.exec(textBeforeCaret);
+  return Boolean(tokenMatch);
+}
+
+/**
  * Installs capture-phase listeners for click and Enter send attempts.
  *
  * The listeners call `preventDefault` and `stopImmediatePropagation` only after
@@ -76,6 +90,9 @@ export function installSendInterceptor(options: SendInterceptorOptions): SendInt
     }
     const input = options.getPromptInput();
     if (!input || !eventTargetsPromptInput(event.target, input)) {
+      return;
+    }
+    if (isLikelyComposerPickerEnter(input)) {
       return;
     }
     event.preventDefault();
@@ -131,4 +148,20 @@ function eventTargetsPromptInput(target: EventTarget | null, input: PromptInputE
     return true;
   }
   return target instanceof Node && input.contains(target);
+}
+
+function getTextBeforeCaret(input: PromptInputElement): string {
+  if (input instanceof HTMLTextAreaElement) {
+    return input.value.slice(0, input.selectionStart ?? input.value.length);
+  }
+
+  const selection = input.ownerDocument.getSelection();
+  if (!selection || selection.rangeCount === 0 || !selection.anchorNode || !input.contains(selection.anchorNode)) {
+    return extractPromptText(input);
+  }
+
+  const range = selection.getRangeAt(0).cloneRange();
+  range.selectNodeContents(input);
+  range.setEnd(selection.anchorNode, selection.anchorOffset);
+  return range.toString();
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { keyboardSendMethod } from "../../src/content/sendInterceptor";
+import { isLikelyComposerPickerEnter, keyboardSendMethod } from "../../src/content/sendInterceptor";
 
 describe("send interceptor keyboard classification", () => {
   it("classifies plain Enter as a send attempt", () => {
@@ -10,6 +10,21 @@ describe("send interceptor keyboard classification", () => {
     expect(keyboardSendMethod(eventLike({ key: "Enter", shiftKey: true }))).toBeNull();
     expect(keyboardSendMethod(eventLike({ key: "Enter", isComposing: true }))).toBeNull();
     expect(keyboardSendMethod(eventLike({ key: "a" }))).toBeNull();
+  });
+
+  it("lets ChatGPT @ picker Enter stay with the page", () => {
+    const textarea = document.createElement("textarea");
+    textarea.value = "@gpt";
+    textarea.selectionStart = textarea.value.length;
+    textarea.selectionEnd = textarea.value.length;
+
+    expect(isLikelyComposerPickerEnter(textarea)).toBe(true);
+
+    textarea.value = "contact member@example.com";
+    textarea.selectionStart = textarea.value.length;
+    textarea.selectionEnd = textarea.value.length;
+
+    expect(isLikelyComposerPickerEnter(textarea)).toBe(false);
   });
 });
 

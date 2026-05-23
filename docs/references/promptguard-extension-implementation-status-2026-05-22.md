@@ -84,7 +84,7 @@ Background service worker는 content script와 options page가 직접 서버나 
 | `promptAnalyzeClient.ts` | 프롬프트 요청을 mock 또는 real API로 보낸다. | `AnalyzeRequest` | `mockPromptAnalyze()` 또는 `postJson("/prompts/analyze")` | prompt decision이 content script로 돌아간다. |
 | `fileAnalyzeClient.ts` | 파일 요청을 mock 또는 real API로 보낸다. | `FilesAnalyzeRequest` | `mockFilesAnalyze()` 또는 `postJson("/files/analyze")` | file decision이 content script로 돌아간다. |
 | `apiClient.ts` | 실제 HTTP GET/POST를 중앙화한다. bearer header, extension header, timeout, error normalization을 처리한다. | endpoint path, JSON body, API URL, token, timeout | `fetch()` request | 서버 오류나 네트워크 오류가 safe `NormalizedError`로 바뀐다. |
-| `mockApi.ts` | 서버 없이 deterministic Analyze 응답을 만든다. | prompt text 또는 file text | Allow/Warn/Mask/Block response | 개발/테스트에서 real API 없이 같은 control flow를 검증한다. |
+| `mockApi.ts` | 서버 없이 deterministic Analyze 응답을 만든다. Mask일 때는 mock backend 경계에서 `masked_prompt`도 만든다. | prompt text 또는 file text | Allow/Warn/Mask/Block response, Mask의 `masked_prompt` | 개발/테스트에서 real API 없이 같은 control flow를 검증한다. |
 | `configStore.ts` | API URL, mock mode, cached config를 읽고 저장한다. | `chrome.storage.local` values | normalized settings | 잘못된 cached config는 `DEFAULT_CONFIG`로 대체된다. |
 | `authStore.ts` | bearer token을 저장/조회/삭제한다. | options page token | background-local auth state | content script가 token을 직접 보지 않는다. |
 
@@ -140,7 +140,7 @@ Options page는 사용자가 mock mode와 real API 연결을 바꾸는 UI다.
 5. `promptExtractor.ts`가 입력창의 텍스트를 읽는다.
 6. `buildPromptAnalyzeRequest()`가 Analyze 요청을 만든다.
 7. content script가 background로 `PROMPT_ANALYZE_REQUEST` 메시지를 보낸다.
-8. background는 mock mode이면 `mockApi.ts`, real mode이면 `apiClient.ts`를 통해 검사한다.
+8. background는 mock mode이면 `mockApi.ts`, real mode이면 `apiClient.ts`를 통해 검사한다. Mask의 `masked_prompt` 생성 책임은 content script가 아니라 mock/real Analyze 응답 경계에 있다.
 9. `responseValidation.ts`가 응답 모양을 확인한다.
 10. content script가 decision에 맞는 화면 동작을 실행한다.
 
@@ -381,7 +381,7 @@ The background service worker keeps content scripts and the options page away fr
 | `promptAnalyzeClient.ts` | Sends prompt requests through mock or real API. | `AnalyzeRequest` | `mockPromptAnalyze()` or `postJson("/prompts/analyze")` | Prompt decision returns to content. |
 | `fileAnalyzeClient.ts` | Sends file requests through mock or real API. | `FilesAnalyzeRequest` | `mockFilesAnalyze()` or `postJson("/files/analyze")` | File decision returns to content. |
 | `apiClient.ts` | Centralizes real HTTP GET/POST. Handles bearer headers, extension headers, timeout, and error normalization. | endpoint path, JSON body, API URL, token, timeout | `fetch()` request | Server/network errors become safe `NormalizedError` objects. |
-| `mockApi.ts` | Creates deterministic Analyze responses without a server. | prompt text or file text | Allow/Warn/Mask/Block response | Development/tests exercise the same control flow without real API. |
+| `mockApi.ts` | Creates deterministic Analyze responses without a server. For Mask, it also creates `masked_prompt` at the mock backend boundary. | prompt text or file text | Allow/Warn/Mask/Block response, plus Mask `masked_prompt` | Development/tests exercise the same control flow without real API. |
 | `configStore.ts` | Reads and saves API URL, mock mode, and cached config. | `chrome.storage.local` values | normalized settings | Invalid cached config falls back to `DEFAULT_CONFIG`. |
 | `authStore.ts` | Stores, reads, and clears bearer tokens. | options page token | background-local auth state | Content scripts do not handle tokens directly. |
 
@@ -437,7 +437,7 @@ When the user clicks Send or presses Enter, the extension handles it in this ord
 5. `promptExtractor.ts` reads the input text.
 6. `buildPromptAnalyzeRequest()` creates the Analyze request.
 7. The content script sends `PROMPT_ANALYZE_REQUEST` to the background worker.
-8. The background worker uses `mockApi.ts` in mock mode or `apiClient.ts` in real mode.
+8. The background worker uses `mockApi.ts` in mock mode or `apiClient.ts` in real mode. Mask `masked_prompt` generation belongs to the mock/real Analyze response boundary, not the content script.
 9. `responseValidation.ts` checks the response shape.
 10. The content script applies the decision to the page.
 

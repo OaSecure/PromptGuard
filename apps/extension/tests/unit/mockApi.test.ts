@@ -16,7 +16,7 @@ const context: ExtensionContext = {
 describe("mock API", () => {
   it("returns Mask without allowing automatic send", async () => {
     const request: AnalyzeRequest = {
-      prompt: { text: "mock:mask", input_method: "ENTER", content_length: 9 },
+      prompt: { text: "mock:mask contact member@example.com", input_method: "ENTER", content_length: 36 },
       context,
       policy: { version: DEFAULT_POLICY_VERSION },
       client_request_id: createClientRequestId("crq")
@@ -26,7 +26,21 @@ describe("mock API", () => {
 
     expect(response.decision.action).toBe("Mask");
     expect(response.decision.allow_original_send).toBe(false);
-    expect(response.masked_prompt).toBeTruthy();
+    expect(response.masked_prompt).toBe("[masked-trigger] contact [masked-email]");
+  });
+
+  it("does not treat a bare at-sign picker token as a mask trigger", async () => {
+    const request: AnalyzeRequest = {
+      prompt: { text: "@", input_method: "ENTER", content_length: 1 },
+      context,
+      policy: { version: DEFAULT_POLICY_VERSION },
+      client_request_id: createClientRequestId("crq")
+    };
+
+    const response = await mockPromptAnalyze(request);
+
+    expect(response.decision.action).toBe("Allow");
+    expect(response.masked_prompt).toBeUndefined();
   });
 
   it("blocks env-like file content in mock mode", async () => {

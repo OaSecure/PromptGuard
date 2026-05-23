@@ -5,21 +5,22 @@ import { defineConfig } from "vite";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-export default defineConfig({
-  plugins: [
-    {
-      name: "copy-extension-manifest",
-      writeBundle() {
-        copyFileSync(resolve(__dirname, "manifest.json"), resolve(__dirname, "dist/manifest.json"));
-      }
+function copyExtensionManifestPlugin() {
+  return {
+    name: "copy-extension-manifest",
+    writeBundle() {
+      copyFileSync(resolve(__dirname, "manifest.json"), resolve(__dirname, "dist/manifest.json"));
     }
-  ],
+  };
+}
+
+export default defineConfig({
+  plugins: [copyExtensionManifestPlugin()],
   build: {
     outDir: "dist",
-    emptyOutDir: true,
+    emptyOutDir: false,
     rollupOptions: {
       input: {
-        contentScript: resolve(__dirname, "src/content/contentScript.ts"),
         serviceWorker: resolve(__dirname, "src/background/serviceWorker.ts"),
         options: resolve(__dirname, "src/options/options.html")
       },

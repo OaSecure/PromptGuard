@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { routeMessage } from "../../src/background/messageRouter";
 import { DEFAULT_CONFIG, STORAGE_KEYS } from "../../src/shared/constants";
-import type { AuthMeResponse, ExtensionConfigResponse } from "../../src/shared/types";
+import { createClientRequestId } from "../../src/shared/hashing";
+import type { AnalyzeRequest, AuthMeResponse, ExtensionConfigResponse } from "../../src/shared/types";
 
 describe("message router API auth boundary", () => {
   afterEach(() => {
@@ -71,6 +72,27 @@ describe("message router API auth boundary", () => {
     });
     expect(storage.snapshot()[STORAGE_KEYS.configCache]).toBeUndefined();
   });
+
+  it("routes prompt analysis through the fake backend in mock mode", async () => {
+    const storage = createStorage({
+      [STORAGE_KEYS.apiBaseUrl]: "https://api.promptguard.test",
+      [STORAGE_KEYS.mockMode]: true
+    });
+    const fetchMock = vi.fn();
+    vi.stubGlobal("chrome", { storage: { local: storage } });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await routeMessage({ type: "PROMPT_ANALYZE_REQUEST", payload: analyzeRequest("contact member@example.com") });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(response).toMatchObject({
+      decision: {
+        action: "Mask",
+        allow_original_send: false
+      },
+      masked_prompt: "contact [masked-email]"
+    });
+  });
 });
 
 function createStorage(initial: Record<string, unknown>) {
@@ -111,5 +133,25 @@ function authMeResponse(): AuthMeResponse {
     role: "USER",
     status: "ACTIVE",
     policy_version: "v-test-config"
+  };
+}
+
+function analyzeRequest(text: string): AnalyzeRequest {
+  return {
+    prompt: {
+      text,
+      input_method: "ENTER",
+      content_length: text.length
+    },
+    context: {
+      ai_service: "CHATGPT",
+      ai_service_domain: "chatgpt.com",
+      page_url_origin: "https://chatgpt.com",
+      extension_version: "0.4.0",
+      browser: "Chrome",
+      locale: "ko-KR"
+    },
+    policy: { version: DEFAULT_CONFIG.policy_version },
+    client_request_id: createClientRequestId("crq")
   };
 }

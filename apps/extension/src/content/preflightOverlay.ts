@@ -37,7 +37,7 @@ export function createPreflightOverlay(doc: Document = document): PreflightOverl
     container.id = CONTAINER_ID;
     container.setAttribute("role", "dialog");
     container.setAttribute("aria-live", "polite");
-    doc.body.appendChild(container);
+    (doc.body ?? doc.documentElement).appendChild(container);
   }
 
   applyContainerStyle(container);

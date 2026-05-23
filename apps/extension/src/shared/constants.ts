@@ -23,7 +23,15 @@ export const DEFAULT_CONFIG: ExtensionConfigResponse = {
       domains: ["chatgpt.com", "chat.openai.com"],
       selectors: {
         input: ["textarea", "[contenteditable='true']"],
-        send_button: ["button[data-testid='send-button']"],
+        send_button: [
+          "button[data-testid='send-button']",
+          "button[data-testid='composer-send-button']",
+          "button[data-testid*='send']",
+          "button[aria-label='Send message']",
+          "button[aria-label='Send prompt']",
+          "button[aria-label='Send']",
+          "button[aria-label*='보내기']"
+        ],
         file_input: ["input[type='file']"],
         drop_zone: ["body"]
       }

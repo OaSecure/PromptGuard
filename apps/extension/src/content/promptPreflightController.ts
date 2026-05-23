@@ -8,6 +8,8 @@ import { createPreflightOverlay, type PreflightOverlay } from "./preflightOverla
 import { extractPromptText, type PromptInputElement } from "./promptExtractor";
 import { installSendInterceptor, replaySendAttempt, type SendAttempt, type SendInterceptor } from "./sendInterceptor";
 
+const ANALYZING_OVERLAY_DELAY_MS = 150;
+
 /** Sends one prompt inspection request through the background boundary. */
 export type PromptAnalyzeSender = (request: AnalyzeRequest) => Promise<AnalyzeResponse | NormalizedError>;
 
@@ -71,9 +73,15 @@ export function startPromptPreflightController(options: PromptPreflightControlle
     }
 
     const request = buildPromptAnalyzeRequest(candidate.element, attempt.method, options.getContext(), options.config.policy_version);
+    recordPromptAttempt(doc, request, "inspecting");
+    if (request.prompt.content_length === 0) {
+      recordPromptStatus(doc, "error", "empty-prompt");
+      showFailClosed("PromptGuard could not read this prompt. Prompt was not sent.", () => void handleAttempt(attempt));
+      return;
+    }
     const attemptId = ++currentAttemptId;
     analyzing = true;
-    overlay.show({ decision: "analyzing", message: "Inspecting prompt before send.", actions: [] });
+    const cancelAnalyzingOverlay = scheduleAnalyzingOverlay();
 
     try {
       const response = await withTimeout(options.sendAnalyze(request), options.config.timeout_ms);
@@ -81,22 +89,33 @@ export function startPromptPreflightController(options: PromptPreflightControlle
         return;
       }
       if (!isAnalyzeResponse(response)) {
+        recordPromptStatus(doc, "error", "invalid-response");
         showFailClosed("Inspection failed. Prompt was not sent.", () => void handleAttempt(attempt));
         return;
       }
       handleDecision(response, candidate.element, attempt);
     } catch {
       if (attemptId === currentAttemptId) {
+        recordPromptStatus(doc, "error", "inspection-failed");
         showFailClosed("Inspection timed out or failed. Prompt was not sent.", () => void handleAttempt(attempt));
       }
     } finally {
+      cancelAnalyzingOverlay();
       if (attemptId === currentAttemptId) {
         analyzing = false;
       }
     }
   }
 
+  function scheduleAnalyzingOverlay(): () => void {
+    const timeoutId = window.setTimeout(() => {
+      overlay.show({ decision: "analyzing", message: "Inspecting prompt before send.", actions: [] });
+    }, ANALYZING_OVERLAY_DELAY_MS);
+    return () => window.clearTimeout(timeoutId);
+  }
+
   function handleDecision(response: AnalyzeResponse, input: PromptInputElement, attempt: SendAttempt): void {
+    recordPromptStatus(doc, response.decision.action.toLowerCase());
     switch (response.decision.action) {
       case "Allow":
         // Treat contradictory Allow responses as unsafe because replaying the
@@ -165,6 +184,7 @@ export function startPromptPreflightController(options: PromptPreflightControlle
   }
 
   function showFailClosed(message: string, retry: () => void): void {
+    recordPromptStatus(doc, "error");
     overlay.show({
       decision: "error",
       message,
@@ -182,6 +202,20 @@ export function startPromptPreflightController(options: PromptPreflightControlle
       overlay.destroy();
     }
   };
+}
+
+function recordPromptAttempt(doc: Document, request: AnalyzeRequest, status: string): void {
+  const root = doc.documentElement;
+  root.dataset.promptguardLastStatus = status;
+  root.dataset.promptguardLastPromptLength = String(request.prompt.content_length);
+  root.dataset.promptguardLastInputMethod = request.prompt.input_method;
+}
+
+function recordPromptStatus(doc: Document, status: string, reason?: string): void {
+  doc.documentElement.dataset.promptguardLastStatus = status;
+  if (reason) {
+    doc.documentElement.dataset.promptguardLastFailure = reason;
+  }
 }
 
 function safeDecisionMessage(response: AnalyzeResponse): string {

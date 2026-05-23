@@ -34,6 +34,7 @@ def main() -> int:
     failures = []
     failures.extend(scan_for_network_monitoring())
     failures.extend(scan_dist_for_forbidden_seeds())
+    failures.extend(scan_dist_for_content_script_module_syntax())
     failures.extend(scan_src_for_raw_console_logging())
     failures.extend(scan_src_for_exported_surface_docs())
 
@@ -88,6 +89,20 @@ def scan_dist_for_forbidden_seeds() -> list[str]:
         "copied sensitive phrase",
     ]
     return scan_paths([EXTENSION_DIR / "dist"], patterns, "forbidden seed in build output")
+
+
+def scan_dist_for_content_script_module_syntax() -> list[str]:
+    content_script = EXTENSION_DIR / "dist" / "contentScript.js"
+    if not content_script.is_file():
+        return ["content script build output missing: apps/extension/dist/contentScript.js"]
+    failures: list[str] = []
+    lines = content_script.read_text(encoding="utf-8", errors="ignore").splitlines()
+    for index, line in enumerate(lines):
+        stripped = line.lstrip()
+        if stripped.startswith("import ") or stripped.startswith("export "):
+            rel_path = content_script.relative_to(ROOT)
+            failures.append(f"content script must be bundled as non-module script: {rel_path}:{index + 1}")
+    return failures
 
 
 def scan_src_for_raw_console_logging() -> list[str]:

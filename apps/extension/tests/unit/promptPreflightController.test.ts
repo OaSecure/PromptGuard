@@ -25,6 +25,41 @@ describe("prompt preflight controller", () => {
     await waitFor(() => page.submits() === 1);
 
     expect(page.submits()).toBe(1);
+    expect(document.documentElement.dataset.promptguardLastStatus).toBe("allow");
+    expect(overlayDecision()).toBeUndefined();
+    controller.disconnect();
+  });
+
+  it("intercepts ChatGPT send buttons that expose aria-label fallback selectors", async () => {
+    const page = setupComposer("aria send case", { buttonAttrs: 'aria-label="Send message"' });
+    const controller = startPromptPreflightController({
+      config: DEFAULT_CONFIG,
+      getContext: () => context,
+      sendAnalyze: async () => responseFor("Block")
+    });
+
+    page.button.click();
+    await waitFor(() => overlayDecision() === "block");
+
+    expect(page.submits()).toBe(0);
+    controller.disconnect();
+  });
+
+  it("intercepts the current ChatGPT composer submit button markup", async () => {
+    const page = setupComposer("current chatgpt case", {
+      buttonAttrs:
+        'aria-describedby="_r_6m_" interestfor="_r_6m_" id="composer-submit-button" aria-label="프롬프트 보내기" data-testid="send-button" class="composer-submit-btn composer-submit-button-color h-9 w-9" style="anchor-name: --anchor-_r_6m_;"'
+    });
+    const controller = startPromptPreflightController({
+      config: DEFAULT_CONFIG,
+      getContext: () => context,
+      sendAnalyze: async () => responseFor("Block")
+    });
+
+    page.button.click();
+    await waitFor(() => overlayDecision() === "block");
+
+    expect(page.submits()).toBe(0);
     controller.disconnect();
   });
 
@@ -88,6 +123,48 @@ describe("prompt preflight controller", () => {
 
     expect(enter.defaultPrevented).toBe(true);
     expect(page.submits()).toBe(1);
+    controller.disconnect();
+  });
+
+  it("does not intercept Enter while ChatGPT @ picker token is active", async () => {
+    const page = setupComposer("@gpt");
+    let analyzeCount = 0;
+    const controller = startPromptPreflightController({
+      config: DEFAULT_CONFIG,
+      getContext: () => context,
+      sendAnalyze: async () => {
+        analyzeCount += 1;
+        return responseFor("Mask", "[masked]");
+      }
+    });
+
+    page.textarea.selectionStart = page.textarea.value.length;
+    page.textarea.selectionEnd = page.textarea.value.length;
+    const enter = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
+    page.textarea.dispatchEvent(enter);
+
+    expect(enter.defaultPrevented).toBe(false);
+    expect(analyzeCount).toBe(0);
+    expect(overlayDecision()).toBeUndefined();
+    controller.disconnect();
+  });
+
+  it("still intercepts Enter for email-like mask candidates", async () => {
+    const page = setupComposer("contact member@example.com");
+    const controller = startPromptPreflightController({
+      config: DEFAULT_CONFIG,
+      getContext: () => context,
+      sendAnalyze: async () => responseFor("Mask", "contact [masked-email]")
+    });
+
+    page.textarea.selectionStart = page.textarea.value.length;
+    page.textarea.selectionEnd = page.textarea.value.length;
+    const enter = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
+    page.textarea.dispatchEvent(enter);
+    await waitFor(() => overlayDecision() === "mask");
+
+    expect(enter.defaultPrevented).toBe(true);
+    expect(page.submits()).toBe(0);
     controller.disconnect();
   });
 
@@ -209,17 +286,52 @@ describe("prompt preflight controller", () => {
     expect(page.submits()).toBe(0);
     controller.disconnect();
   });
+
+  it("records safe prompt diagnostics without storing raw prompt text", async () => {
+    const page = setupComposer("mock:block diagnostic case");
+    const controller = startPromptPreflightController({
+      config: DEFAULT_CONFIG,
+      getContext: () => context,
+      sendAnalyze: async () => responseFor("Block")
+    });
+
+    page.button.click();
+    await waitFor(() => document.documentElement.dataset.promptguardLastStatus === "block");
+
+    expect(document.documentElement.dataset.promptguardLastPromptLength).toBe(String("mock:block diagnostic case".length));
+    expect(document.documentElement.dataset.promptguardLastInputMethod).toBe("CLICK");
+    expect(document.documentElement.dataset.promptguardLastMockTrigger).toBeUndefined();
+    expect(JSON.stringify(document.documentElement.dataset)).not.toContain("mock:block diagnostic case");
+    controller.disconnect();
+  });
+
+  it("fails closed when the selected input yields no readable prompt text", async () => {
+    const page = setupComposer("");
+    const controller = startPromptPreflightController({
+      config: DEFAULT_CONFIG,
+      getContext: () => context,
+      sendAnalyze: async () => responseFor("Allow")
+    });
+
+    page.button.click();
+    await waitFor(() => document.documentElement.dataset.promptguardLastFailure === "empty-prompt");
+
+    expect(overlayDecision()).toBe("error");
+    expect(page.submits()).toBe(0);
+    controller.disconnect();
+  });
 });
 
-function setupComposer(value: string) {
+function setupComposer(value: string, options: { buttonAttrs?: string } = {}) {
+  const buttonAttrs = options.buttonAttrs ?? 'data-testid="send-button"';
   document.body.innerHTML = `
     <form id="composer">
       <textarea id="prompt-textarea" aria-label="Prompt"></textarea>
-      <button type="submit" data-testid="send-button">Send</button>
+      <button type="submit" ${buttonAttrs}>Send</button>
     </form>
   `;
   const textarea = document.querySelector<HTMLTextAreaElement>("#prompt-textarea")!;
-  const button = document.querySelector<HTMLButtonElement>("button[data-testid='send-button']")!;
+  const button = document.querySelector<HTMLButtonElement>("button[type='submit']")!;
   textarea.value = value;
   mockRect(textarea);
   textarea.focus();

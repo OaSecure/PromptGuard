@@ -27,13 +27,35 @@ function actionFromText(text: string): DecisionAction {
   if (normalized.includes("mock:block") || normalized.includes("database_url")) {
     return "Block";
   }
-  if (normalized.includes("mock:mask") || normalized.includes("@")) {
+  if (normalized.includes("mock:mask") || containsEmailAddress(text)) {
     return "Mask";
   }
   if (normalized.includes("mock:warn") || normalized.includes("token")) {
     return "Warn";
   }
   return "Allow";
+}
+
+/**
+ * Produces a deterministic masked prompt for local Analyze smoke tests.
+ *
+ * The mock backend owns this transformation so the content script can exercise
+ * the same contract as the real API path: receive `masked_prompt`, apply it to
+ * the page input, and leave final sending to the user.
+ */
+function maskPromptForMockAnalyze(text: string): string {
+  let masked = text
+    .replace(/\bmock:mask\b/gi, "[masked-trigger]")
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[masked-email]");
+
+  if (masked === text) {
+    return "[masked] content requires review";
+  }
+  return masked;
+}
+
+function containsEmailAddress(text: string): boolean {
+  return /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(text);
 }
 
 /** Returns a stable mock identity for options-page connection checks. */
@@ -85,7 +107,7 @@ export async function mockPromptAnalyze(request: AnalyzeRequest): Promise<Analyz
               source: "mock"
             }
           ],
-    masked_prompt: action === "Mask" ? "[masked] content requires review" : undefined,
+    masked_prompt: action === "Mask" ? maskPromptForMockAnalyze(request.prompt.text) : undefined,
     policy: {
       version: request.policy.version,
       latest_version: DEFAULT_POLICY_VERSION
