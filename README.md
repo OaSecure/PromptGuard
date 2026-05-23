@@ -4,7 +4,7 @@
 
 PromptGuard는 AI 서비스로 프롬프트와 파일이 전송되기 전에 민감정보, 정책 위반 가능성, 마스킹 필요 여부를 검사하기 위한 프로젝트다.
 
-이 저장소는 Chrome Extension 하나만을 담는 저장소가 아니라 PromptGuard 제품 전체의 프로젝트 저장소다. 현재 구현된 첫 번째 클라이언트는 `apps/extension`의 Chrome Extension MVP이며, 이후 Analyze API, 정책 설정, 배포/운영 문서, 추가 클라이언트가 이 프로젝트 경계 안에서 확장될 수 있다.
+이 저장소는 PromptGuard 제품 전체의 프로젝트 저장소다. 현재 구현된 첫 번째 클라이언트는 `apps/extension`의 Chrome Extension MVP이며, 이후 Analyze API, 정책 설정, 배포/운영 문서, 추가 클라이언트가 이 프로젝트 경계 안에서 확장될 수 있다.
 
 ### 현재 포함된 구성
 
@@ -62,7 +62,7 @@ python apps/extension/tests/run_extension_checks.py file-upload-preflight
 
 PromptGuard is a project for inspecting prompts and files before they leave a user workflow for an AI service. Its goal is to detect sensitive data, policy issues, and masking requirements before submission.
 
-This repository represents the PromptGuard product project, not only a Chrome Extension package. The first implemented client is the Chrome Extension MVP under `apps/extension`; future Analyze API work, policy configuration, deployment documentation, and additional clients can grow inside the same project boundary.
+This repository represents the PromptGuard product project. The first implemented client is the Chrome Extension MVP under `apps/extension`; future Analyze API work, policy configuration, deployment documentation, and additional clients can grow inside the same project boundary.
 
 ### Current Contents
 
