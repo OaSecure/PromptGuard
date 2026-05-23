@@ -35,6 +35,7 @@ def main() -> int:
     failures.extend(scan_for_network_monitoring())
     failures.extend(scan_dist_for_forbidden_seeds())
     failures.extend(scan_src_for_raw_console_logging())
+    failures.extend(scan_src_for_exported_surface_docs())
 
     if failures:
         for failure in failures:
@@ -91,6 +92,57 @@ def scan_dist_for_forbidden_seeds() -> list[str]:
 
 def scan_src_for_raw_console_logging() -> list[str]:
     return scan_paths([EXTENSION_DIR / "src"], ["console.log", "console.error", "console.warn"], "console logging in source")
+
+
+def scan_src_for_exported_surface_docs() -> list[str]:
+    export_prefixes = (
+        "export function ",
+        "export async function ",
+        "export interface ",
+        "export type ",
+        "export const ",
+        "export class ",
+        "export enum ",
+        "export let ",
+        "export var ",
+    )
+    failures: list[str] = []
+    for file_path in sorted((EXTENSION_DIR / "src").rglob("*.ts")):
+        lines = file_path.read_text(encoding="utf-8", errors="ignore").splitlines()
+        for index, line in enumerate(lines):
+            stripped = line.strip()
+            if not stripped.startswith(export_prefixes):
+                continue
+            if has_jsdoc_before(lines, index):
+                continue
+            rel_path = file_path.relative_to(ROOT)
+            surface = describe_exported_surface(stripped)
+            failures.append(f"missing JSDoc/TSDoc before exported surface: {rel_path}:{index + 1} {surface}")
+    return failures
+
+
+def has_jsdoc_before(lines: list[str], export_index: int) -> bool:
+    index = export_index - 1
+    while index >= 0 and lines[index].strip() == "":
+        index -= 1
+    if index < 0 or not lines[index].strip().endswith("*/"):
+        return False
+    while index >= 0:
+        stripped = lines[index].strip()
+        if stripped.startswith("/**"):
+            return True
+        if stripped.startswith("*") or stripped == "*/" or stripped.endswith("*/"):
+            index -= 1
+            continue
+        return False
+    return False
+
+
+def describe_exported_surface(line: str) -> str:
+    for prefix in ("export async function ", "export function ", "export interface ", "export type ", "export const ", "export class ", "export enum ", "export let ", "export var "):
+        if line.startswith(prefix):
+            return line[len(prefix):].split("(", 1)[0].split("=", 1)[0].strip()
+    return line
 
 
 def scan_paths(paths: list[Path], patterns: list[str], label: str) -> list[str]:

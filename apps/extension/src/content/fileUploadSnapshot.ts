@@ -15,8 +15,8 @@ export interface FileUploadAttempt {
  * Holds transient file references for the current preflight operation.
  *
  * `policyInput` contains only metadata needed before reading. The original
- * filename stays inside the browser `File` object and is not copied into the
- * Analyze request.
+ * filename stays inside the browser `File` object for local policy checks and
+ * is not copied, hashed, or made stable across Analyze requests.
  */
 export interface FileUploadSnapshot {
   client_file_id: string;
@@ -33,7 +33,7 @@ export function filesFromFileList(files: FileList | null | undefined): File[] {
  * Creates per-file snapshots with generated client IDs.
  *
  * Generated IDs let later results refer to files without sending original
- * filenames across the Analyze boundary.
+ * filenames or filename-derived hashes across the Analyze boundary.
  */
 export function createFileUploadSnapshots(files: File[]): FileUploadSnapshot[] {
   return files.map((file) => ({

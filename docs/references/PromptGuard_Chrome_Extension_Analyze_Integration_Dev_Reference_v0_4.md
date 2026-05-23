@@ -868,7 +868,7 @@ request validation
 | field | 사용처 |
 |---|---|
 | `decision.action` | Allow/Warn/Mask/Block 분기 |
-| `decision.user_message` | panel 표시 |
+| `decision.user_message` | response schema compatibility용 필드. Extension UI는 raw server text를 그대로 렌더링하지 않고 action별 fixed safe message를 표시한다. |
 | `masked_prompt` | Mask 치환 |
 | `detections[].label/count/severity` | 사용자에게 요약 표시 |
 | `policy.latest_version` | config 재동기화 판단 |
@@ -1889,6 +1889,7 @@ graph TD
 - `textFileReader.ts`는 허용된 파일만 비동기로 읽고, NUL 또는 과도한 control character가 있으면 텍스트가 아닌 것으로 판단한다.
 - 파일 분석 요청은 `client_file_id`, extension, MIME, size, 일시적 content text만 포함한다.
 - 파일명 원문은 API payload에 넣지 않는다.
+- `client_file_id`는 filename hash가 아니라 attach attempt마다 생성되는 opaque ID다. 서버 logging은 이 ID와 decision metadata만 사용할 수 있고 원본 파일명 또는 파일명에서 파생된 stable identifier를 요구하지 않는다.
 - 파일 Mask는 MVP에서 지원하지 않으며, 서버가 Mask를 반환해도 file flow에서는 Block으로 취급한다.
 - drop replay는 안정적으로 재현하기 어려우므로 성공 판정을 내리지 않고 재첨부 fallback UX로 보낸다.
 
@@ -1925,6 +1926,7 @@ mock prompt는 테스트용 trigger text로 Allow/Warn/Mask/Block을 반환한�
 - `containsForbiddenDiagnosticKey()`와 privacy regression test로 금지 key가 진단 snapshot에 남는지 확인한다.
 - context에는 full URL 대신 origin만 포함한다.
 - 파일명 원문은 분석 payload에 포함하지 않고, file policy 판단에만 로컬에서 사용한다.
+- `auditEvents.ts`는 prompt/file 검사 결과를 metadata-only event로 변환한다. 이 event는 action, risk, policy, origin, request/event id, detection/file count만 포함하고 prompt text, file content, masked prompt, server `user_message`, original filename, raw detection value는 포함하지 않는다.
 
 주의: API request payload에는 분석을 위해 prompt text 또는 text file content가 일시적으로 포함된다. 금지사항은 이를 storage, log, diagnostic, test snapshot, console output 등에 저장하거나 남기는 것이다.
 
@@ -1940,14 +1942,16 @@ mock prompt는 테스트용 trigger text로 Allow/Warn/Mask/Block을 반환한�
 | Fixture E2E | `tests/e2e/extension.spec.ts` | ChatGPT-like page에서 prompt/file flow 검증 |
 | Wrapper check | `python tests/run_extension_checks.py file-upload-preflight` | typecheck, unit, build, E2E/static checks 일괄 실행 |
 | Privacy regression | `tests/unit/privacyRegression.test.ts` | 금지 key와 seed content가 diagnostic/storage/test snapshot에 남지 않는지 검증 |
+| Audit event unit test | `tests/unit/auditEvents.test.ts` | metadata-only event builder가 원문/파일명/서버 메시지를 포함하지 않는지 검증 |
 
-2026-05-22 기준 `python apps/extension/tests/run_extension_checks.py file-upload-preflight`가 통과했다.
+2026-05-23 기준 `python apps/extension/tests/run_extension_checks.py all`이 통과했다.
 
 ## 29.9 아직 남은 구현/검증 항목
 
 - 실제 self-host API와 `/prompts/analyze`, `/files/analyze`, `/config/extension` schema를 맞춰 통합 검증한다.
 - 실제 ChatGPT DOM에서 smoke test를 수행한다.
-- file input replay 안정성을 더 검증하고, 실패 시 재첨부 안내 UX 문구를 다듬는다.
-- 서버 response의 `user_message`를 그대로 보여줄지, extension 측 safe message만 사용할지 최종 정책을 확정한다.
-- name hash 또는 client file identity 정책은 서버 logging 정책과 함께 재검토한다.
+- file input replay 안정성은 실제 ChatGPT DOM에서 더 검증한다. fixture 기준 재첨부 안내 UX 문구는 자동 재첨부 실패 이유와 수동 재첨부 필요성을 설명하도록 정리했다.
+- 서버 response의 `user_message` 정책은 Extension 측 fixed safe message 사용으로 확정했다. `user_message`는 schema compatibility용으로 검증하되, overlay는 raw server text를 직접 렌더링하지 않는다.
+- name hash/client file identity 정책은 Extension MVP 기준으로 확정했다. 원본 파일명 hash를 만들지 않고, attach attempt마다 생성되는 opaque `client_file_id`만 Analyze/file result correlation에 사용한다.
+- telemetry/event schema는 Extension MVP 기준 metadata-only audit event builder로 확정했다. persistent event logging, dashboard retention, server ingestion은 실제 서버/API 계약과 함께 별도 검증한다.
 - multi-service adapter, PDF/Office/OCR/archive/binary/malware scan은 여전히 MVP 밖이다.

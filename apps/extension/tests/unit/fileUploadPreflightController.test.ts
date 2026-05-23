@@ -95,7 +95,7 @@ describe("file upload preflight controller", () => {
     controller.disconnect();
   });
 
-  it("does not render server user_message raw text in Warn or Block overlays", async () => {
+  it("does not render server user_message raw text in Warn, Mask, or Block overlays", async () => {
     const warnPage = setupFileInput([textFile("notes.txt", "hello", "text/plain")]);
     const warnController = startFileUploadPreflightController({
       config: DEFAULT_CONFIG,
@@ -107,6 +107,18 @@ describe("file upload preflight controller", () => {
     await waitFor(() => overlayDecision() === "warn");
     expect(overlayText()).not.toContain("secret-value");
     warnController.disconnect();
+
+    const maskPage = setupFileInput([textFile("notes.txt", "hello", "text/plain")]);
+    const maskController = startFileUploadPreflightController({
+      config: DEFAULT_CONFIG,
+      getContext: () => context,
+      sendAnalyze: async (request) => responseFor("Mask", request, false, "server echoed secret-value")
+    });
+
+    dispatchChange(maskPage.input);
+    await waitFor(() => overlayDecision() === "block");
+    expect(overlayText()).not.toContain("secret-value");
+    maskController.disconnect();
 
     const blockPage = setupFileInput([textFile("notes.txt", "hello", "text/plain")]);
     const blockController = startFileUploadPreflightController({
@@ -170,6 +182,8 @@ describe("file upload preflight controller", () => {
 
     expect(fileDrop.defaultPrevented).toBe(true);
     await waitFor(() => overlayDecision() === "error");
+    expect(overlayText()).toContain("Please attach the files again");
+    expect(overlayText()).toContain("did not allow automatic reattach");
     controller.disconnect();
   });
 

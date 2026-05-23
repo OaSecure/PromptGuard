@@ -136,7 +136,7 @@ export function startFileUploadPreflightController(options: FileUploadPreflightC
     if (!replayed) {
       overlay.show({
         decision: "error",
-        message: "File inspection passed, but this page needs you to attach the files again.",
+        message: "File inspection passed. Please attach the files again because this page did not allow automatic reattach.",
         actions: [{ label: "Cancel", variant: "secondary", onClick: overlay.hide }]
       });
     }

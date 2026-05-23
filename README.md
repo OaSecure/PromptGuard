@@ -54,6 +54,7 @@ npm run build
 ```bash
 python apps/extension/tests/run_extension_checks.py prompt-preflight
 python apps/extension/tests/run_extension_checks.py file-upload-preflight
+python apps/extension/tests/run_extension_checks.py all
 ```
 
 빌드 후 Chrome에서 `apps/extension/dist`를 unpacked extension으로 로드한다.
@@ -103,6 +104,7 @@ Run wrapper checks from the repository root:
 ```bash
 python apps/extension/tests/run_extension_checks.py prompt-preflight
 python apps/extension/tests/run_extension_checks.py file-upload-preflight
+python apps/extension/tests/run_extension_checks.py all
 ```
 
 After `npm run build`, load `apps/extension/dist` as an unpacked extension in Chrome.

@@ -110,7 +110,7 @@ describe("prompt preflight controller", () => {
     controller.disconnect();
   });
 
-  it("does not render server user_message raw text in Warn or Block overlays", async () => {
+  it("does not render server user_message raw text in Warn, Mask, or Block overlays", async () => {
     const warnPage = setupComposer("warn raw message case");
     const warnController = startPromptPreflightController({
       config: DEFAULT_CONFIG,
@@ -122,6 +122,18 @@ describe("prompt preflight controller", () => {
     await waitFor(() => overlayDecision() === "warn");
     expect(overlayText()).not.toContain("secret-value");
     warnController.disconnect();
+
+    const maskPage = setupComposer("mask raw message case");
+    const maskController = startPromptPreflightController({
+      config: DEFAULT_CONFIG,
+      getContext: () => context,
+      sendAnalyze: async () => responseFor("Mask", "[masked]", false, "server echoed secret-value")
+    });
+
+    maskPage.button.click();
+    await waitFor(() => overlayDecision() === "mask");
+    expect(overlayText()).not.toContain("secret-value");
+    maskController.disconnect();
 
     const blockPage = setupComposer("block raw message case");
     const blockController = startPromptPreflightController({

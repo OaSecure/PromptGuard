@@ -2,7 +2,9 @@
  * Creates a short client-side correlation ID for Analyze requests.
  *
  * The ID lets the extension and server correlate decisions without relying on
- * raw prompt text, file content, or original filenames.
+ * raw prompt text, file content, original filenames, or filename-derived
+ * hashes. File IDs are opaque per-attempt identifiers, not stable user or file
+ * fingerprints.
  */
 export function createClientRequestId(prefix: "crq" | "frq" | "file" = "crq"): string {
   const random = new Uint32Array(2);

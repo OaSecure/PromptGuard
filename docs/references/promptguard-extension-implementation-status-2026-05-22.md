@@ -270,7 +270,7 @@ graph TD
 | `policy.version` | 현재 policy version | 어떤 기준으로 검사했는지 알려준다. |
 | `client_request_id` | `frq...` 형태의 생성 ID | 파일 검사 요청 하나를 구분한다. |
 
-원본 파일명은 요청에 넣지 않는다. 코드에는 `name_hash` 타입 자리가 있지만 현재 파일 요청 생성 흐름은 원본 파일명이나 파일명 hash를 넣지 않는다.
+원본 파일명은 요청에 넣지 않는다. `client_file_id`는 원본 파일명에서 만든 hash가 아니며, 같은 파일명이라도 첨부 시도마다 새 opaque ID가 만들어진다. 서버는 이 ID와 decision metadata만으로 응답의 file result를 요청 파일에 맞춘다.
 
 ### 파일 응답이 돌아오면 어떻게 되는가
 
@@ -421,14 +421,17 @@ graph LR
 | no network monitoring static check | `webRequest`/DNR을 쓰지 않는지 |
 | no console static check | 불필요한 console 로그가 남지 않는지 |
 | privacy seed check | 원문/파일명/탐지 원본값 같은 금지 seed가 bundle에 들어가지 않는지 |
+| exported surface documentation check | exported TypeScript 함수, interface, type, constant 등에 JSDoc/TSDoc 설명이 붙어 있는지 |
+| audit event unit test | metadata-only audit event가 prompt/file 원문, 파일명, 서버 메시지를 포함하지 않는지 |
 
-마지막 구현 스냅샷 기준 wrapper는 21개 test file, 67개 test를 포함한다.
+마지막 구현 스냅샷 기준 wrapper는 23개 test file, 70개 test를 포함한다.
 
 ## 아직 남은 결정
 
 - 실제 Analyze 서버 API contract가 준비되면 mock 응답과 real 응답의 최종 필드 합의를 맞춰야 한다.
 - live ChatGPT 페이지에서 manual smoke test를 할지, 어떤 환경에서 할지 정해야 한다.
-- telemetry/event schema를 넣을 경우 metadata-only 원칙을 별도로 확정해야 한다.
+- telemetry/event schema는 Extension MVP 기준 metadata-only audit event builder로 확정됐다. persistent logging, retention, dashboard ingestion은 실제 서버/API 계약과 함께 별도 검증한다.
+- client file identity는 MVP 기준 확정됐다. filename hash를 만들지 않고, 첨부 시도마다 생성되는 opaque `client_file_id`만 사용한다.
 - 파일 masking은 MVP 범위 밖이다. 필요하면 별도 범위와 UX를 정해야 한다.
 - PDF, Office, OCR, 압축파일, 바이너리, malware scan은 이번 MVP 밖이다. 필요하면 별도 계획이 필요하다.
 
@@ -660,6 +663,7 @@ graph TD
 | file policy before reading | Unsupported files should not be read first. | Count, size, extension, and MIME are checked before reading. |
 | binary-looking check | A file can have a text extension but binary content. | NUL/control-character checks reject it. |
 | original filename exclusion | Filenames may contain sensitive information. | Analyze file requests do not include original filenames. |
+| opaque file identity | Stable filename hashes would create unnecessary identifiers. | File results use per-attempt `client_file_id` values, not filename-derived hashes. |
 | network monitoring exclusion | The MVP uses DOM preflight, not browser network interception. | `webRequest` and DNR are not used. |
 
 ## Privacy Boundary
@@ -669,6 +673,7 @@ graph TD
 | Prompt text | Yes | No | Used only to build the transient Analyze request. |
 | Text-file content | Yes | No | Read in memory for supported text files only. |
 | Original filename | Used for policy calculation | No | Extension calculation uses the name, but the request omits the original filename. |
+| Filename hash | No | No | The extension uses opaque per-attempt `client_file_id` values instead. |
 | URL origin | Yes | Operational context only | Path, query, and fragment are omitted. |
 | Full masked prompt | Used to replace input | No | Applied to the page input only. |
 | Detected raw values | No UI/log rendering | No | UI uses fixed safe messages and metadata-style summaries. |
@@ -703,13 +708,16 @@ The prompt/file preflight wrapper checks cover:
 | no network monitoring static check | `webRequest`/DNR are not used. |
 | no console static check | Unwanted console logging is absent. |
 | privacy seed check | Forbidden raw-value seeds are not present in generated bundles. |
+| exported surface documentation check | Exported TypeScript functions, interfaces, types, constants, and similar surfaces have JSDoc/TSDoc comments. |
+| audit event unit test | Metadata-only audit events do not include prompt/file raw text, filenames, or server message text. |
 
-The latest implementation snapshot covers 21 test files and 67 tests through the wrapper path.
+The latest implementation snapshot covers 23 test files and 70 tests through the wrapper path.
 
 ## Remaining Decisions
 
 - Finalize the real Analyze API contract when the server endpoints are ready.
 - Decide the live-page manual smoke test target and acceptance environment.
-- Define any telemetry/event schema separately with metadata-only retention.
+- Telemetry/event schema is fixed for the extension MVP as metadata-only audit event builders. Persistent logging, retention, and dashboard ingestion remain server/API integration work.
+- Client file identity is fixed for the MVP: no filename hash is created, and only opaque per-attempt `client_file_id` values are used.
 - Keep file content masking out of the MVP unless a separate scope and UX are approved.
 - Keep PDF, Office, OCR, archives, binary parsing, and malware scan out of the MVP unless a separate plan is created.
