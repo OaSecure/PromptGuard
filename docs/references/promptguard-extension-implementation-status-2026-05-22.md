@@ -50,6 +50,85 @@ Chrome Extension은 한 프로세스처럼 보이지만 실제 코드는 세 위
 
 공통 타입, 메시지 모양, 응답 검증, 파일 정책, privacy-safe audit helper는 `src/shared/*`에 있다. 이 분리는 content script가 DOM만 다루고, background가 API/token/storage를 다루고, shared가 양쪽의 계약을 맞추게 하기 위한 것이다.
 
+## 코드 상세 지도
+
+### Content script 코드
+
+Content script는 사용자가 보고 있는 웹페이지 안에서 돈다. 여기서는 페이지 DOM을 보고, 사용자의 send/upload 이벤트를 먼저 잡고, Analyze 결과에 따라 원래 페이지 동작을 다시 실행할지 결정한다.
+
+| 파일 | 맡는 일 | 받는 입력 | 다음으로 넘기는 것 | 결과 |
+| --- | --- | --- | --- | --- |
+| `contentScript.ts` | content script의 시작점이다. 기본 config로 먼저 hook을 설치하고, background에서 저장 config를 받은 뒤 다시 설치한다. | 현재 `document`, Chrome runtime, 저장 config | prompt controller, file controller, DOM watcher | 페이지 로딩 직후부터 send/upload preflight가 켜진다. |
+| `domDetector.ts` | ChatGPT 입력창 후보를 selector로 찾고 가장 적합한 입력창을 고른다. | DOM, input selector 목록 | `PromptInputElement` 후보 | controller가 어느 입력창을 검사할지 알 수 있다. |
+| `mutationWatcher.ts` | SPA 화면처럼 DOM이 바뀌는 경우 입력창 감지를 다시 실행한다. | DOM root, refresh callback | DOM 변경 알림 | 페이지 구조가 바뀌어도 입력창 감지 상태가 갱신된다. |
+| `sendInterceptor.ts` | send 버튼 click과 Enter 전송을 capture phase에서 먼저 잡는다. | click/keydown event, send button selector, 현재 input | `SendAttempt` | 실제 페이지 전송 전에 prompt controller가 검사할 수 있다. |
+| `promptExtractor.ts` | textarea 또는 contenteditable 입력창에서 텍스트를 읽는다. | prompt input element | prompt text | Analyze 요청의 `prompt.text`가 된다. |
+| `promptPreflightController.ts` | 프롬프트 검사 흐름의 중심이다. 전송을 막고, request를 만들고, response를 검증하고, replay/mask/block UI를 결정한다. | `SendAttempt`, input text, context, config | `PROMPT_ANALYZE_REQUEST` runtime message | Allow/Warn/Mask/Block에 맞게 원래 send replay, overlay, mask 적용, block을 실행한다. |
+| `maskedTextInjector.ts` | Mask decision의 `masked_prompt`를 입력창에 넣는다. | input element, `masked_prompt` | 변경된 input value/textContent | 자동 전송 없이 사용자가 바뀐 문장을 확인할 수 있다. |
+| `fileUploadInterceptor.ts` | file input change와 drag/drop 파일 이벤트를 capture phase에서 먼저 잡는다. | change/drop event, file input/drop zone selector | `FileUploadAttempt` | 실제 첨부 전에 file controller가 검사할 수 있다. |
+| `fileUploadSnapshot.ts` | 이번 첨부 시도의 파일들을 snapshot으로 만든다. | browser `File[]` | `client_file_id`, `File`, policy input | 파일 결과를 원본 파일명 없이 매칭할 수 있다. |
+| `textFileReader.ts` | policy를 통과한 텍스트 파일만 메모리에서 읽는다. | file snapshot, policy decision | Analyze request용 file entries | `content_text`가 요청 payload로 준비된다. |
+| `fileUploadPreflightController.ts` | 파일 검사 흐름의 중심이다. 정책 검사, 텍스트 읽기, Analyze 요청, response 처리, 첨부 replay/fallback을 담당한다. | `FileUploadAttempt`, config, context | `FILES_ANALYZE_REQUEST` runtime message | Allow/Warn이면 첨부 replay를 시도하고, 실패하면 reattach 안내를 보여준다. |
+| `preflightOverlay.ts` | 분석 중, 경고, 차단, 오류, mask action을 화면에 보여준다. | decision, fixed message, button actions | DOM overlay | 사용자가 Continue/Cancel/Retry/Apply mask 같은 결정을 할 수 있다. |
+
+`promptPreflightController.ts`와 `fileUploadPreflightController.ts`가 중요한 이유는 원래 페이지 동작을 다시 실행하는 권한을 여기서만 갖기 때문이다. 이 두 controller는 response가 올 때까지 원래 동작을 막고, response shape가 맞고 decision이 허용할 때만 replay한다.
+
+### Background 코드
+
+Background service worker는 content script와 options page가 직접 서버나 token을 만지지 않게 하는 경계다. content/options는 runtime message를 보내고, background가 storage, auth, mock/real API를 처리한다.
+
+| 파일 | 맡는 일 | 받는 입력 | 다음으로 넘기는 것 | 결과 |
+| --- | --- | --- | --- | --- |
+| `serviceWorker.ts` | Chrome runtime message 입구다. 메시지 shape를 먼저 확인한다. | unknown runtime message | validated `ExtensionMessage` | 잘못된 메시지는 router에 도달하지 않는다. |
+| `messageRouter.ts` | message type별 handler를 고른다. | `PROMPT_ANALYZE_REQUEST`, `FILES_ANALYZE_REQUEST`, auth/config message | prompt/file/auth/config handler 호출 | background 동작이 한 switch에서 추적된다. |
+| `promptAnalyzeClient.ts` | 프롬프트 요청을 mock 또는 real API로 보낸다. | `AnalyzeRequest` | `mockPromptAnalyze()` 또는 `postJson("/prompts/analyze")` | prompt decision이 content script로 돌아간다. |
+| `fileAnalyzeClient.ts` | 파일 요청을 mock 또는 real API로 보낸다. | `FilesAnalyzeRequest` | `mockFilesAnalyze()` 또는 `postJson("/files/analyze")` | file decision이 content script로 돌아간다. |
+| `apiClient.ts` | 실제 HTTP GET/POST를 중앙화한다. bearer header, extension header, timeout, error normalization을 처리한다. | endpoint path, JSON body, API URL, token, timeout | `fetch()` request | 서버 오류나 네트워크 오류가 safe `NormalizedError`로 바뀐다. |
+| `mockApi.ts` | 서버 없이 deterministic Analyze 응답을 만든다. | prompt text 또는 file text | Allow/Warn/Mask/Block response | 개발/테스트에서 real API 없이 같은 control flow를 검증한다. |
+| `configStore.ts` | API URL, mock mode, cached config를 읽고 저장한다. | `chrome.storage.local` values | normalized settings | 잘못된 cached config는 `DEFAULT_CONFIG`로 대체된다. |
+| `authStore.ts` | bearer token을 저장/조회/삭제한다. | options page token | background-local auth state | content script가 token을 직접 보지 않는다. |
+
+### Shared 코드
+
+Shared 코드는 content, background, options가 같은 계약을 쓰게 한다. 여기서 타입과 validator를 공유하기 때문에 한쪽에서 만든 message나 response가 다른 쪽에서 같은 기준으로 해석된다.
+
+| 파일 | 맡는 일 | 핵심 포인트 |
+| --- | --- | --- |
+| `types.ts` | Analyze request/response, file request/response, config, message, error 타입을 정의한다. | `DecisionAction`은 `Allow`, `Warn`, `Mask`, `Block` 네 가지다. |
+| `messageTypes.ts` | runtime message가 유효한지 확인한다. | background router 전에 malformed message를 차단한다. |
+| `responseValidation.ts` | prompt/file Analyze response가 유효한지 확인한다. | invalid response는 replay를 허용하지 않는다. |
+| `configValidation.ts` | remote/cached config shape를 확인한다. | 잘못된 selector, timeout, file policy가 적용되지 않게 한다. |
+| `filePolicy.ts` | 파일 개수, 크기, 총 크기, extension, MIME type을 검사한다. | 파일 내용 읽기 전에 reject 여부를 결정한다. |
+| `fileTypes.ts` | filename extension과 text-like MIME 여부를 판단한다. | 텍스트 파일 MVP 범위를 정한다. |
+| `errors.ts` | fetch/throw error를 safe error message로 바꾼다. | 내부 오류나 raw server text가 UI로 새지 않게 한다. |
+| `hashing.ts` | client request/file id를 만든다. | 파일명 hash 대신 per-attempt opaque ID를 만든다. |
+| `auditEvents.ts` | metadata-only audit event 객체를 만든다. | raw prompt, file content, original filename, server message를 포함하지 않는다. |
+| `constants.ts` | default config, storage key, version, timeout 값을 모은다. | content/background/options가 같은 기본값을 쓴다. |
+| `sanitize.ts` | UI나 metadata에 쓰는 문자열을 정리한다. | 표시용 문자열 경계를 한곳에 둔다. |
+
+### Options 코드
+
+Options page는 사용자가 mock mode와 real API 연결을 바꾸는 UI다.
+
+| 파일 | 맡는 일 | 동작 |
+| --- | --- | --- |
+| `options.ts` | 설정 UI를 hydrate하고 버튼 동작을 runtime message로 보낸다. | Save는 API URL/mock mode/token을 저장하고, Test connection은 `/auth/me`, Sync config는 `/config/extension` 경로를 확인한다. |
+| `options.html` | 설정 화면 구조다. | API URL, mock mode, token, status, policy version, file inspection 상태를 보여준다. |
+| `options.css` | 설정 화면 스타일이다. | Chrome extension options page 안에서 읽기 쉬운 설정 화면을 만든다. |
+
+### 테스트 코드가 보는 경계
+
+테스트는 단위 함수만 보는 것이 아니라 extension 경계가 깨지지 않는지도 확인한다.
+
+| 테스트 영역 | 확인하는 것 |
+| --- | --- |
+| prompt controller tests | click/Enter intercept, Allow replay, Warn confirmation, Mask apply, Block/fail-closed 처리 |
+| file controller tests | file policy reject, text read, Allow/Warn replay, replay fallback, fail-closed 처리 |
+| router/API/storage tests | mock/real routing, auth/config 저장, safe error normalization |
+| validator tests | runtime message와 Analyze response shape guard |
+| privacy regression tests | prompt/file raw value, original filename, URL path/query 같은 값이 저장/출력 경로로 새지 않는지 |
+| wrapper static checks | `webRequest`/DNR, console logging, exported surface docs, privacy seed를 build/test 흐름에서 확인 |
+
 ## 프롬프트 전송 흐름
 
 사용자가 Send 버튼을 누르거나 Enter를 누르면 다음 순서로 처리된다.
@@ -267,6 +346,85 @@ A Chrome Extension looks like one app, but the code runs in three places.
 | Options page | Lets the user set API URL, token, mock mode, and config sync. | `src/options/options.ts` |
 
 Shared types, message shapes, response validation, file policy, and privacy-safe audit helpers live in `src/shared/*`. This keeps DOM work in content, API/token/storage work in background, and shared contracts in one place.
+
+## Detailed Code Map
+
+### Content Script Code
+
+The content script runs inside the web page. It reads the page DOM, intercepts user send/upload events first, and decides whether to replay the original page action after Analyze returns.
+
+| File | Responsibility | Receives | Passes forward | Result |
+| --- | --- | --- | --- | --- |
+| `contentScript.ts` | Content entry point. Installs hooks once with default config, then reinstalls after stored config loads from background. | Current `document`, Chrome runtime, stored config | Prompt controller, file controller, DOM watcher | Send/upload preflight starts immediately after page load. |
+| `domDetector.ts` | Finds the best ChatGPT input candidate from selectors. | DOM and input selectors | `PromptInputElement` candidate | Controllers know which input to inspect. |
+| `mutationWatcher.ts` | Re-runs input detection when the SPA DOM changes. | DOM root and refresh callback | DOM change notification | Input detection stays current after page changes. |
+| `sendInterceptor.ts` | Catches send button clicks and Enter sends in capture phase. | click/keydown event, send button selectors, current input | `SendAttempt` | The prompt controller can inspect before native send. |
+| `promptExtractor.ts` | Reads text from textarea or contenteditable inputs. | Prompt input element | Prompt text | Becomes `prompt.text` in the Analyze request. |
+| `promptPreflightController.ts` | Owns prompt inspection. Blocks native send, builds request, validates response, and decides replay/mask/block UI. | `SendAttempt`, input text, context, config | `PROMPT_ANALYZE_REQUEST` runtime message | Applies Allow/Warn/Mask/Block behavior. |
+| `maskedTextInjector.ts` | Writes `masked_prompt` back into the input. | Input element and `masked_prompt` | Updated input value/textContent | The user can review the masked text before sending. |
+| `fileUploadInterceptor.ts` | Catches file input changes and drag/drop file events in capture phase. | change/drop event, file input/drop zone selectors | `FileUploadAttempt` | The file controller can inspect before native attach. |
+| `fileUploadSnapshot.ts` | Creates snapshots for the current attach attempt. | Browser `File[]` | `client_file_id`, `File`, policy input | File results can be matched without original filenames. |
+| `textFileReader.ts` | Reads only policy-approved text files in memory. | File snapshot and policy decision | Request file entries | `content_text` is prepared for the transient request payload. |
+| `fileUploadPreflightController.ts` | Owns file inspection. Runs policy, reads text, sends Analyze, handles replay/fallback. | `FileUploadAttempt`, config, context | `FILES_ANALYZE_REQUEST` runtime message | Replays approved attaches or shows reattach fallback. |
+| `preflightOverlay.ts` | Shows analyzing, warn, block, error, and mask actions. | decision, fixed message, button actions | DOM overlay | The user can continue, cancel, retry, or apply mask. |
+
+`promptPreflightController.ts` and `fileUploadPreflightController.ts` are the key safety boundaries because they are the only content-side modules that decide whether the original page action is replayed. They block first, wait for Analyze, validate the response shape, and replay only when the decision authorizes it.
+
+### Background Code
+
+The background service worker keeps content scripts and the options page away from direct server/token handling. Content/options send runtime messages; background owns storage, auth, mock mode, and real API calls.
+
+| File | Responsibility | Receives | Passes forward | Result |
+| --- | --- | --- | --- | --- |
+| `serviceWorker.ts` | Chrome runtime message entry point. Validates message shape first. | unknown runtime message | validated `ExtensionMessage` | Malformed messages do not reach the router. |
+| `messageRouter.ts` | Chooses a handler by message type. | prompt, file, auth, config messages | prompt/file/auth/config handler call | Background behavior stays traceable in one switch. |
+| `promptAnalyzeClient.ts` | Sends prompt requests through mock or real API. | `AnalyzeRequest` | `mockPromptAnalyze()` or `postJson("/prompts/analyze")` | Prompt decision returns to content. |
+| `fileAnalyzeClient.ts` | Sends file requests through mock or real API. | `FilesAnalyzeRequest` | `mockFilesAnalyze()` or `postJson("/files/analyze")` | File decision returns to content. |
+| `apiClient.ts` | Centralizes real HTTP GET/POST. Handles bearer headers, extension headers, timeout, and error normalization. | endpoint path, JSON body, API URL, token, timeout | `fetch()` request | Server/network errors become safe `NormalizedError` objects. |
+| `mockApi.ts` | Creates deterministic Analyze responses without a server. | prompt text or file text | Allow/Warn/Mask/Block response | Development/tests exercise the same control flow without real API. |
+| `configStore.ts` | Reads and saves API URL, mock mode, and cached config. | `chrome.storage.local` values | normalized settings | Invalid cached config falls back to `DEFAULT_CONFIG`. |
+| `authStore.ts` | Stores, reads, and clears bearer tokens. | options page token | background-local auth state | Content scripts do not handle tokens directly. |
+
+### Shared Code
+
+Shared code keeps content, background, and options on the same contract. Types and validators are shared so a message or response built on one side is interpreted with the same rules on the other side.
+
+| File | Responsibility | Key point |
+| --- | --- | --- |
+| `types.ts` | Defines Analyze requests/responses, file requests/responses, config, messages, and errors. | `DecisionAction` is `Allow`, `Warn`, `Mask`, or `Block`. |
+| `messageTypes.ts` | Validates runtime messages. | Malformed messages are rejected before background routing. |
+| `responseValidation.ts` | Validates prompt/file Analyze responses. | Invalid responses cannot authorize replay. |
+| `configValidation.ts` | Validates remote/cached config shape. | Bad selectors, timeout, or file policy are not applied. |
+| `filePolicy.ts` | Checks file count, size, total size, extension, and MIME type. | Rejects files before content is read. |
+| `fileTypes.ts` | Interprets filename extension and text-like MIME type. | Defines the text-file MVP boundary. |
+| `errors.ts` | Converts fetch/thrown errors into safe messages. | Internal errors and raw server text do not leak to UI. |
+| `hashing.ts` | Creates client request/file IDs. | Uses per-attempt opaque IDs instead of filename hashes. |
+| `auditEvents.ts` | Builds metadata-only audit events. | Excludes raw prompt, file content, original filename, and server message text. |
+| `constants.ts` | Holds default config, storage keys, version, and timeout values. | Content/background/options use the same defaults. |
+| `sanitize.ts` | Normalizes strings used in UI or metadata. | Keeps display string handling in one boundary. |
+
+### Options Code
+
+The options page is the UI for switching mock mode and real API integration.
+
+| File | Responsibility | Behavior |
+| --- | --- | --- |
+| `options.ts` | Hydrates the settings UI and sends button actions as runtime messages. | Save stores API URL/mock mode/token, Test connection checks `/auth/me`, Sync config checks `/config/extension`. |
+| `options.html` | Settings page structure. | Shows API URL, mock mode, token, status, policy version, and file inspection state. |
+| `options.css` | Settings page styling. | Keeps the Chrome options page readable. |
+
+### Test Boundaries
+
+Tests check module behavior and extension boundary safety.
+
+| Test area | What it checks |
+| --- | --- |
+| prompt controller tests | click/Enter intercept, Allow replay, Warn confirmation, Mask apply, Block/fail-closed behavior |
+| file controller tests | file policy reject, text read, Allow/Warn replay, replay fallback, fail-closed behavior |
+| router/API/storage tests | mock/real routing, auth/config storage, safe error normalization |
+| validator tests | runtime message and Analyze response shape guards |
+| privacy regression tests | raw prompt/file values, original filename, URL path/query do not leak into storage/output paths |
+| wrapper static checks | `webRequest`/DNR, console logging, exported surface docs, and privacy seeds are checked in the build/test flow |
 
 ## Prompt Send Flow
 
