@@ -9,9 +9,9 @@ describe("options page", () => {
       <input id="apiBaseUrl" />
       <input id="mockMode" type="checkbox" />
       <input id="token" />
-      <button id="saveSettings"></button>
-      <button id="testConnection"></button>
-      <button id="syncConfig"></button>
+      <button id="saveSettings">Save</button>
+      <button id="testConnection">Test connection</button>
+      <button id="syncConfig">Sync config</button>
       <div id="connectionStatus"></div>
       <div id="policyVersion"></div>
       <div id="fileInspection"></div>
@@ -50,9 +50,90 @@ describe("options page", () => {
     });
     expect(inputValue("#token")).toBe("");
   });
+
+  it("test connection click persists visible settings and renders auth status", async () => {
+    const chromeMock = createChromeMock(
+      {
+        [STORAGE_KEYS.mockMode]: false
+      },
+      async (message) =>
+        message.type === "AUTH_ME_REQUEST"
+          ? {
+              id: "mock_user",
+              workspace_id: "mock_workspace",
+              email: "member@example.com",
+              role: "USER",
+              status: "ACTIVE",
+              policy_version: "v-test"
+            }
+          : { ok: true }
+    );
+    vi.stubGlobal("chrome", chromeMock);
+    await import("../../src/options/options");
+
+    await waitFor(() => inputValue("#apiBaseUrl") === DEFAULT_CONFIG.api_base_url);
+    document.querySelector<HTMLInputElement>("#mockMode")!.checked = true;
+    setInputValue("#apiBaseUrl", "  https://api.promptguard.test/api/v1  ");
+    document.querySelector<HTMLButtonElement>("#testConnection")!.click();
+
+    expect(textValue("#connectionStatus")).toBe("Testing connection...");
+    await waitFor(() => textValue("#connectionStatus") === "ACTIVE (USER)");
+    expect(textValue("#policyVersion")).toBe("v-test");
+    expect(chromeMock.storage.local.snapshot()[STORAGE_KEYS.mockMode]).toBe(true);
+    expect(chromeMock.storage.local.snapshot()[STORAGE_KEYS.apiBaseUrl]).toBe("https://api.promptguard.test/api/v1");
+  });
+
+  it("test connection renders safe error feedback and restores the button", async () => {
+    const chromeMock = createChromeMock(
+      {},
+      async (message) => (message.type === "AUTH_ME_REQUEST" ? { code: "NETWORK_ERROR", message: "Network error prevented inspection." } : { ok: true })
+    );
+    vi.stubGlobal("chrome", chromeMock);
+    await import("../../src/options/options");
+
+    await waitFor(() => inputValue("#apiBaseUrl") === DEFAULT_CONFIG.api_base_url);
+    const button = document.querySelector<HTMLButtonElement>("#testConnection")!;
+    button.click();
+
+    expect(button.disabled).toBe(true);
+    expect(button.textContent).toBe("Testing...");
+    await waitFor(() => textValue("#connectionStatus") === "Network error prevented inspection.");
+    expect(button.disabled).toBe(false);
+    expect(button.textContent).toBe("Test connection");
+  });
+
+  it("sync config click persists visible settings and renders returned config", async () => {
+    const syncedConfig = {
+      ...DEFAULT_CONFIG,
+      policy_version: "v-synced",
+      file_upload: { ...DEFAULT_CONFIG.file_upload, enabled: false }
+    };
+    const chromeMock = createChromeMock(
+      {},
+      async (message) => (message.type === "CONFIG_SYNC_REQUEST" ? syncedConfig : { ok: true })
+    );
+    vi.stubGlobal("chrome", chromeMock);
+    await import("../../src/options/options");
+
+    await waitFor(() => inputValue("#apiBaseUrl") === DEFAULT_CONFIG.api_base_url);
+    document.querySelector<HTMLInputElement>("#mockMode")!.checked = false;
+    setInputValue("#apiBaseUrl", "  https://api.promptguard.test/api/v1  ");
+    const button = document.querySelector<HTMLButtonElement>("#syncConfig")!;
+    button.click();
+
+    expect(textValue("#connectionStatus")).toBe("Syncing config...");
+    expect(button.disabled).toBe(true);
+    await waitFor(() => textValue("#connectionStatus") === "Config synced");
+    expect(textValue("#policyVersion")).toBe("v-synced");
+    expect(textValue("#fileInspection")).toBe("Disabled");
+    expect(button.disabled).toBe(false);
+    expect(button.textContent).toBe("Sync config");
+    expect(chromeMock.storage.local.snapshot()[STORAGE_KEYS.mockMode]).toBe(false);
+    expect(chromeMock.storage.local.snapshot()[STORAGE_KEYS.apiBaseUrl]).toBe("https://api.promptguard.test/api/v1");
+  });
 });
 
-function createChromeMock(initial: Record<string, unknown>) {
+function createChromeMock(initial: Record<string, unknown>, responder: (message: { type: string }) => Promise<unknown> = async () => ({ ok: true })) {
   const values = { ...initial };
   return {
     storage: {
@@ -72,7 +153,7 @@ function createChromeMock(initial: Record<string, unknown>) {
       }
     },
     runtime: {
-      sendMessage: vi.fn(async () => ({ ok: true }))
+      sendMessage: vi.fn(responder)
     }
   };
 }

@@ -1,5 +1,6 @@
 import { DEFAULT_CONFIG, STORAGE_KEYS } from "../shared/constants";
 import { isExtensionConfigResponse } from "../shared/configValidation";
+import { isNormalizedError } from "../shared/errors";
 import type { AuthMeResponse, ExtensionConfigResponse, NormalizedError } from "../shared/types";
 
 const apiBaseUrlInput = document.querySelector<HTMLInputElement>("#apiBaseUrl");
@@ -44,6 +45,18 @@ async function loadSettings(): Promise<void> {
  * needs to touch auth state.
  */
 async function saveSettings(): Promise<void> {
+  setButtonBusy(saveSettingsButton, true, "Saving...");
+  try {
+    await persistSettings();
+    setText(connectionStatus, "Saved");
+  } catch {
+    setText(connectionStatus, "Settings could not be saved.");
+  } finally {
+    setButtonBusy(saveSettingsButton, false);
+  }
+}
+
+async function persistSettings(): Promise<void> {
   await chrome.storage.local.set({
     [STORAGE_KEYS.apiBaseUrl]: apiBaseUrlInput?.value.trim() || DEFAULT_CONFIG.api_base_url,
     [STORAGE_KEYS.mockMode]: mockModeInput?.checked ?? true
@@ -55,18 +68,30 @@ async function saveSettings(): Promise<void> {
       tokenInput.value = "";
     }
   }
-  setText(connectionStatus, "Saved");
 }
 
 /** Tests the mock or real auth boundary and renders the connection result. */
 async function testConnection(): Promise<void> {
-  const response = (await chrome.runtime.sendMessage({ type: "AUTH_ME_REQUEST" })) as AuthMeResponse | NormalizedError;
-  if ("status" in response) {
-    setText(connectionStatus, `${response.status} (${response.role})`);
-    setText(policyVersion, response.policy_version);
-    return;
+  setText(connectionStatus, "Testing connection...");
+  setButtonBusy(testConnectionButton, true, "Testing...");
+  try {
+    await persistSettings();
+    const response = (await chrome.runtime.sendMessage({ type: "AUTH_ME_REQUEST" })) as unknown;
+    if (isAuthMeResponse(response)) {
+      setText(connectionStatus, `${response.status} (${response.role})`);
+      setText(policyVersion, response.policy_version);
+      return;
+    }
+    if (isNormalizedError(response)) {
+      setText(connectionStatus, response.message);
+      return;
+    }
+    setText(connectionStatus, "Connection response could not be processed.");
+  } catch {
+    setText(connectionStatus, "Connection check failed.");
+  } finally {
+    setButtonBusy(testConnectionButton, false);
   }
-  setText(connectionStatus, response.message);
 }
 
 /**
@@ -76,14 +101,23 @@ async function testConnection(): Promise<void> {
  * again before rendering because cached and remote data are both untrusted.
  */
 async function syncConfig(): Promise<void> {
-  const response = (await chrome.runtime.sendMessage({ type: "CONFIG_SYNC_REQUEST" })) as ExtensionConfigResponse | NormalizedError;
-  if (isExtensionConfigResponse(response)) {
-    renderConfig(response);
-    await refreshLastConfigSync();
-    setText(connectionStatus, "Config synced");
-    return;
+  setText(connectionStatus, "Syncing config...");
+  setButtonBusy(syncConfigButton, true, "Syncing...");
+  try {
+    await persistSettings();
+    const response = (await chrome.runtime.sendMessage({ type: "CONFIG_SYNC_REQUEST" })) as ExtensionConfigResponse | NormalizedError;
+    if (isExtensionConfigResponse(response)) {
+      renderConfig(response);
+      await refreshLastConfigSync();
+      setText(connectionStatus, "Config synced");
+      return;
+    }
+    setText(connectionStatus, response.message);
+  } catch {
+    setText(connectionStatus, "Config sync failed.");
+  } finally {
+    setButtonBusy(syncConfigButton, false);
   }
-  setText(connectionStatus, response.message);
 }
 
 function renderConfig(config: ExtensionConfigResponse): void {
@@ -115,6 +149,37 @@ function setText(element: HTMLElement | null, value: string): void {
   if (element) {
     element.textContent = value;
   }
+}
+
+function setButtonBusy(button: HTMLButtonElement | null, busy: boolean, busyLabel?: string): void {
+  if (!button) {
+    return;
+  }
+  if (busy) {
+    button.dataset.originalLabel = button.textContent ?? "";
+    button.textContent = busyLabel ?? button.textContent;
+    button.disabled = true;
+    return;
+  }
+  button.disabled = false;
+  if (Object.prototype.hasOwnProperty.call(button.dataset, "originalLabel")) {
+    const originalLabel = button.dataset.originalLabel ?? "";
+    button.textContent = originalLabel;
+    delete button.dataset.originalLabel;
+  }
+}
+
+function isAuthMeResponse(value: unknown): value is AuthMeResponse {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "status" in value &&
+    "role" in value &&
+    "policy_version" in value &&
+    typeof (value as AuthMeResponse).status === "string" &&
+    typeof (value as AuthMeResponse).role === "string" &&
+    typeof (value as AuthMeResponse).policy_version === "string"
+  );
 }
 
 saveSettingsButton?.addEventListener("click", () => void saveSettings());

@@ -65,6 +65,11 @@ button {
   font-weight: 600;
 }
 
+button:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
 dl {
   display: grid;
   gap: 8px;
