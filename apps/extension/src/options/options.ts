@@ -15,7 +15,6 @@ const modeStatus = document.querySelector<HTMLElement>("#modeStatus");
 const policyVersion = document.querySelector<HTMLElement>("#policyVersion");
 const fileInspection = document.querySelector<HTMLElement>("#fileInspection");
 const lastConfigSync = document.querySelector<HTMLElement>("#lastConfigSync");
-const storageNotice = document.querySelector<HTMLElement>("#storageNotice");
 
 /**
  * Hydrates the options UI from extension-local settings.
@@ -141,7 +140,6 @@ async function syncConfig(): Promise<void> {
 
 function renderOperationalNotice(mockMode: boolean): void {
   setText(modeStatus, mockMode ? "Mock API" : "Real API");
-  setText(storageNotice, "Prompt and file contents are not saved by extension storage.");
 }
 
 function renderConfig(config: ExtensionConfigResponse): void {

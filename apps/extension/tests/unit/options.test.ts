@@ -18,7 +18,6 @@ describe("options page", () => {
       <div id="policyVersion"></div>
       <div id="fileInspection"></div>
       <div id="lastConfigSync"></div>
-      <div id="storageNotice"></div>
     `;
   });
 
@@ -34,7 +33,6 @@ describe("options page", () => {
     expect(textValue("#policyVersion")).toBe(DEFAULT_CONFIG.policy_version);
     expect(textValue("#fileInspection")).toBe("Enabled");
     expect(textValue("#modeStatus")).toBe("Mock API");
-    expect(textValue("#storageNotice")).toBe("Prompt and file contents are not saved by extension storage.");
   });
 
   it("trims API URL and auth token before save", async () => {
