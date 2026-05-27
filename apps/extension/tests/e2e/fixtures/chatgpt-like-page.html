@@ -21,9 +21,27 @@
     </main>
     <script>
       window.fixtureSubmits = 0;
-      document.querySelector("#composer").addEventListener("submit", (event) => {
+      const composer = document.querySelector("#composer");
+      composer.addEventListener("submit", (event) => {
         event.preventDefault();
         window.fixtureSubmits += 1;
+      });
+      document.querySelector("#rerender").addEventListener("click", () => {
+        document.querySelector("#prompt-textarea").remove();
+        document.querySelector("[data-testid='send-button']").remove();
+
+        const replacementInput = document.createElement("textarea");
+        replacementInput.id = "prompt-textarea-rerendered";
+        replacementInput.setAttribute("aria-label", "Prompt");
+        replacementInput.rows = 4;
+
+        const replacementButton = document.createElement("button");
+        replacementButton.type = "submit";
+        replacementButton.dataset.testid = "send-button";
+        replacementButton.textContent = "Send";
+
+        composer.prepend(replacementInput);
+        composer.append(replacementButton);
       });
     </script>
   </body>
