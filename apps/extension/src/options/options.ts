@@ -37,7 +37,7 @@ async function loadSettings(): Promise<void> {
   if (mockModeInput) {
     mockModeInput.checked = mockMode;
   }
-  renderOperationalNotice(mockMode);
+  renderModeStatus(mockMode);
   renderConfig(config);
   renderLastConfigSync(result[STORAGE_KEYS.lastConfigSyncAt] as string | undefined);
 }
@@ -52,7 +52,8 @@ async function saveSettings(): Promise<void> {
   setButtonBusy(saveSettingsButton, true, "Saving...");
   try {
     const settings = await persistSettings();
-    renderOperationalNotice(settings.mockMode);
+    renderModeStatus(settings.mockMode);
+    setText(serverStatus, "Not checked after settings change");
     setText(connectionStatus, "Saved");
   } catch {
     setText(connectionStatus, "Settings could not be saved.");
@@ -84,7 +85,7 @@ async function testConnection(): Promise<void> {
   setButtonBusy(testConnectionButton, true, "Testing...");
   try {
     const settings = await persistSettings();
-    renderOperationalNotice(settings.mockMode);
+    renderModeStatus(settings.mockMode);
     const response = (await chrome.runtime.sendMessage({ type: "AUTH_ME_REQUEST" })) as unknown;
     if (isAuthMeResponse(response)) {
       setText(connectionStatus, `${response.status} (${response.role})`);
@@ -119,7 +120,7 @@ async function syncConfig(): Promise<void> {
   setButtonBusy(syncConfigButton, true, "Syncing...");
   try {
     const settings = await persistSettings();
-    renderOperationalNotice(settings.mockMode);
+    renderModeStatus(settings.mockMode);
     const response = (await chrome.runtime.sendMessage({ type: "CONFIG_SYNC_REQUEST" })) as ExtensionConfigResponse | NormalizedError;
     if (isExtensionConfigResponse(response)) {
       renderConfig(response);
@@ -138,7 +139,7 @@ async function syncConfig(): Promise<void> {
   }
 }
 
-function renderOperationalNotice(mockMode: boolean): void {
+function renderModeStatus(mockMode: boolean): void {
   setText(modeStatus, mockMode ? "Mock API" : "Real API");
 }
 

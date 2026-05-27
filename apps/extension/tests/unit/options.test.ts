@@ -53,6 +53,22 @@ describe("options page", () => {
     });
     expect(inputValue("#token")).toBe("");
     expect(textValue("#modeStatus")).toBe("Mock API");
+    expect(textValue("#serverStatus")).toBe("Not checked after settings change");
+  });
+
+  it("save clears a stale server status after mode changes", async () => {
+    const chromeMock = createChromeMock({ [STORAGE_KEYS.mockMode]: false });
+    vi.stubGlobal("chrome", chromeMock);
+    document.querySelector<HTMLElement>("#serverStatus")!.textContent = "Connected";
+    await import("../../src/options/options");
+
+    await waitFor(() => inputValue("#apiBaseUrl") === DEFAULT_CONFIG.api_base_url);
+    document.querySelector<HTMLInputElement>("#mockMode")!.checked = true;
+    document.querySelector<HTMLButtonElement>("#saveSettings")!.click();
+
+    await waitFor(() => textValue("#connectionStatus") === "Saved");
+    expect(textValue("#modeStatus")).toBe("Mock API");
+    expect(textValue("#serverStatus")).toBe("Not checked after settings change");
   });
 
   it("test connection click persists visible settings and renders auth status", async () => {
