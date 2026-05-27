@@ -50,7 +50,6 @@ jobs:
   backend-python:
     name: Backend Python
     runs-on: ubuntu-latest
-    if: ${{ hashFiles('apps/api/**') != '' }}
     defaults:
       run:
         shell: bash
@@ -58,13 +57,25 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Detect backend
+        id: backend
+        run: |
+          if [ -d apps/api ]; then
+            echo "exists=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "exists=false" >> "${GITHUB_OUTPUT}"
+            echo "apps/api not present; skipping backend checks."
+          fi
+
       - name: Set up Python
+        if: steps.backend.outputs.exists == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
 
       - name: Install backend dependencies
+        if: steps.backend.outputs.exists == 'true'
         run: |
           set -euo pipefail
           cd apps/api
@@ -85,6 +96,7 @@ jobs:
           fi
 
       - name: Lint backend with Ruff when configured
+        if: steps.backend.outputs.exists == 'true'
         run: |
           set -euo pipefail
           cd apps/api
@@ -96,6 +108,7 @@ jobs:
           fi
 
       - name: Typecheck backend with mypy when configured
+        if: steps.backend.outputs.exists == 'true'
         run: |
           set -euo pipefail
           cd apps/api
@@ -107,6 +120,7 @@ jobs:
           fi
 
       - name: Test backend
+        if: steps.backend.outputs.exists == 'true'
         run: |
           set -euo pipefail
           cd apps/api
@@ -119,7 +133,6 @@ jobs:
   dashboard-ts:
     name: Dashboard TypeScript
     runs-on: ubuntu-latest
-    if: ${{ hashFiles('apps/dashboard/package.json') != '' }}
     defaults:
       run:
         shell: bash
@@ -127,7 +140,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Detect dashboard
+        id: dashboard
+        run: |
+          if [ -f apps/dashboard/package.json ]; then
+            echo "exists=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "exists=false" >> "${GITHUB_OUTPUT}"
+            echo "apps/dashboard/package.json not present; skipping dashboard checks."
+          fi
+
       - name: Set up Node
+        if: steps.dashboard.outputs.exists == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -135,10 +159,12 @@ jobs:
           cache-dependency-path: apps/dashboard/package-lock.json
 
       - name: Install dashboard dependencies
+        if: steps.dashboard.outputs.exists == 'true'
         working-directory: apps/dashboard
         run: npm ci
 
       - name: Run dashboard checks
+        if: steps.dashboard.outputs.exists == 'true'
         working-directory: apps/dashboard
         run: |
           set -euo pipefail
@@ -165,7 +191,6 @@ jobs:
   docker-smoke:
     name: Docker Smoke
     runs-on: ubuntu-latest
-    if: ${{ hashFiles('compose.yaml', 'compose.yml', 'docker-compose.yml', 'infra/compose.yaml', 'infra/compose.yml', 'infra/docker-compose.yml') != '' }}
     defaults:
       run:
         shell: bash
@@ -173,7 +198,22 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Detect compose files
+        id: compose
+        run: |
+          found=false
+          for file in compose.yaml compose.yml docker-compose.yml infra/compose.yaml infra/compose.yml infra/docker-compose.yml; do
+            if [ -f "$file" ]; then
+              found=true
+            fi
+          done
+          echo "exists=${found}" >> "${GITHUB_OUTPUT}"
+          if [ "${found}" != "true" ]; then
+            echo "No Docker Compose files present; skipping Docker smoke checks."
+          fi
+
       - name: Validate Docker Compose configuration
+        if: steps.compose.outputs.exists == 'true'
         run: |
           set -euo pipefail
           for file in compose.yaml compose.yml docker-compose.yml infra/compose.yaml infra/compose.yml infra/docker-compose.yml; do
