@@ -13,9 +13,12 @@ describe("options page", () => {
       <button id="testConnection">Test connection</button>
       <button id="syncConfig">Sync config</button>
       <div id="connectionStatus"></div>
+      <div id="serverStatus"></div>
+      <div id="modeStatus"></div>
       <div id="policyVersion"></div>
       <div id="fileInspection"></div>
       <div id="lastConfigSync"></div>
+      <div id="storageNotice"></div>
     `;
   });
 
@@ -30,6 +33,8 @@ describe("options page", () => {
     await waitFor(() => inputValue("#apiBaseUrl") === DEFAULT_CONFIG.api_base_url);
     expect(textValue("#policyVersion")).toBe(DEFAULT_CONFIG.policy_version);
     expect(textValue("#fileInspection")).toBe("Enabled");
+    expect(textValue("#modeStatus")).toBe("Mock API");
+    expect(textValue("#storageNotice")).toBe("Prompt and file contents are not saved by extension storage.");
   });
 
   it("trims API URL and auth token before save", async () => {
@@ -49,6 +54,7 @@ describe("options page", () => {
       payload: { token: "padded-token" }
     });
     expect(inputValue("#token")).toBe("");
+    expect(textValue("#modeStatus")).toBe("Mock API");
   });
 
   it("test connection click persists visible settings and renders auth status", async () => {
@@ -78,6 +84,7 @@ describe("options page", () => {
 
     expect(textValue("#connectionStatus")).toBe("Testing connection...");
     await waitFor(() => textValue("#connectionStatus") === "ACTIVE (USER)");
+    expect(textValue("#serverStatus")).toBe("Mock API ready");
     expect(textValue("#policyVersion")).toBe("v-test");
     expect(chromeMock.storage.local.snapshot()[STORAGE_KEYS.mockMode]).toBe(true);
     expect(chromeMock.storage.local.snapshot()[STORAGE_KEYS.apiBaseUrl]).toBe("https://api.promptguard.test/api/v1");
@@ -98,6 +105,7 @@ describe("options page", () => {
     expect(button.disabled).toBe(true);
     expect(button.textContent).toBe("Testing...");
     await waitFor(() => textValue("#connectionStatus") === "Network error prevented inspection.");
+    expect(textValue("#serverStatus")).toBe("Unavailable");
     expect(button.disabled).toBe(false);
     expect(button.textContent).toBe("Test connection");
   });
@@ -126,6 +134,8 @@ describe("options page", () => {
     await waitFor(() => textValue("#connectionStatus") === "Config synced");
     expect(textValue("#policyVersion")).toBe("v-synced");
     expect(textValue("#fileInspection")).toBe("Disabled");
+    expect(textValue("#serverStatus")).toBe("Connected");
+    expect(textValue("#modeStatus")).toBe("Real API");
     expect(button.disabled).toBe(false);
     expect(button.textContent).toBe("Sync config");
     expect(chromeMock.storage.local.snapshot()[STORAGE_KEYS.mockMode]).toBe(false);
