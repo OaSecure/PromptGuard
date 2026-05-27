@@ -1,0 +1,184 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  extension:
+    name: Extension
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/extension/package-lock.json
+
+      - name: Install extension dependencies
+        working-directory: apps/extension
+        run: npm ci
+
+      - name: Typecheck extension
+        working-directory: apps/extension
+        run: npm run typecheck
+
+      - name: Test extension
+        working-directory: apps/extension
+        run: npm test
+
+      - name: Build extension
+        working-directory: apps/extension
+        run: npm run build
+
+      - name: Run extension contract checks
+        run: python apps/extension/tests/run_extension_checks.py all
+
+  backend-python:
+    name: Backend Python
+    runs-on: ubuntu-latest
+    if: ${{ hashFiles('apps/api/**') != '' }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install backend dependencies
+        run: |
+          set -euo pipefail
+          cd apps/api
+          python -m pip install --upgrade pip
+          python -m pip install pytest
+
+          if [ -f pyproject.toml ]; then
+            python -m pip install -e ".[dev]" || python -m pip install -e .
+          fi
+
+          if [ -f requirements.txt ]; then
+            python -m pip install -r requirements.txt
+          fi
+
+          if [ ! -f pyproject.toml ] && [ ! -f requirements.txt ]; then
+            echo "apps/api exists, but neither pyproject.toml nor requirements.txt exists." >&2
+            exit 1
+          fi
+
+      - name: Lint backend with Ruff when configured
+        run: |
+          set -euo pipefail
+          cd apps/api
+          if grep -RqsE '^\[tool\.ruff\]|ruff' pyproject.toml ruff.toml .ruff.toml setup.cfg tox.ini 2>/dev/null; then
+            python -m pip install ruff
+            python -m ruff check .
+          else
+            echo "No Ruff configuration found; skipping Ruff."
+          fi
+
+      - name: Typecheck backend with mypy when configured
+        run: |
+          set -euo pipefail
+          cd apps/api
+          if grep -RqsE '^\[tool\.mypy\]|\[mypy\]' pyproject.toml mypy.ini setup.cfg tox.ini 2>/dev/null; then
+            python -m pip install mypy
+            python -m mypy .
+          else
+            echo "No mypy configuration found; skipping mypy."
+          fi
+
+      - name: Test backend
+        run: |
+          set -euo pipefail
+          cd apps/api
+          if [ ! -d tests ]; then
+            echo "apps/api exists, but apps/api/tests is missing." >&2
+            exit 1
+          fi
+          python -m pytest
+
+  dashboard-ts:
+    name: Dashboard TypeScript
+    runs-on: ubuntu-latest
+    if: ${{ hashFiles('apps/dashboard/package.json') != '' }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/dashboard/package-lock.json
+
+      - name: Install dashboard dependencies
+        working-directory: apps/dashboard
+        run: npm ci
+
+      - name: Run dashboard checks
+        working-directory: apps/dashboard
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const fs = require("fs");
+          const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+          const scripts = pkg.scripts || {};
+          const required = ["typecheck", "test", "build"];
+          const present = required.filter((name) => Boolean(scripts[name]));
+
+          if (present.length === 0) {
+            console.error("apps/dashboard/package.json exists, but none of typecheck/test/build scripts exist.");
+            process.exit(1);
+          }
+
+          fs.writeFileSync(".ci-scripts", present.join("\n"));
+          NODE
+
+          while IFS= read -r script; do
+            echo "Running dashboard script: ${script}"
+            npm run "${script}"
+          done < .ci-scripts
+
+  docker-smoke:
+    name: Docker Smoke
+    runs-on: ubuntu-latest
+    if: ${{ hashFiles('compose.yaml', 'compose.yml', 'docker-compose.yml', 'infra/compose.yaml', 'infra/compose.yml', 'infra/docker-compose.yml') != '' }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate Docker Compose configuration
+        run: |
+          set -euo pipefail
+          for file in compose.yaml compose.yml docker-compose.yml infra/compose.yaml infra/compose.yml infra/docker-compose.yml; do
+            if [ -f "$file" ]; then
+              echo "Validating ${file}"
+              docker compose -f "$file" config
+            fi
+          done
