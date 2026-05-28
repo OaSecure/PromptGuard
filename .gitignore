@@ -5,7 +5,10 @@ apps/extension/dist/
 # Local environment and logs
 .env
 .env.*
+!.env.example
 *.log
+.pytest_cache/
+apps/api/.pytest_cache/
 
 # OS/editor noise
 .DS_Store

@@ -1,0 +1,63 @@
+services:
+  api:
+    build:
+      context: ./apps/api
+    environment:
+      PROMPTGUARD_ENV: ${PROMPTGUARD_ENV:-development}
+      PROMPTGUARD_API_HOST: ${PROMPTGUARD_API_HOST:-0.0.0.0}
+      PROMPTGUARD_API_PORT: ${PROMPTGUARD_API_PORT:-8000}
+      PROMPTGUARD_API_PUBLIC_URL: ${PROMPTGUARD_API_PUBLIC_URL:-http://localhost:8000}
+      PROMPTGUARD_DASHBOARD_PUBLIC_URL: ${PROMPTGUARD_DASHBOARD_PUBLIC_URL:-http://localhost:3000}
+      PROMPTGUARD_CORS_ORIGINS: ${PROMPTGUARD_CORS_ORIGINS:-http://localhost:3000,chrome-extension://placeholder}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://promptguard:promptguard_dev_password@postgres:5432/promptguard}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      ACCESS_TOKEN_SECRET: ${ACCESS_TOKEN_SECRET:-change-me-access-token-secret}
+      REFRESH_TOKEN_SECRET: ${REFRESH_TOKEN_SECRET:-change-me-refresh-token-secret}
+      ACCESS_TOKEN_EXPIRES_MINUTES: ${ACCESS_TOKEN_EXPIRES_MINUTES:-15}
+      REFRESH_TOKEN_EXPIRES_DAYS: ${REFRESH_TOKEN_EXPIRES_DAYS:-30}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./apps/api:/app
+    command: >
+      uvicorn app.main:app
+      --host ${PROMPTGUARD_API_HOST:-0.0.0.0}
+      --port ${PROMPTGUARD_API_PORT:-8000}
+      --reload
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-promptguard}
+      POSTGRES_USER: ${POSTGRES_USER:-promptguard}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-promptguard_dev_password}
+    ports:
+      - "5432:5432"
+    volumes:
+      - promptguard_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-promptguard} -d ${POSTGRES_DB:-promptguard}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - promptguard_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  promptguard_postgres_data:
+  promptguard_redis_data:
