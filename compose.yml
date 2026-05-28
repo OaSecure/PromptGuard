@@ -9,8 +9,9 @@ services:
       PROMPTGUARD_API_PUBLIC_URL: ${PROMPTGUARD_API_PUBLIC_URL:-http://localhost:8000}
       PROMPTGUARD_DASHBOARD_PUBLIC_URL: ${PROMPTGUARD_DASHBOARD_PUBLIC_URL:-http://localhost:3000}
       PROMPTGUARD_CORS_ORIGINS: ${PROMPTGUARD_CORS_ORIGINS:-http://localhost:3000,chrome-extension://placeholder}
+      PROMPTGUARD_INITIAL_ADMIN_PASSWORD: ${PROMPTGUARD_INITIAL_ADMIN_PASSWORD:-Admin1234!ChangeMe}
       DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://promptguard:promptguard_dev_password@postgres:5432/promptguard}
-      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      REDIS_URL: ${REDIS_URL:-}
       ACCESS_TOKEN_SECRET: ${ACCESS_TOKEN_SECRET:-change-me-access-token-secret}
       REFRESH_TOKEN_SECRET: ${REFRESH_TOKEN_SECRET:-change-me-refresh-token-secret}
       ACCESS_TOKEN_EXPIRES_MINUTES: ${ACCESS_TOKEN_EXPIRES_MINUTES:-15}
@@ -19,8 +20,6 @@ services:
       - "8000:8000"
     depends_on:
       postgres:
-        condition: service_healthy
-      redis:
         condition: service_healthy
     volumes:
       - ./apps/api:/app
@@ -48,6 +47,8 @@ services:
 
   redis:
     image: redis:7-alpine
+    profiles:
+      - redis
     ports:
       - "6379:6379"
     volumes:

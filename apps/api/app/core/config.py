@@ -16,7 +16,7 @@ class Settings(BaseSettings):
         default="postgresql+asyncpg://promptguard:promptguard_dev_password@postgres:5432/promptguard",
         alias="DATABASE_URL",
     )
-    redis_url: str = Field(default="redis://redis:6379/0", alias="REDIS_URL")
+    redis_url: str = Field(default="", alias="REDIS_URL")
     access_token_secret: str = Field(default="change-me-access-token-secret", alias="ACCESS_TOKEN_SECRET")
     refresh_token_secret: str = Field(default="change-me-refresh-token-secret", alias="REFRESH_TOKEN_SECRET")
     access_token_expires_minutes: int = Field(default=15, alias="ACCESS_TOKEN_EXPIRES_MINUTES")
