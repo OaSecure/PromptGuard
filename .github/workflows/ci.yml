@@ -50,9 +50,39 @@ jobs:
   backend-python:
     name: Backend Python
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: promptguard
+          POSTGRES_USER: promptguard
+          POSTGRES_PASSWORD: promptguard_dev_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U promptguard -d promptguard"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     defaults:
       run:
         shell: bash
+    env:
+      DATABASE_URL: postgresql+asyncpg://promptguard:promptguard_dev_password@localhost:5432/promptguard
+      REDIS_URL: redis://localhost:6379/0
+      ACCESS_TOKEN_SECRET: ci-access-token-secret
+      REFRESH_TOKEN_SECRET: ci-refresh-token-secret
+      ACCESS_TOKEN_EXPIRES_MINUTES: "15"
+      REFRESH_TOKEN_EXPIRES_DAYS: "30"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -129,6 +159,13 @@ jobs:
             exit 1
           fi
           python -m pytest
+
+      - name: Validate backend migrations
+        if: steps.backend.outputs.exists == 'true'
+        run: |
+          set -euo pipefail
+          cd apps/api
+          alembic upgrade head
 
   dashboard-ts:
     name: Dashboard TypeScript
