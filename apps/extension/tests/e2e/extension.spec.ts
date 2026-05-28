@@ -184,6 +184,8 @@ describe("ChatGPT-like fixture", () => {
     });
 
     await initializePromptGuardContentScript(document.body);
+    await waitFor(() => document.documentElement.dataset.promptguardInputDetected === "true");
+    document.documentElement.dataset.promptguardInputDetected = "stale";
     rerenderPromptComposer();
 
     const replacementInput = document.querySelector<HTMLTextAreaElement>("#prompt-textarea-rerendered")!;
@@ -192,6 +194,7 @@ describe("ChatGPT-like fixture", () => {
     mockRect(replacementInput);
     replacementInput.focus();
 
+    await waitFor(() => document.documentElement.dataset.promptguardInputDetected === "true");
     replacementButton.click();
 
     await waitFor(() => promptRequests === 1);
