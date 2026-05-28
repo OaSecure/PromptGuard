@@ -161,6 +161,51 @@ describe("ChatGPT-like fixture", () => {
     shutdownPromptGuardContentScript();
     vi.unstubAllGlobals();
   });
+
+  it("keeps prompt preflight active after the composer input re-renders", async () => {
+    const fixture = readFileSync(resolve(__dirname, "fixtures/chatgpt-like-page.html"), "utf8");
+    document.documentElement.innerHTML = fixture;
+
+    let promptRequests = 0;
+    vi.stubGlobal("chrome", {
+      runtime: {
+        id: "test-extension",
+        sendMessage: vi.fn(async (message: { type: string; payload?: unknown }) => {
+          if (message.type === "GET_CONFIG_REQUEST") {
+            return DEFAULT_CONFIG;
+          }
+          if (message.type === "PROMPT_ANALYZE_REQUEST") {
+            promptRequests += 1;
+            return promptResponse("Block", message.payload as AnalyzeRequest);
+          }
+          return { code: "UNKNOWN_ERROR", message: "Unsupported test message." };
+        })
+      }
+    });
+
+    await initializePromptGuardContentScript(document.body);
+    await waitFor(() => document.documentElement.dataset.promptguardInputDetected === "true");
+    document.documentElement.dataset.promptguardInputDetected = "stale";
+    rerenderPromptComposer();
+
+    const replacementInput = document.querySelector<HTMLTextAreaElement>("#prompt-textarea-rerendered")!;
+    const replacementButton = document.querySelector<HTMLButtonElement>("button[data-testid='send-button']")!;
+    replacementInput.value = "Send after rerender";
+    mockRect(replacementInput);
+    replacementInput.focus();
+
+    await waitFor(() => document.documentElement.dataset.promptguardInputDetected === "true");
+    replacementButton.click();
+
+    await waitFor(() => promptRequests === 1);
+    await waitFor(() => document.documentElement.dataset.promptguardLastStatus === "block");
+    expect(promptRequests).toBe(1);
+    expect(findBestInputCandidate(document)?.element).toBe(replacementInput);
+    expect(document.documentElement.dataset.promptguardLastStatus).toBe("block");
+
+    shutdownPromptGuardContentScript();
+    vi.unstubAllGlobals();
+  });
 });
 
 function mockRect(element: Element): void {
@@ -168,6 +213,25 @@ function mockRect(element: Element): void {
     value: () => ({ width: 240, height: 48, top: 0, left: 0, right: 240, bottom: 48, x: 0, y: 0, toJSON: () => ({}) }),
     configurable: true
   });
+}
+
+function rerenderPromptComposer(): void {
+  const composer = document.querySelector<HTMLFormElement>("#composer")!;
+  document.querySelector("#prompt-textarea")!.remove();
+  document.querySelector("[data-testid='send-button']")!.remove();
+
+  const replacementInput = document.createElement("textarea");
+  replacementInput.id = "prompt-textarea-rerendered";
+  replacementInput.setAttribute("aria-label", "Prompt");
+  replacementInput.rows = 4;
+
+  const replacementButton = document.createElement("button");
+  replacementButton.type = "submit";
+  replacementButton.dataset.testid = "send-button";
+  replacementButton.textContent = "Send";
+
+  composer.prepend(replacementInput);
+  composer.append(replacementButton);
 }
 
 function promptResponse(action: DecisionAction, request: AnalyzeRequest) {

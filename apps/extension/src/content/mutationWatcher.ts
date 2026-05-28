@@ -11,11 +11,12 @@ export interface MutationWatcher {
  */
 export function watchInputArea(root: HTMLElement, callback: () => void, debounceMs = 150): MutationWatcher {
   let timeoutId: number | undefined;
-  const observer = new MutationObserver(() => {
+  const rootWindow = root.ownerDocument.defaultView ?? window;
+  const observer = new rootWindow.MutationObserver(() => {
     if (timeoutId !== undefined) {
-      window.clearTimeout(timeoutId);
+      rootWindow.clearTimeout(timeoutId);
     }
-    timeoutId = window.setTimeout(callback, debounceMs);
+    timeoutId = rootWindow.setTimeout(callback, debounceMs);
   });
 
   observer.observe(root, {
@@ -28,7 +29,7 @@ export function watchInputArea(root: HTMLElement, callback: () => void, debounce
   return {
     disconnect() {
       if (timeoutId !== undefined) {
-        window.clearTimeout(timeoutId);
+        rootWindow.clearTimeout(timeoutId);
       }
       observer.disconnect();
     }

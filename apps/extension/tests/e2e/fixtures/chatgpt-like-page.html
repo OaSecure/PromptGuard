@@ -17,11 +17,11 @@
         <div data-testid="drop-zone">Drop files here</div>
         <button type="submit" data-testid="send-button">Send</button>
       </form>
-      <button id="rerender" type="button">Re-render</button>
     </main>
     <script>
       window.fixtureSubmits = 0;
-      document.querySelector("#composer").addEventListener("submit", (event) => {
+      const composer = document.querySelector("#composer");
+      composer.addEventListener("submit", (event) => {
         event.preventDefault();
         window.fixtureSubmits += 1;
       });
