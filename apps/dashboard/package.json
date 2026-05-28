@@ -1,0 +1,16 @@
+{
+  "name": "@promptguard/dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "check:privacy": "node scripts/check-dashboard.mjs",
+    "test": "node scripts/check-dashboard.mjs",
+    "build": "vite build"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3",
+    "vite": "^6.0.7"
+  }
+}
