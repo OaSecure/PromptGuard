@@ -97,7 +97,7 @@ async def issue_token_pair(session: AsyncSession, user: User) -> TokenResponse:
     )
 
 
-async def get_current_user(
+async def require_active_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
     session: AsyncSession = Depends(get_db_session),
 ) -> User:
@@ -114,6 +114,12 @@ async def get_current_user(
     return user
 
 
+async def require_admin(current_user: User = Depends(require_active_user)) -> User:
+    if current_user.role != "ADMIN":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="admin access required")
+    return current_user
+
+
 @router.post("/login", response_model=TokenResponse)
 async def login(payload: LoginRequest, session: AsyncSession = Depends(get_db_session)) -> TokenResponse:
     async with session.begin():
@@ -126,7 +132,7 @@ async def login(payload: LoginRequest, session: AsyncSession = Depends(get_db_se
 
 
 @router.get("/me", response_model=UserResponse)
-async def me(current_user: User = Depends(get_current_user)) -> UserResponse:
+async def me(current_user: User = Depends(require_active_user)) -> UserResponse:
     return UserResponse(
         id=current_user.id,
         login_id=current_user.login_id,
@@ -199,7 +205,7 @@ async def logout(payload: LogoutRequest, session: AsyncSession = Depends(get_db_
 @router.post("/change-password", response_model=ChangePasswordResponse)
 async def change_password(
     payload: ChangePasswordRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_active_user),
     session: AsyncSession = Depends(get_db_session),
 ) -> ChangePasswordResponse:
     if not verify_password(payload.current_password, current_user.password_hash):
