@@ -1,0 +1,11 @@
+{
+  "name": "@promptguard/dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "node scripts/check-dashboard.mjs",
+    "test": "node scripts/check-dashboard.mjs",
+    "build": "node scripts/build-dashboard.mjs"
+  }
+}
