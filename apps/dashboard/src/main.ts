@@ -59,6 +59,8 @@ if (!app) {
   throw new Error("Dashboard root element is missing.");
 }
 
+const appRoot = app;
+
 function appendText(parent: HTMLElement, tagName: keyof HTMLElementTagNameMap, text: string): HTMLElement {
   const element = document.createElement(tagName);
   element.textContent = text;
@@ -109,7 +111,7 @@ function renderShell(): { nav: HTMLElement; title: HTMLElement; content: HTMLEle
 
   workspace.append(topbar, content);
   shell.append(sidebar, workspace);
-  app.replaceChildren(shell);
+  appRoot.replaceChildren(shell);
 
   return { nav, title, content, sessionMessage };
 }
