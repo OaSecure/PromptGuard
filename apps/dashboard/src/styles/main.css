@@ -212,6 +212,107 @@ h2 {
   min-height: 220px;
 }
 
+.events-layout {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1.35fr) minmax(300px, 0.65fr);
+}
+
+.panel-header {
+  align-items: baseline;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.panel-header p {
+  margin: 0;
+}
+
+.filter-bar {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 18px;
+}
+
+.filter-bar select {
+  background: #ffffff;
+  border: 1px solid #cdd6e3;
+  border-radius: 6px;
+  color: #1d2430;
+  min-width: 0;
+  padding: 9px 10px;
+}
+
+.badge,
+.tag {
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 6px 9px;
+}
+
+.badge--allowed {
+  background: #e8f5ee;
+  color: #166534;
+}
+
+.badge--warned {
+  background: #fff4df;
+  color: #92400e;
+}
+
+.badge--masked {
+  background: #e7f0ff;
+  color: #1d4ed8;
+}
+
+.badge--blocked {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.detail-panel {
+  align-self: start;
+}
+
+.detail-list {
+  display: grid;
+  gap: 10px 14px;
+  grid-template-columns: minmax(90px, 0.45fr) minmax(0, 1fr);
+  margin: 18px 0;
+}
+
+.detail-list dt {
+  color: #64748b;
+  font-size: 13px;
+}
+
+.detail-list dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tag {
+  background: #edf2f7;
+  color: #334155;
+}
+
+.empty-message {
+  color: #64748b;
+  margin: 18px 0 0;
+}
+
 .table-wrap {
   overflow-x: auto;
 }
@@ -228,6 +329,16 @@ td {
   border-bottom: 1px solid #e2e8f0;
   padding: 12px 10px;
   text-align: left;
+}
+
+tr[role="button"] {
+  cursor: pointer;
+}
+
+tr[role="button"]:hover,
+tr[role="button"]:focus {
+  background: #f8fafc;
+  outline: none;
 }
 
 th {
@@ -254,6 +365,10 @@ th {
   }
 
   .grid {
+    grid-template-columns: 1fr;
+  }
+
+  .events-layout {
     grid-template-columns: 1fr;
   }
 }
@@ -283,5 +398,14 @@ th {
 
   .sidebar nav {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .filter-bar {
+    grid-template-columns: 1fr;
+  }
+
+  .panel-header {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
