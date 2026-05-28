@@ -64,21 +64,13 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
     defaults:
       run:
         shell: bash
     env:
       DATABASE_URL: postgresql+asyncpg://promptguard:promptguard_dev_password@localhost:5432/promptguard
-      REDIS_URL: redis://localhost:6379/0
+      REDIS_URL: ""
+      PROMPTGUARD_INITIAL_ADMIN_PASSWORD: ci-initial-admin-password
       ACCESS_TOKEN_SECRET: ci-access-token-secret
       REFRESH_TOKEN_SECRET: ci-refresh-token-secret
       ACCESS_TOKEN_EXPIRES_MINUTES: "15"
