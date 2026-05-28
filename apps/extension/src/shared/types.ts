@@ -179,7 +179,7 @@ export type ExtensionMessage =
   | { type: "PROMPT_ANALYZE_RESULT"; payload: AnalyzeResponse | NormalizedError }
   | { type: "FILES_ANALYZE_REQUEST"; payload: FilesAnalyzeRequest }
   | { type: "FILES_ANALYZE_RESULT"; payload: FilesAnalyzeResponse | NormalizedError }
-  | { type: "AUTH_LOGIN_REQUEST"; payload: { token: string } }
+  | { type: "AUTH_LOGIN_REQUEST"; payload: { token: string; refreshToken?: string } }
   | { type: "AUTH_ME_REQUEST" }
   | { type: "CONFIG_SYNC_REQUEST" }
   | { type: "CONFIG_SYNC_RESULT"; payload: ExtensionConfigResponse | NormalizedError }

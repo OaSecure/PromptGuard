@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { clearAuthState, getAuthState, saveAccessToken } from "../../src/background/authStore";
+import { clearAuthState, getAuthState, saveAccessToken, saveAuthTokens } from "../../src/background/authStore";
 import { getSettings, saveApiBaseUrl, saveConfig, saveMockMode } from "../../src/background/configStore";
 import { DEFAULT_CONFIG, STORAGE_KEYS } from "../../src/shared/constants";
 
@@ -79,10 +79,14 @@ describe("config and auth storage boundaries", () => {
     vi.stubGlobal("chrome", { storage: { local: storage } });
 
     await saveAccessToken("test-access-token");
-    expect(await getAuthState()).toEqual({ accessToken: "test-access-token" });
+    expect(await getAuthState()).toEqual({ accessToken: "test-access-token", refreshToken: undefined });
 
     await saveAccessToken("  padded-token  ");
-    expect(await getAuthState()).toEqual({ accessToken: "padded-token" });
+    expect(await getAuthState()).toEqual({ accessToken: "padded-token", refreshToken: undefined });
+
+    await saveAuthTokens({ accessToken: " rotated-access ", refreshToken: " rotated-refresh " });
+    expect(await getAuthState()).toEqual({ accessToken: "rotated-access", refreshToken: "rotated-refresh" });
+    expect(Object.keys(storage.snapshot()).sort()).toEqual([STORAGE_KEYS.accessToken, STORAGE_KEYS.refreshToken].sort());
 
     await saveAccessToken("  ");
     expect(storage.snapshot()).toEqual({});

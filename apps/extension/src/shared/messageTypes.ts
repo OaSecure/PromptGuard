@@ -24,7 +24,7 @@ export function isExtensionMessage(value: unknown): value is ExtensionMessage {
     case "GET_CONFIG_RESULT":
       return isRecord(value.payload);
     case "AUTH_LOGIN_REQUEST":
-      return isRecord(value.payload) && isNonEmptyString(value.payload.token);
+      return isRecord(value.payload) && isNonEmptyString(value.payload.token) && (value.payload.refreshToken === undefined || isNonEmptyString(value.payload.refreshToken));
     case "AUTH_ME_REQUEST":
     case "CONFIG_SYNC_REQUEST":
     case "GET_CONFIG_REQUEST":
