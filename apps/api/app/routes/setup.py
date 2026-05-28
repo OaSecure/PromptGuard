@@ -33,7 +33,7 @@ class BootstrapRequest(BaseModel):
 
 class BootstrapResponse(BaseModel):
     id: UUID
-    login_id: str
+    username: str
     display_name: str | None
     role: str
     status: str
@@ -66,8 +66,11 @@ async def bootstrap_admin(
         user = User(
             login_id="ADMIN",
             login_id_normalized="admin",
+            username="admin",
+            username_normalized="admin",
             email=None,
             email_normalized=None,
+            department=None,
             display_name=payload.display_name,
             role="ADMIN",
             status="ACTIVE",
@@ -80,7 +83,7 @@ async def bootstrap_admin(
 
     return BootstrapResponse(
         id=user.id,
-        login_id=user.login_id,
+        username=user.username,
         display_name=user.display_name,
         role=user.role,
         status=user.status,

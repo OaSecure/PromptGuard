@@ -24,8 +24,11 @@ class User(TimestampMixin, Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     login_id: Mapped[str] = mapped_column(String(80), nullable=False)
     login_id_normalized: Mapped[str] = mapped_column(String(80), nullable=False)
+    username: Mapped[str] = mapped_column(String(80), nullable=False)
+    username_normalized: Mapped[str] = mapped_column(String(80), nullable=False)
     email: Mapped[str | None] = mapped_column(String(320), nullable=True)
     email_normalized: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    department: Mapped[str | None] = mapped_column(String(120), nullable=True)
     display_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
     role: Mapped[str] = mapped_column(String(20), nullable=False, default="USER")
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="ACTIVE")
@@ -33,6 +36,7 @@ class User(TimestampMixin, Base):
     password_hash_algorithm: Mapped[str] = mapped_column(String(40), nullable=False)
     password_hash_params: Mapped[str | None] = mapped_column(Text, nullable=True)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_event_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     refresh_tokens: Mapped[list["RefreshToken"]] = relationship(back_populates="user")
 
@@ -40,8 +44,10 @@ class User(TimestampMixin, Base):
         CheckConstraint("role in ('ADMIN', 'USER')", name="ck_users_role"),
         CheckConstraint("status in ('ACTIVE', 'PENDING', 'DISABLED')", name="ck_users_status"),
         UniqueConstraint("login_id_normalized", name="uq_users_login_id_normalized"),
+        UniqueConstraint("username_normalized", name="uq_users_username_normalized"),
         UniqueConstraint("email_normalized", name="uq_users_email_normalized"),
         Index("ix_users_login_id_normalized", "login_id_normalized"),
+        Index("ix_users_username_normalized", "username_normalized"),
         Index("ix_users_role", "role"),
         Index("ix_users_status", "status"),
     )

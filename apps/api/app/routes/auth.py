@@ -17,12 +17,12 @@ bearer_scheme = HTTPBearer(auto_error=False)
 
 
 class LoginRequest(BaseModel):
-    login_id: str = Field(min_length=2, max_length=80)
+    username: str = Field(min_length=2, max_length=80)
     password: str = Field(min_length=1, max_length=256)
 
-    @field_validator("login_id")
+    @field_validator("username")
     @classmethod
-    def normalize_login_id_input(cls, value: str) -> str:
+    def normalize_username_input(cls, value: str) -> str:
         return value.strip()
 
 
@@ -49,8 +49,9 @@ class TokenResponse(BaseModel):
 
 class UserResponse(BaseModel):
     id: uuid.UUID
-    login_id: str
+    username: str
     email: str | None
+    department: str | None
     display_name: str | None
     role: str
     status: str
@@ -68,9 +69,13 @@ def invalid_credentials() -> HTTPException:
     return HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid credentials")
 
 
-async def get_user_by_login_id(session: AsyncSession, login_id: str) -> User | None:
-    result = await session.execute(select(User).where(User.login_id_normalized == login_id.casefold()))
+async def get_user_by_username(session: AsyncSession, username: str) -> User | None:
+    result = await session.execute(select(User).where(User.username_normalized == username.casefold()))
     return result.scalar_one_or_none()
+
+
+def is_login_allowed(user: User | None, plain_password: str) -> bool:
+    return user is not None and user.status == "ACTIVE" and verify_password(plain_password, user.password_hash)
 
 
 async def issue_token_pair(session: AsyncSession, user: User) -> TokenResponse:
@@ -111,8 +116,8 @@ async def get_current_user(
 @router.post("/login", response_model=TokenResponse)
 async def login(payload: LoginRequest, session: AsyncSession = Depends(get_db_session)) -> TokenResponse:
     async with session.begin():
-        user = await get_user_by_login_id(session, payload.login_id)
-        if user is None or user.status != "ACTIVE" or not verify_password(payload.password, user.password_hash):
+        user = await get_user_by_username(session, payload.username)
+        if not is_login_allowed(user, payload.password):
             raise invalid_credentials()
 
         user.last_login_at = utc_now()
@@ -123,8 +128,9 @@ async def login(payload: LoginRequest, session: AsyncSession = Depends(get_db_se
 async def me(current_user: User = Depends(get_current_user)) -> UserResponse:
     return UserResponse(
         id=current_user.id,
-        login_id=current_user.login_id,
+        username=current_user.username,
         email=current_user.email,
+        department=current_user.department,
         display_name=current_user.display_name,
         role=current_user.role,
         status=current_user.status,
