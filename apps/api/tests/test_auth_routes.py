@@ -2,11 +2,20 @@ import uuid
 from datetime import datetime
 from types import SimpleNamespace
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.core.password import hash_password
+from app.core.rate_limit import rate_limiter
 from app.routes import auth as auth_routes
+
+
+@pytest.fixture(autouse=True)
+def reset_rate_limiter():
+    rate_limiter.reset()
+    yield
+    rate_limiter.reset()
 
 
 class _SessionBegin:
@@ -23,6 +32,14 @@ class _ScalarResult:
 
     def scalar_one_or_none(self):
         return self.user
+
+
+class _RowResult:
+    def __init__(self, row):
+        self.row = row
+
+    def one_or_none(self):
+        return self.row
 
 
 class _FakeSession:
@@ -97,3 +114,61 @@ def test_login_route_rejects_disabled_user_through_route() -> None:
 
     assert response.status_code == 401
     assert not fake_session.added
+
+
+def test_login_route_returns_429_after_rate_limit(monkeypatch) -> None:
+    fake_session = _FakeSession(_user())
+    client = TestClient(_build_app(fake_session))
+    settings = SimpleNamespace(auth_rate_limit_requests=1, auth_rate_limit_window_seconds=60)
+    monkeypatch.setattr(auth_routes, "get_settings", lambda: settings)
+
+    first_response = client.post(
+        "/auth/login",
+        json={"login_id": "admin", "password": "ConfiguredAdminPassword!456"},
+    )
+    second_response = client.post(
+        "/auth/login",
+        json={"login_id": "admin", "password": "ConfiguredAdminPassword!456"},
+    )
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 429
+
+
+def test_login_rate_limit_does_not_trust_x_forwarded_for(monkeypatch) -> None:
+    fake_session = _FakeSession(_user())
+    client = TestClient(_build_app(fake_session))
+    settings = SimpleNamespace(auth_rate_limit_requests=1, auth_rate_limit_window_seconds=60)
+    monkeypatch.setattr(auth_routes, "get_settings", lambda: settings)
+
+    first_response = client.post(
+        "/auth/login",
+        headers={"X-Forwarded-For": "203.0.113.10"},
+        json={"login_id": "admin", "password": "ConfiguredAdminPassword!456"},
+    )
+    second_response = client.post(
+        "/auth/login",
+        headers={"X-Forwarded-For": "203.0.113.11"},
+        json={"login_id": "admin", "password": "ConfiguredAdminPassword!456"},
+    )
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 429
+
+
+def test_refresh_route_returns_429_after_rate_limit(monkeypatch) -> None:
+    class _RefreshSession(_FakeSession):
+        async def execute(self, statement):
+            self.statements.append(str(statement))
+            return _RowResult(None)
+
+    fake_session = _RefreshSession(_user())
+    client = TestClient(_build_app(fake_session))
+    settings = SimpleNamespace(auth_rate_limit_requests=1, auth_rate_limit_window_seconds=60)
+    monkeypatch.setattr(auth_routes, "get_settings", lambda: settings)
+
+    first_response = client.post("/auth/refresh", json={"refresh_token": "invalid-refresh-token"})
+    second_response = client.post("/auth/refresh", json={"refresh_token": "invalid-refresh-token"})
+
+    assert first_response.status_code == 401
+    assert second_response.status_code == 429
