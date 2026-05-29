@@ -1,4 +1,4 @@
-"""align users with v0.9 username accounts
+"""align users with v0.10 account metadata and admin seed
 
 Revision ID: 20260528_0003
 Revises: 20260526_0002
@@ -18,7 +18,7 @@ down_revision: str | None = "20260526_0002"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
-DEFAULT_ADMIN_USERNAME = "admin"
+DEFAULT_ADMIN_LOGIN_ID = "admin"
 INITIAL_ADMIN_PASSWORD_ENV = "PROMPTGUARD_INITIAL_ADMIN_PASSWORD"
 DEFAULT_INITIAL_ADMIN_PASSWORD = "Admin1234!ChangeMe"
 
@@ -33,7 +33,6 @@ def hash_initial_admin_password(initial_password: str | None = None) -> str:
 
 def upgrade() -> None:
     op.add_column("users", sa.Column("username", sa.String(length=80), nullable=True))
-    op.add_column("users", sa.Column("username_normalized", sa.String(length=80), nullable=True))
     op.add_column("users", sa.Column("department", sa.String(length=120), nullable=True))
     op.add_column("users", sa.Column("last_event_at", sa.DateTime(timezone=True), nullable=True))
 
@@ -44,19 +43,15 @@ def upgrade() -> None:
           username = case
             when role = 'ADMIN' and login_id_normalized = 'admin' then 'admin'
             else coalesce(username, login_id, split_part(email, '@', 1))
-          end,
-          username_normalized = case
-            when role = 'ADMIN' and login_id_normalized = 'admin' then 'admin'
-            else coalesce(username_normalized, login_id_normalized, lower(split_part(email, '@', 1)))
           end
-        where username is null or username_normalized is null
+        where username is null
         """
     )
 
     connection = op.get_bind()
     admin_exists = connection.execute(
-        sa.text("select 1 from users where username_normalized = :username or role = 'ADMIN' limit 1"),
-        {"username": DEFAULT_ADMIN_USERNAME},
+        sa.text("select 1 from users where login_id_normalized = :login_id or role = 'ADMIN' limit 1"),
+        {"login_id": DEFAULT_ADMIN_LOGIN_ID},
     ).first()
 
     if admin_exists is None:
@@ -70,7 +65,6 @@ def upgrade() -> None:
                   login_id,
                   login_id_normalized,
                   username,
-                  username_normalized,
                   email,
                   email_normalized,
                   department,
@@ -83,10 +77,9 @@ def upgrade() -> None:
                 )
                 values (
                   :id,
+                  :login_id,
+                  :login_id_normalized,
                   :username,
-                  :username_normalized,
-                  :username,
-                  :username_normalized,
                   null,
                   null,
                   null,
@@ -101,22 +94,17 @@ def upgrade() -> None:
             ),
             {
                 "id": admin_id,
-                "username": DEFAULT_ADMIN_USERNAME,
-                "username_normalized": DEFAULT_ADMIN_USERNAME,
+                "login_id": DEFAULT_ADMIN_LOGIN_ID,
+                "login_id_normalized": DEFAULT_ADMIN_LOGIN_ID,
+                "username": DEFAULT_ADMIN_LOGIN_ID,
                 "password_hash": admin_password_hash,
             },
         )
 
     op.alter_column("users", "username", existing_type=sa.String(length=80), nullable=False)
-    op.alter_column("users", "username_normalized", existing_type=sa.String(length=80), nullable=False)
-    op.create_unique_constraint("uq_users_username_normalized", "users", ["username_normalized"])
-    op.create_index("ix_users_username_normalized", "users", ["username_normalized"])
 
 
 def downgrade() -> None:
-    op.drop_index("ix_users_username_normalized", table_name="users")
-    op.drop_constraint("uq_users_username_normalized", "users", type_="unique")
     op.drop_column("users", "last_event_at")
     op.drop_column("users", "department")
-    op.drop_column("users", "username_normalized")
     op.drop_column("users", "username")

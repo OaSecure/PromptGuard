@@ -22,10 +22,11 @@ Goal:
    - 프로젝트 적용 기준: fresh DB seed/migration이 기본 계정 `admin`을 만들고, 초기 비밀번호는 `PROMPTGUARD_INITIAL_ADMIN_PASSWORD` 설정값을 사용한다.
    - `/setup/status`, `/setup/bootstrap`은 v0.9 MVP 필수 흐름이 아니다.
 
-2. 로그인 식별자 변경
+2. 로그인 식별자 정리
    - 이전 구현: `login_id=ADMIN`.
-   - v0.9/WBS 기준: 사용자 계정은 `email`, `username`, `department`, `role`, `status`, `password_hash`, `last_event_at` 중심.
-   - MVP 로그인은 `username` 기반으로 맞추고, 기본 계정은 `username=admin`으로 둔다.
+   - v0.10 적용 기준: 사용자가 입력하는 로그인 식별자는 `login_id`로 유지한다.
+   - `username`은 사용자 metadata로 남기되 unique login handle로 쓰지 않는다.
+   - 기본 계정은 `login_id=admin`으로 둔다.
 
 3. Redis 기본 필수 제외
    - 이전 구현: compose 기본 서비스에 Redis 포함, API가 Redis에 의존.
@@ -53,7 +54,7 @@ Goal:
 | password hash | Argon2id hash/verify 유틸과 테스트 있음 | 기본 admin seed password도 hash-only로 검증 |
 | users table | `users` 존재, role/status/password_hash 있음 | `username`, `department`, `last_event_at` 반영, `login_id` 정리 |
 | refresh_tokens table | token hash, expiry, revocation, rotation 일부 있음 | reuse detection과 token family 폐기 강화 |
-| login/refresh/me/logout | bearer auth 기본 흐름 구현 | username 기반, disabled 처리 테스트, raw token 미저장 테스트 추가 |
+| login/refresh/me/logout | bearer auth 기본 흐름 구현 | login_id 기반, disabled 처리 테스트, raw token 미저장 테스트 추가 |
 | change password | `/auth/change-password` 구현 | 기본 admin 비밀번호 변경 운영 흐름으로 유지 |
 | health | `/healthz` DB/Redis check 구현 | `/livez`, `/readyz`, migration/config readiness 추가 |
 | CI | backend migration/test job 추가 | detector/analyze/dashboard smoke까지 확장 |
@@ -74,8 +75,8 @@ Goal:
 
 3. 계정 식별자
    - 현재 모델은 `login_id`, `login_id_normalized`를 사용한다.
-   - v0.9 WBS는 `username`을 요구한다.
-   - 다음 migration에서 `username`, `username_normalized`, `department`, `last_event_at`를 추가하고 auth API 응답도 맞춘다.
+   - v0.10 적용 기준은 `login_id`를 로그인 식별자로 유지하고 `username`은 사용자 metadata로 둔다.
+   - 다음 migration에서 `username`, `department`, `last_event_at`를 추가하고 auth API 응답도 맞춘다.
 
 4. Redis 의존성
    - 현재 `/healthz`와 compose가 Redis를 기본 필수처럼 다룬다.
@@ -268,10 +269,10 @@ Goal:
 작업:
 
 1. Alembic migration 추가.
-2. `users`에 `username`, `username_normalized`, `department`, `last_event_at` 추가.
+2. `users`에 `username`, `department`, `last_event_at` 추가.
 3. 기본 admin seed를 `admin / PROMPTGUARD_INITIAL_ADMIN_PASSWORD` hash-only로 생성.
 4. `refresh_tokens`에 reuse detection 기준 추가.
-5. 모델과 auth route를 username 중심으로 변경.
+5. 모델은 `username` metadata를 포함하되 auth route는 `login_id` 중심으로 유지.
 6. password/plaintext 미저장 테스트 추가.
 
 완료 기준:
@@ -405,7 +406,7 @@ Goal:
 2. `feat(api): align auth schema with v0.9`
    - users/refresh_tokens migration.
    - default admin seed.
-   - username login.
+   - login_id login.
    - password/token tests.
 
 3. `feat(api): add health readiness and compose profiles`
@@ -443,7 +444,7 @@ Goal:
 
 1. 새 migration으로 계정 DB를 v0.9에 맞춘다.
 2. 기본 ADMIN seed를 `admin / PROMPTGUARD_INITIAL_ADMIN_PASSWORD`로 바꾼다.
-3. 로그인 API를 `username` 기준으로 맞춘다.
+3. 로그인 API를 `login_id` 기준으로 유지한다.
 4. 기존 테스트에 admin seed, plaintext 미저장, disabled user, refresh raw 미저장 테스트를 추가한다.
 
 이유:
@@ -456,11 +457,11 @@ Goal:
 
 ### Auth/DB
 
-- [ ] `users.username` 추가.
+- [ ] `users.username` metadata 추가.
 - [ ] `users.department` 추가.
 - [ ] `users.last_event_at` 추가.
 - [ ] default admin seed `admin / PROMPTGUARD_INITIAL_ADMIN_PASSWORD` hash-only.
-- [ ] `/auth/login` username 기반.
+- [ ] `/auth/login` login_id 기반.
 - [ ] disabled user 차단.
 - [ ] refresh token raw 미저장 테스트.
 - [ ] refresh reuse detection.

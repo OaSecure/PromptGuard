@@ -30,10 +30,10 @@ def test_default_admin_seed_password_is_hash_only_and_verifiable() -> None:
     assert verify_password(initial_password, password_hash)
 
 
-def test_default_admin_seed_username_is_admin() -> None:
+def test_default_admin_seed_login_id_is_admin() -> None:
     migration = load_admin_seed_migration()
 
-    assert migration.DEFAULT_ADMIN_USERNAME == "admin"
+    assert migration.DEFAULT_ADMIN_LOGIN_ID == "admin"
 
 
 def test_initial_admin_password_can_come_from_environment(monkeypatch) -> None:

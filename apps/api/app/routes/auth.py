@@ -17,12 +17,12 @@ bearer_scheme = HTTPBearer(auto_error=False)
 
 
 class LoginRequest(BaseModel):
-    username: str = Field(min_length=2, max_length=80)
+    login_id: str = Field(min_length=2, max_length=80)
     password: str = Field(min_length=1, max_length=256)
 
-    @field_validator("username")
+    @field_validator("login_id")
     @classmethod
-    def normalize_username_input(cls, value: str) -> str:
+    def normalize_login_id_input(cls, value: str) -> str:
         return value.strip()
 
 
@@ -49,6 +49,7 @@ class TokenResponse(BaseModel):
 
 class UserResponse(BaseModel):
     id: uuid.UUID
+    login_id: str
     username: str
     email: str | None
     department: str | None
@@ -69,8 +70,8 @@ def invalid_credentials() -> HTTPException:
     return HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid credentials")
 
 
-async def get_user_by_username(session: AsyncSession, username: str) -> User | None:
-    result = await session.execute(select(User).where(User.username_normalized == username.casefold()))
+async def get_user_by_login_id(session: AsyncSession, login_id: str) -> User | None:
+    result = await session.execute(select(User).where(User.login_id_normalized == login_id.casefold()))
     return result.scalar_one_or_none()
 
 
@@ -116,7 +117,7 @@ async def get_current_user(
 @router.post("/login", response_model=TokenResponse)
 async def login(payload: LoginRequest, session: AsyncSession = Depends(get_db_session)) -> TokenResponse:
     async with session.begin():
-        user = await get_user_by_username(session, payload.username)
+        user = await get_user_by_login_id(session, payload.login_id)
         if not is_login_allowed(user, payload.password):
             raise invalid_credentials()
 
@@ -128,6 +129,7 @@ async def login(payload: LoginRequest, session: AsyncSession = Depends(get_db_se
 async def me(current_user: User = Depends(get_current_user)) -> UserResponse:
     return UserResponse(
         id=current_user.id,
+        login_id=current_user.login_id,
         username=current_user.username,
         email=current_user.email,
         department=current_user.department,

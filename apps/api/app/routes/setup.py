@@ -67,7 +67,6 @@ async def bootstrap_admin(
             login_id="ADMIN",
             login_id_normalized="admin",
             username="admin",
-            username_normalized="admin",
             email=None,
             email_normalized=None,
             department=None,
