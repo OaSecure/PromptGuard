@@ -8,7 +8,8 @@ describe("options page", () => {
     document.body.innerHTML = `
       <input id="apiBaseUrl" />
       <input id="mockMode" type="checkbox" />
-      <input id="token" />
+      <input id="loginId" />
+      <input id="password" />
       <button id="saveSettings">Save</button>
       <button id="testConnection">Test connection</button>
       <button id="syncConfig">Sync config</button>
@@ -35,25 +36,58 @@ describe("options page", () => {
     expect(textValue("#modeStatus")).toBe("Mock API");
   });
 
-  it("trims API URL and auth token before save", async () => {
+  it("trims API URL and credentials before save", async () => {
     const chromeMock = createChromeMock({});
     vi.stubGlobal("chrome", chromeMock);
     await import("../../src/options/options");
 
     await waitFor(() => inputValue("#apiBaseUrl") === DEFAULT_CONFIG.api_base_url);
     setInputValue("#apiBaseUrl", "  https://api.promptguard.test/api/v1  ");
-    setInputValue("#token", "  padded-token  ");
+    setInputValue("#loginId", "  member@example.com  ");
+    setInputValue("#password", "  test-password  ");
     document.querySelector<HTMLButtonElement>("#saveSettings")!.click();
 
     await waitFor(() => chromeMock.runtime.sendMessage.mock.calls.length === 1);
     expect(chromeMock.storage.local.snapshot()[STORAGE_KEYS.apiBaseUrl]).toBe("https://api.promptguard.test/api/v1");
     expect(chromeMock.runtime.sendMessage).toHaveBeenCalledWith({
       type: "AUTH_LOGIN_REQUEST",
-      payload: { token: "padded-token" }
+      payload: { login_id: "member@example.com", password: "test-password" }
     });
-    expect(inputValue("#token")).toBe("");
+    expect(inputValue("#password")).toBe("");
     expect(textValue("#modeStatus")).toBe("Mock API");
     expect(textValue("#serverStatus")).toBe("Not checked after settings change");
+  });
+
+  it("requires both login ID and password before sending auth login", async () => {
+    const chromeMock = createChromeMock({});
+    vi.stubGlobal("chrome", chromeMock);
+    await import("../../src/options/options");
+
+    await waitFor(() => inputValue("#apiBaseUrl") === DEFAULT_CONFIG.api_base_url);
+    setInputValue("#loginId", "member@example.com");
+    document.querySelector<HTMLButtonElement>("#saveSettings")!.click();
+
+    await waitFor(() => textValue("#connectionStatus") === "Login ID and password are required to sign in.");
+    expect(chromeMock.runtime.sendMessage).not.toHaveBeenCalled();
+    expect(inputValue("#loginId")).toBe("member@example.com");
+  });
+
+  it("keeps the password visible when auth login fails with a safe error", async () => {
+    const chromeMock = createChromeMock(
+      {},
+      async (message) => (message.type === "AUTH_LOGIN_REQUEST" ? { code: "UNAUTHORIZED", message: "Login expired. Sign in again." } : { ok: true })
+    );
+    vi.stubGlobal("chrome", chromeMock);
+    await import("../../src/options/options");
+
+    await waitFor(() => inputValue("#apiBaseUrl") === DEFAULT_CONFIG.api_base_url);
+    setInputValue("#loginId", "member@example.com");
+    setInputValue("#password", "test-password");
+    document.querySelector<HTMLButtonElement>("#saveSettings")!.click();
+
+    await waitFor(() => textValue("#connectionStatus") === "Login expired. Sign in again.");
+    expect(inputValue("#password")).toBe("test-password");
+    expect(textValue("#connectionStatus")).not.toContain("test-password");
   });
 
   it("save clears a stale server status after mode changes", async () => {

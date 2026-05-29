@@ -30,16 +30,44 @@ describe("message router API auth boundary", () => {
     }));
   });
 
-  it("stores optional refresh token from login messages without exposing it elsewhere", async () => {
-    const storage = createStorage({});
+  it("calls real login and stores the returned token pair", async () => {
+    const storage = createStorage({
+      [STORAGE_KEYS.apiBaseUrl]: "https://api.promptguard.test",
+      [STORAGE_KEYS.mockMode]: false
+    });
+    const fetchMock = vi.fn(async () => jsonResponse({ access_token: "test-access-token", refresh_token: "test-refresh-token" }));
     vi.stubGlobal("chrome", { storage: { local: storage } });
+    vi.stubGlobal("fetch", fetchMock);
 
-    await routeMessage({ type: "AUTH_LOGIN_REQUEST", payload: { token: " test-access-token ", refreshToken: " test-refresh-token " } });
+    const response = await routeMessage({ type: "AUTH_LOGIN_REQUEST", payload: { login_id: " member@example.com ", password: " test-password " } });
 
+    expect(response).toEqual({ ok: true });
+    expect(fetchMock).toHaveBeenCalledWith("https://api.promptguard.test/auth/login", expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({ login_id: "member@example.com", password: "test-password" })
+    }));
     expect(storage.snapshot()).toMatchObject({
       [STORAGE_KEYS.accessToken]: "test-access-token",
       [STORAGE_KEYS.refreshToken]: "test-refresh-token"
     });
+    expect(JSON.stringify(response)).not.toContain("test-password");
+  });
+
+  it("rejects malformed real login responses without storing a partial token pair", async () => {
+    const storage = createStorage({
+      [STORAGE_KEYS.apiBaseUrl]: "https://api.promptguard.test",
+      [STORAGE_KEYS.mockMode]: false
+    });
+    const fetchMock = vi.fn(async () => jsonResponse({ access_token: "test-access-token" }));
+    vi.stubGlobal("chrome", { storage: { local: storage } });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await routeMessage({ type: "AUTH_LOGIN_REQUEST", payload: { login_id: "member@example.com", password: "test-password" } });
+
+    expect(response).toEqual({ code: "VALIDATION_ERROR", message: "Login response could not be processed." });
+    expect(storage.snapshot()[STORAGE_KEYS.accessToken]).toBeUndefined();
+    expect(storage.snapshot()[STORAGE_KEYS.refreshToken]).toBeUndefined();
+    expect(JSON.stringify(response)).not.toContain("test-password");
   });
 
   it("refreshes once after real auth check returns 401 and retries with the new access token", async () => {
