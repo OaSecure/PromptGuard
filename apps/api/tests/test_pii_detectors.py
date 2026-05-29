@@ -10,6 +10,7 @@ from app.detectors.pii import detect_email, detect_phone, detect_pii
     [
         ("담당자 이메일은 member@example.com 입니다.", ["member@example.com"]),
         ("Contact security.team+alerts@sub.example.co.kr now.", ["security.team+alerts@sub.example.co.kr"]),
+        ("Sentence punctuation abc.member@example.com.", ["abc.member@example.com"]),
         ("두 주소 a@test.io 와 b.user@example.org 확인", ["a@test.io", "b.user@example.org"]),
     ],
 )
@@ -27,7 +28,6 @@ def test_detect_email_finds_valid_email_addresses(text: str, expected: list[str]
         "not-an-email@example",
         "example.com",
         "member@@example.com",
-        "abc.member@example.com.",
     ],
 )
 def test_detect_email_ignores_invalid_candidates(text: str) -> None:
