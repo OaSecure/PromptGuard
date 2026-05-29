@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>OASecure 이벤트 관리</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='admin.css') }}">
+</head>
+<body>
+
+<header class="admin-header">
+    <div>
+        <p class="eyebrow">OASecure Event Monitoring</p>
+        <h1>이벤트 관리</h1>
+        <p class="header-desc">
+            탐지된 위험 이벤트를 확인하고 상세 정보를 조회합니다.
+        </p>
+    </div>
+
+    <nav class="header-actions">
+        <a href="/admin" class="nav-button">대시보드</a>
+        <a href="/users" class="nav-button">사용자 관리</a>
+        <a href="/logout" class="logout-button">로그아웃</a>
+    </nav>
+</header>
+
+<main class="dashboard">
+
+    <section class="overview-section">
+        <div class="section-title-wrap">
+            <div>
+                <h2>Events Overview</h2>
+                <p>오늘 탐지된 위험 이벤트 현황</p>
+            </div>
+        </div>
+
+        <div class="overview-grid event-overview-grid">
+
+            <a href="/events/detail/all" class="overview-card event-link-card">
+                <span class="card-label">Total Events</span>
+                <strong>3</strong>
+                <p>전체 탐지 이벤트 수</p>
+            </a>
+
+            <a href="/events/detail/critical" class="overview-card danger event-link-card">
+                <span class="card-label">Critical</span>
+                <strong>1</strong>
+                <p>즉시 차단이 필요한 이벤트</p>
+            </a>
+
+            <a href="/events/detail/high" class="overview-card warning event-link-card">
+                <span class="card-label">High</span>
+                <strong>1</strong>
+                <p>주의 깊게 확인해야 하는 이벤트</p>
+            </a>
+
+            <a href="/events/detail/medium" class="overview-card safe event-link-card">
+                <span class="card-label">Medium</span>
+                <strong>1</strong>
+                <p>모니터링이 필요한 이벤트</p>
+            </a>
+
+        </div>
+    </section>
+
+    <section class="table-section">
+        <div class="section-title-wrap">
+            <div>
+                <h2>Risk Events</h2>
+                <p>원문 프롬프트는 저장하지 않고 탐지 결과만 표시합니다.</p>
+            </div>
+        </div>
+
+        <div class="table-card">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>시간</th>
+                        <th>사용자</th>
+                        <th>서비스</th>
+                        <th>Action</th>
+                        <th>위험도</th>
+                        <th>탐지 유형</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    <tr>
+                        <td>10:32</td>
+                        <td>김OO</td>
+                        <td>ChatGPT</td>
+                        <td><span class="status-badge result-blocked">Block</span></td>
+                        <td><span class="risk-badge risk-critical">Critical</span></td>
+                        <td>API Key</td>
+                    </tr>
+
+                    <tr>
+                        <td>10:28</td>
+                        <td>박OO</td>
+                        <td>ChatGPT</td>
+                        <td><span class="status-badge result-masked">Mask</span></td>
+                        <td><span class="risk-badge risk-high">High</span></td>
+                        <td>Phone</td>
+                    </tr>
+
+                    <tr>
+                        <td>10:15</td>
+                        <td>이OO</td>
+                        <td>ChatGPT</td>
+                        <td><span class="status-badge result-warned">Warn</span></td>
+                        <td><span class="risk-badge risk-medium">Medium</span></td>
+                        <td>Contract</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="event-detail-section">
+        <div class="section-title-wrap">
+            <div>
+                <h2>Event Detail</h2>
+                <p>최근 탐지 이벤트의 상세 정보입니다.</p>
+            </div>
+        </div>
+
+        <div class="detail-grid">
+            <article class="detail-card">
+                <div class="detail-card-header">
+                    <h3>Event Detail</h3>
+                    <span class="copy-icon">⧉</span>
+                </div>
+
+                <div class="detail-list">
+                    <div><span>이벤트 ID</span><strong>EVT-20260529-002</strong></div>
+                    <div><span>시간</span><strong>10:28</strong></div>
+                    <div><span>사용자</span><strong>박OO</strong></div>
+                    <div><span>서비스</span><strong>ChatGPT</strong></div>
+                    <div><span>Action</span><strong>Mask</strong></div>
+                    <div><span>위험도 점수</span><strong>72</strong></div>
+                    <div><span>탐지 요약</span><strong>전화번호 형태의 개인정보 탐지</strong></div>
+                    <div><span>탐지 항목</span><strong>pii / phone</strong></div>
+                    <div><span>프롬프트 해시</span><strong>ph_7d2a</strong></div>
+                    <div><span>플랫폼</span><strong>Web</strong></div>
+                </div>
+            </article>
+
+            <article class="detail-card">
+                <div class="detail-card-header">
+                    <h3>Business Context</h3>
+                </div>
+
+                <div class="keyword-list">
+                    <div><span>Contract</span><strong>3회</strong></div>
+                    <div><span>Customer Info</span><strong>2회</strong></div>
+                    <div><span>Trade Secret</span><strong>1회</strong></div>
+                </div>
+
+                <p class="notice-text">
+                    ※ 원문 프롬프트는 실제 탐지값을 저장하거나 표시하지 않습니다.
+                </p>
+            </article>
+        </div>
+    </section>
+
+</main>
+
+</body>
+</html>
