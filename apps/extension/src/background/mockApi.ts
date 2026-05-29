@@ -65,8 +65,7 @@ export async function mockAuthMe(): Promise<AuthMeResponse> {
     workspace_id: "mock_workspace",
     email: "member@example.com",
     role: "USER",
-    status: "ACTIVE",
-    policy_version: DEFAULT_POLICY_VERSION
+    status: "ACTIVE"
   };
 }
 

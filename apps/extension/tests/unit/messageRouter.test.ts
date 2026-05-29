@@ -74,6 +74,49 @@ describe("message router API auth boundary", () => {
     });
   });
 
+  it("shares one refresh call across concurrent 401 responses", async () => {
+    const storage = createStorage({
+      [STORAGE_KEYS.apiBaseUrl]: "https://api.promptguard.test",
+      [STORAGE_KEYS.mockMode]: false,
+      [STORAGE_KEYS.accessToken]: "expired-access-token",
+      [STORAGE_KEYS.refreshToken]: "stored-refresh-token"
+    });
+    let authMeCalls = 0;
+    let resolveRefresh!: (response: Response) => void;
+    const refreshResponse = new Promise<Response>((resolve) => {
+      resolveRefresh = resolve;
+    });
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/auth/refresh")) {
+        return refreshResponse;
+      }
+      if (url.endsWith("/auth/me")) {
+        authMeCalls += 1;
+        return Promise.resolve(authMeCalls <= 2 ? statusResponse(401) : jsonResponse(authMeResponse()));
+      }
+      return Promise.resolve(statusResponse(404));
+    });
+    vi.stubGlobal("chrome", { storage: { local: storage } });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const first = routeMessage({ type: "AUTH_ME_REQUEST" });
+    const second = routeMessage({ type: "AUTH_ME_REQUEST" });
+
+    await waitForFetchCount(fetchMock, 3);
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith("/auth/refresh"))).toHaveLength(1);
+
+    resolveRefresh(jsonResponse({ access_token: "new-access-token" }));
+    const responses = await Promise.all([first, second]);
+
+    expect(responses).toEqual([authMeResponse(), authMeResponse()]);
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith("/auth/me"))).toHaveLength(4);
+    expect(storage.snapshot()).toMatchObject({
+      [STORAGE_KEYS.accessToken]: "new-access-token",
+      [STORAGE_KEYS.refreshToken]: "stored-refresh-token"
+    });
+  });
+
   it("clears stale auth when the retried auth check still returns 401 after refresh", async () => {
     const storage = createStorage({
       [STORAGE_KEYS.apiBaseUrl]: "https://api.promptguard.test",
@@ -334,14 +377,23 @@ function statusResponse(status: number, body: unknown = {}): Response {
   } as Response;
 }
 
+async function waitForFetchCount(fetchMock: ReturnType<typeof vi.fn>, count: number): Promise<void> {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    if (fetchMock.mock.calls.length >= count) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  throw new Error(`Expected fetch to be called at least ${count} times, got ${fetchMock.mock.calls.length}.`);
+}
+
 function authMeResponse(): AuthMeResponse {
   return {
     id: "user_test",
     workspace_id: "workspace_test",
     email: "member@example.com",
     role: "USER",
-    status: "ACTIVE",
-    policy_version: "v-test-config"
+    status: "ACTIVE"
   };
 }
 

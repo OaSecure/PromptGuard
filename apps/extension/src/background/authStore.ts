@@ -27,7 +27,10 @@ export async function saveAuthTokens(tokens: AuthState): Promise<void> {
   const normalizedRefreshToken = tokens.refreshToken?.trim();
   if (normalizedRefreshToken) {
     entries[STORAGE_KEYS.refreshToken] = normalizedRefreshToken;
+    await chrome.storage.local.set(entries);
+    return;
   }
+  await chrome.storage.local.remove(STORAGE_KEYS.refreshToken);
   await chrome.storage.local.set(entries);
 }
 

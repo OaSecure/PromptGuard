@@ -142,7 +142,6 @@ export interface AuthMeResponse {
   email: string;
   role: "USER" | "ADMIN";
   status: "ACTIVE" | "DISABLED";
-  policy_version: string;
 }
 
 /** Prompt inspection lifecycle names used by tests and state documentation. */

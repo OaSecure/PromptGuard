@@ -16,6 +16,8 @@ const unauthorizedError: NormalizedError = {
   message: "Login expired. Sign in again."
 };
 
+let refreshInFlight: Promise<RefreshResponse | NormalizedError> | undefined;
+
 /** Sends an authenticated GET request and refreshes once after a 401. */
 export async function getJsonWithAuthRefresh<TResponse>(path: string, options: AuthenticatedOptions): Promise<TResponse | NormalizedError> {
   return withAuthRefresh((token) => getJson<TResponse>(path, { ...options, token }), options);
@@ -43,7 +45,7 @@ async function withAuthRefresh<TResponse>(
     return unauthorizedError;
   }
 
-  const refreshed = await refreshAccessToken(auth.refreshToken, options);
+  const refreshed = await refreshAccessTokenSingleFlight(auth.refreshToken, options);
   if (isNormalizedError(refreshed)) {
     await clearAuthState();
     return unauthorizedError;
@@ -70,6 +72,15 @@ async function refreshAccessToken(refreshToken: string, options: AuthenticatedOp
     return unauthorizedError;
   }
   return response;
+}
+
+function refreshAccessTokenSingleFlight(refreshToken: string, options: AuthenticatedOptions): Promise<RefreshResponse | NormalizedError> {
+  if (!refreshInFlight) {
+    refreshInFlight = refreshAccessToken(refreshToken, options).finally(() => {
+      refreshInFlight = undefined;
+    });
+  }
+  return refreshInFlight;
 }
 
 function isRefreshResponse(value: unknown): value is RefreshResponse {

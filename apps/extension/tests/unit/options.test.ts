@@ -83,8 +83,7 @@ describe("options page", () => {
               workspace_id: "mock_workspace",
               email: "member@example.com",
               role: "USER",
-              status: "ACTIVE",
-              policy_version: "v-test"
+              status: "ACTIVE"
             }
           : { ok: true }
     );
@@ -99,7 +98,7 @@ describe("options page", () => {
     expect(textValue("#connectionStatus")).toBe("Testing connection...");
     await waitFor(() => textValue("#connectionStatus") === "ACTIVE (USER)");
     expect(textValue("#serverStatus")).toBe("Mock API ready");
-    expect(textValue("#policyVersion")).toBe("v-test");
+    expect(textValue("#policyVersion")).toBe(DEFAULT_CONFIG.policy_version);
     expect(chromeMock.storage.local.snapshot()[STORAGE_KEYS.mockMode]).toBe(true);
     expect(chromeMock.storage.local.snapshot()[STORAGE_KEYS.apiBaseUrl]).toBe("https://api.promptguard.test/api/v1");
   });

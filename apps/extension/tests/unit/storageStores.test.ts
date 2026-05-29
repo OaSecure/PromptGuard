@@ -88,6 +88,10 @@ describe("config and auth storage boundaries", () => {
     expect(await getAuthState()).toEqual({ accessToken: "rotated-access", refreshToken: "rotated-refresh" });
     expect(Object.keys(storage.snapshot()).sort()).toEqual([STORAGE_KEYS.accessToken, STORAGE_KEYS.refreshToken].sort());
 
+    await saveAuthTokens({ accessToken: "access-without-refresh" });
+    expect(await getAuthState()).toEqual({ accessToken: "access-without-refresh", refreshToken: undefined });
+    expect(storage.snapshot()[STORAGE_KEYS.refreshToken]).toBeUndefined();
+
     await saveAccessToken("  ");
     expect(storage.snapshot()).toEqual({});
 
