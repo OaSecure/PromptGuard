@@ -44,6 +44,15 @@ const prohibited = [
   "tokenRaw"
 ];
 
+const requiredDashboardMarkers = [
+  "Risk Events",
+  "Event Detail",
+  "Metadata-only event review",
+  "No events match the selected metadata filters.",
+  "Prompt hash prefix",
+  "eventMatches"
+];
+
 function listScannedFiles(directory) {
   const entries = readdirSync(directory, { withFileTypes: true });
   const files = [];
@@ -79,6 +88,14 @@ for (const file of listScannedFiles(".")) {
       console.error(`Dashboard source exposes prohibited raw-data term "${term}" in ${file}`);
       process.exit(1);
     }
+  }
+}
+
+const dashboardSource = readFileSync("src/main.ts", "utf8");
+for (const marker of requiredDashboardMarkers) {
+  if (!dashboardSource.includes(marker)) {
+    console.error(`Dashboard Events MVP marker is missing: ${marker}`);
+    process.exit(1);
   }
 }
 
