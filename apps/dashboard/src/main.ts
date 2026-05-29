@@ -2,6 +2,7 @@ import "./styles/main.css";
 
 type EventAction = "Allowed" | "Warned" | "Masked" | "Blocked";
 type RouteId = "overview" | "events" | "users" | "filters" | "status";
+type RiskLevel = "Low" | "Medium" | "High" | "Critical";
 
 type OverviewStat = {
   label: string;
@@ -16,6 +17,21 @@ type UserSummary = {
   eventCount: number;
   topSignal: string;
   lastEventAt: string;
+};
+
+type EventRecord = {
+  id: string;
+  occurredAt: string;
+  user: string;
+  department: string;
+  service: string;
+  platform: string;
+  action: EventAction;
+  riskLevel: RiskLevel;
+  riskScore: number;
+  detectionSummary: string;
+  detectionLabels: string[];
+  promptHashPrefix: string;
 };
 
 const routes: Array<{ id: RouteId; label: string }> = [
@@ -58,9 +74,66 @@ const periodTotals = [
   { date: "05-26", total: 19 }
 ];
 
-const routePlaceholders: Record<RouteId, string> = {
-  overview: "",
-  events: "Risk event list, filters, and raw-source-free detail views will connect here.",
+const events: EventRecord[] = [
+  {
+    id: "evt_1007",
+    occurredAt: "2026-05-26 16:42",
+    user: "admin",
+    department: "Security",
+    service: "ChatGPT",
+    platform: "Web",
+    action: "Blocked",
+    riskLevel: "Critical",
+    riskScore: 96,
+    detectionSummary: "Secret and policy match",
+    detectionLabels: ["Secret", "Internal policy"],
+    promptHashPrefix: "hmac_8f41c2"
+  },
+  {
+    id: "evt_1006",
+    occurredAt: "2026-05-26 14:18",
+    user: "user01",
+    department: "Sales",
+    service: "Claude",
+    platform: "Web",
+    action: "Masked",
+    riskLevel: "High",
+    riskScore: 82,
+    detectionSummary: "Contract metadata match",
+    detectionLabels: ["Contract", "Client term"],
+    promptHashPrefix: "hmac_6ca914"
+  },
+  {
+    id: "evt_1005",
+    occurredAt: "2026-05-25 11:03",
+    user: "user02",
+    department: "Ops",
+    service: "ChatGPT",
+    platform: "Web",
+    action: "Warned",
+    riskLevel: "Medium",
+    riskScore: 61,
+    detectionSummary: "Personal data category match",
+    detectionLabels: ["Personal data"],
+    promptHashPrefix: "hmac_3b91a0"
+  },
+  {
+    id: "evt_1004",
+    occurredAt: "2026-05-25 09:36",
+    user: "user01",
+    department: "Sales",
+    service: "ChatGPT",
+    platform: "Web",
+    action: "Allowed",
+    riskLevel: "Low",
+    riskScore: 12,
+    detectionSummary: "No policy match",
+    detectionLabels: ["None"],
+    promptHashPrefix: "hmac_1ab73e"
+  }
+];
+
+const routePlaceholders: Record<Exclude<RouteId, "overview" | "events">, string> = {
   users: "ADMIN-managed users, roles, status controls, and user statistics will connect here.",
   filters: "Unified Filter Rule Management and dry-run controls will connect here.",
   status: "API, database, migration, and dependency health metadata will connect here."
@@ -94,8 +167,8 @@ function renderShell(): { nav: HTMLElement; content: HTMLElement; logoutMessage:
 
   const headerCopy = document.createElement("div");
   appendText(headerCopy, "p", "OASecure Admin Dashboard").className = "eyebrow";
-  appendText(headerCopy, "h1", "관리자 대시보드");
-  appendText(headerCopy, "p", "조직의 AI 사용 위험 현황을 안전한 메타데이터로 확인합니다.").className = "header-desc";
+  appendText(headerCopy, "h1", "Admin Dashboard");
+  appendText(headerCopy, "p", "Review organizational AI risk activity through safe metadata.").className = "header-desc";
 
   const actions = document.createElement("nav");
   actions.className = "header-actions";
@@ -106,13 +179,13 @@ function renderShell(): { nav: HTMLElement; content: HTMLElement; logoutMessage:
 
   const logoutWrap = document.createElement("div");
   logoutWrap.className = "logout-wrap";
-  const logoutButton = appendText(logoutWrap, "button", "로그아웃") as HTMLButtonElement;
+  const logoutButton = appendText(logoutWrap, "button", "Log out") as HTMLButtonElement;
   logoutButton.type = "button";
   logoutButton.className = "logout-button";
   const logoutMessage = appendText(logoutWrap, "span", "");
   logoutMessage.className = "session-message";
   logoutButton.addEventListener("click", () => {
-    logoutMessage.textContent = "Dashboard session API 연결 후 로그아웃 요청이 실행됩니다.";
+    logoutMessage.textContent = "Dashboard session API will handle logout when authentication is connected.";
   });
   actions.append(logoutWrap);
 
@@ -177,8 +250,8 @@ function renderActionChart(): HTMLElement {
   card.className = "chart-card";
   const title = document.createElement("div");
   title.className = "chart-title";
-  appendText(title, "h3", "이벤트별 통계");
-  appendText(title, "p", "Allowed, Blocked, Masked, Warned 비율");
+  appendText(title, "h3", "Action Statistics");
+  appendText(title, "p", "Allowed, Blocked, Masked, and Warned distribution");
 
   const chart = document.createElement("div");
   chart.className = "bar-chart";
@@ -208,8 +281,8 @@ function renderUserChart(): HTMLElement {
   card.className = "chart-card";
   const title = document.createElement("div");
   title.className = "chart-title";
-  appendText(title, "h3", "사용자별 통계");
-  appendText(title, "p", "사용자별 AI 요청 및 감지 이벤트");
+  appendText(title, "h3", "User Statistics");
+  appendText(title, "p", "AI request and detection event counts by user");
 
   const list = document.createElement("ol");
   list.className = "donut-list";
@@ -230,8 +303,8 @@ function renderPeriodChart(): HTMLElement {
   card.className = "chart-card wide";
   const title = document.createElement("div");
   title.className = "chart-title";
-  appendText(title, "h3", "기간별 통계");
-  appendText(title, "p", "최근 7일간 AI 사용 위험 이벤트 추이");
+  appendText(title, "h3", "Period Statistics");
+  appendText(title, "p", "Seven-day AI risk event trend");
 
   const chart = document.createElement("div");
   chart.className = "period-chart";
@@ -262,10 +335,168 @@ function renderUserRow(user: UserSummary): HTMLTableRowElement {
   return row;
 }
 
+function uniqueValues<T extends keyof EventRecord>(key: T): Array<EventRecord[T]> {
+  return [...new Set(events.map((event) => event[key]))];
+}
+
+function option(value: string, label = value): HTMLOptionElement {
+  const element = document.createElement("option");
+  element.value = value;
+  element.textContent = label;
+  return element;
+}
+
+function renderBadge(text: string, className: string): HTMLElement {
+  const badge = document.createElement("span");
+  badge.className = className;
+  badge.textContent = text;
+  return badge;
+}
+
+function eventMatches(event: EventRecord, action: string, risk: string, service: string): boolean {
+  return (!action || event.action === action) && (!risk || event.riskLevel === risk) && (!service || event.service === service);
+}
+
+function renderEventDetail(panel: HTMLElement, event: EventRecord): void {
+  panel.replaceChildren();
+  appendText(panel, "h2", "Event Detail");
+
+  const meta = document.createElement("dl");
+  meta.className = "detail-list";
+
+  const fields: Array<[string, string]> = [
+    ["Event ID", event.id],
+    ["Time", event.occurredAt],
+    ["User", `${event.user} / ${event.department}`],
+    ["Service", `${event.service} on ${event.platform}`],
+    ["Action", event.action],
+    ["Risk", `${event.riskLevel} (${event.riskScore})`],
+    ["Detection summary", event.detectionSummary],
+    ["Prompt hash prefix", event.promptHashPrefix]
+  ];
+
+  for (const [label, value] of fields) {
+    appendText(meta, "dt", label);
+    appendText(meta, "dd", value);
+  }
+
+  const labels = document.createElement("div");
+  labels.className = "tag-row";
+  for (const label of event.detectionLabels) {
+    labels.append(renderBadge(label, "tag"));
+  }
+
+  panel.append(meta, labels);
+}
+
+function renderEventRow(event: EventRecord, onSelect: (event: EventRecord) => void): HTMLTableRowElement {
+  const row = document.createElement("tr");
+  row.tabIndex = 0;
+  row.setAttribute("role", "button");
+  row.setAttribute("aria-label", `Open event ${event.id}`);
+
+  appendText(row, "td", event.occurredAt);
+  appendText(row, "td", event.user);
+  appendText(row, "td", event.service);
+  const actionCell = document.createElement("td");
+  actionCell.append(renderBadge(event.action, `badge badge--${event.action.toLowerCase()}`));
+  row.append(actionCell);
+  appendText(row, "td", event.riskLevel);
+  appendText(row, "td", String(event.riskScore));
+
+  row.addEventListener("click", () => onSelect(event));
+  row.addEventListener("keydown", (keyboardEvent) => {
+    if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") {
+      keyboardEvent.preventDefault();
+      onSelect(event);
+    }
+  });
+
+  return row;
+}
+
+function renderEvents(content: HTMLElement): void {
+  const layout = document.createElement("section");
+  layout.className = "events-layout";
+
+  const listPanel = document.createElement("section");
+  listPanel.className = "table-card event-list-card";
+  const header = document.createElement("div");
+  header.className = "panel-header";
+  appendText(header, "h2", "Risk Events");
+  appendText(header, "p", "Metadata-only event review").className = "muted";
+
+  const filters = document.createElement("form");
+  filters.className = "filter-bar";
+  filters.setAttribute("aria-label", "Event metadata filters");
+
+  const actionSelect = document.createElement("select");
+  actionSelect.append(option("", "All actions"));
+  for (const action of uniqueValues("action")) {
+    actionSelect.append(option(action));
+  }
+
+  const riskSelect = document.createElement("select");
+  riskSelect.append(option("", "All risk levels"));
+  for (const level of uniqueValues("riskLevel")) {
+    riskSelect.append(option(level));
+  }
+
+  const serviceSelect = document.createElement("select");
+  serviceSelect.append(option("", "All services"));
+  for (const service of uniqueValues("service")) {
+    serviceSelect.append(option(service));
+  }
+
+  filters.append(actionSelect, riskSelect, serviceSelect);
+
+  const tableWrap = document.createElement("div");
+  tableWrap.className = "table-wrap";
+  const table = document.createElement("table");
+  table.className = "data-table";
+  const thead = document.createElement("thead");
+  const headRow = document.createElement("tr");
+  for (const heading of ["Time", "User", "Service", "Action", "Risk", "Score"]) {
+    appendText(headRow, "th", heading);
+  }
+  thead.append(headRow);
+  const tbody = document.createElement("tbody");
+  table.append(thead, tbody);
+  tableWrap.append(table);
+
+  const emptyState = document.createElement("p");
+  emptyState.className = "empty-message";
+  emptyState.textContent = "No events match the selected metadata filters.";
+
+  const detailPanel = document.createElement("aside");
+  detailPanel.className = "table-card detail-panel";
+
+  function refresh(): void {
+    const visibleEvents = events.filter((event) => eventMatches(event, actionSelect.value, riskSelect.value, serviceSelect.value));
+    tbody.replaceChildren(...visibleEvents.map((event) => renderEventRow(event, renderEventDetail.bind(null, detailPanel))));
+    emptyState.hidden = visibleEvents.length > 0;
+
+    if (visibleEvents.length > 0) {
+      renderEventDetail(detailPanel, visibleEvents[0]);
+      return;
+    }
+
+    detailPanel.replaceChildren();
+    appendText(detailPanel, "h2", "Event Detail");
+    appendText(detailPanel, "p", "Select a different metadata filter to review an event.").className = "muted";
+  }
+
+  filters.addEventListener("change", refresh);
+  listPanel.append(header, filters, tableWrap, emptyState);
+  layout.append(listPanel, detailPanel);
+  content.replaceChildren(layout);
+  refresh();
+}
+
 function renderUserTable(): HTMLElement {
   const section = document.createElement("section");
   section.className = "table-section";
-  section.append(renderSectionTitle("User Event Summary", "사용자별 주요 감지 유형과 최근 활동"));
+  section.append(renderSectionTitle("User Event Summary", "Top detection category and latest activity by user"));
 
   const card = document.createElement("article");
   card.className = "table-card";
@@ -289,7 +520,7 @@ function renderUserTable(): HTMLElement {
 function renderOverview(content: HTMLElement): void {
   const overview = document.createElement("section");
   overview.className = "overview-section";
-  overview.append(renderSectionTitle("Overview", "오늘 우리 조직의 AI 사용 위험 현황"));
+  overview.append(renderSectionTitle("Overview", "AI usage risk overview for the organization"));
   const overviewGrid = document.createElement("div");
   overviewGrid.className = "overview-grid";
   overviewGrid.append(...overviewStats.map(renderOverviewCard));
@@ -297,7 +528,7 @@ function renderOverview(content: HTMLElement): void {
 
   const charts = document.createElement("section");
   charts.className = "chart-section";
-  charts.append(renderSectionTitle("Statistics", "이벤트별, 사용자별, 기간별 통계를 확인합니다."));
+  charts.append(renderSectionTitle("Statistics", "Review action, user, and period-level metadata."));
   const chartGrid = document.createElement("div");
   chartGrid.className = "chart-grid";
   chartGrid.append(renderActionChart(), renderUserChart(), renderPeriodChart());
@@ -306,15 +537,15 @@ function renderOverview(content: HTMLElement): void {
   content.replaceChildren(overview, charts, renderUserTable());
 }
 
-function renderPlaceholder(content: HTMLElement, route: RouteId): void {
+function renderPlaceholder(content: HTMLElement, route: Exclude<RouteId, "overview" | "events">): void {
   const section = document.createElement("section");
   section.className = "table-section";
   section.append(renderSectionTitle(routes.find((item) => item.id === route)?.label ?? "Dashboard", routePlaceholders[route]));
 
   const card = document.createElement("article");
   card.className = "table-card empty-state";
-  appendText(card, "h3", "준비 중");
-  appendText(card, "p", "v0.10 API와 세션 계약에 맞춰 다음 PR에서 연결합니다.").className = "muted";
+  appendText(card, "h3", "Coming soon");
+  appendText(card, "p", "This screen will connect to the v0.10 API and session contract in a follow-up PR.").className = "muted";
   section.append(card);
   content.replaceChildren(section);
 }
@@ -328,6 +559,11 @@ function render(): void {
 
   if (route === "overview") {
     renderOverview(shell.content);
+    return;
+  }
+
+  if (route === "events") {
+    renderEvents(shell.content);
     return;
   }
 
