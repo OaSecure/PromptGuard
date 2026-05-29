@@ -29,9 +29,6 @@ rate_limiter = InMemoryRateLimiter()
 
 
 def client_ip(request: Request) -> str:
-    forwarded_for = request.headers.get("x-forwarded-for")
-    if forwarded_for:
-        return forwarded_for.split(",", 1)[0].strip()
     if request.client is None:
         return "unknown"
     return request.client.host
