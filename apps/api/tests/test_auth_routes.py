@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.core.password import hash_password
+from app.core.rate_limit import rate_limiter
 from app.routes import auth as auth_routes
 
 
@@ -70,6 +71,7 @@ def _user(status: str = "ACTIVE"):
 
 
 def test_login_route_accepts_login_id_contract() -> None:
+    rate_limiter.reset()
     fake_session = _FakeSession(_user())
     client = TestClient(_build_app(fake_session))
 
@@ -87,6 +89,7 @@ def test_login_route_accepts_login_id_contract() -> None:
 
 
 def test_login_route_rejects_disabled_user_through_route() -> None:
+    rate_limiter.reset()
     fake_session = _FakeSession(_user(status="DISABLED"))
     client = TestClient(_build_app(fake_session))
 
@@ -97,3 +100,23 @@ def test_login_route_rejects_disabled_user_through_route() -> None:
 
     assert response.status_code == 401
     assert not fake_session.added
+
+
+def test_login_route_returns_429_after_rate_limit(monkeypatch) -> None:
+    rate_limiter.reset()
+    fake_session = _FakeSession(_user())
+    client = TestClient(_build_app(fake_session))
+    settings = SimpleNamespace(auth_rate_limit_requests=1, auth_rate_limit_window_seconds=60)
+    monkeypatch.setattr(auth_routes, "get_settings", lambda: settings)
+
+    first_response = client.post(
+        "/auth/login",
+        json={"login_id": "admin", "password": "ConfiguredAdminPassword!456"},
+    )
+    second_response = client.post(
+        "/auth/login",
+        json={"login_id": "admin", "password": "ConfiguredAdminPassword!456"},
+    )
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 429
