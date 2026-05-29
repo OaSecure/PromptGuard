@@ -164,8 +164,8 @@ def upgrade() -> None:
                 "placeholder": rule["placeholder"],
                 "severity": rule["severity"],
                 "action": rule["action"],
-                "editable_fields": '["enabled", "severity", "action"]',
-                "config_json": "{}",
+                "editable_fields": json.dumps(rule["editable_fields"]),
+                "config_json": json.dumps(rule["config_json"]),
             },
         )
         connection.execute(
