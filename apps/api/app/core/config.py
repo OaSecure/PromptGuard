@@ -12,10 +12,7 @@ class Settings(BaseSettings):
     dashboard_public_url: str = Field(default="http://localhost:3000", alias="PROMPTGUARD_DASHBOARD_PUBLIC_URL")
     cors_origins: str = Field(default="http://localhost:3000", alias="PROMPTGUARD_CORS_ORIGINS")
 
-    database_url: str = Field(
-        default="postgresql+asyncpg://promptguard:promptguard_dev_password@postgres:5432/promptguard",
-        alias="DATABASE_URL",
-    )
+    database_url: str = Field(default="", alias="DATABASE_URL")
     redis_url: str = Field(default="", alias="REDIS_URL")
     access_token_secret: str = Field(default="change-me-access-token-secret", alias="ACCESS_TOKEN_SECRET")
     refresh_token_secret: str = Field(default="change-me-refresh-token-secret", alias="REFRESH_TOKEN_SECRET")

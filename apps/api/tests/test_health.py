@@ -31,6 +31,7 @@ def test_aggregate_status_is_healthy_when_only_optional_redis_is_disabled() -> N
         health.dependency("postgres", "healthy", True, "POSTGRES_OK", "Database ready"),
         health.dependency("migrations", "healthy", True, "MIGRATIONS_CURRENT", "Migrations current"),
         health.dependency("config", "healthy", True, "CONFIG_OK", "Config ready"),
+        health.dependency("filter_config", "healthy", True, "FILTER_CONFIG_OK", "Filter config ready"),
         health.dependency("redis", "disabled", False, "REDIS_DISABLED", "Redis disabled"),
     ]
 
@@ -57,6 +58,7 @@ def test_readyz_returns_200_when_required_dependencies_are_healthy(monkeypatch) 
                 health.dependency("postgres", "healthy", True, "POSTGRES_OK", "Database ready"),
                 health.dependency("migrations", "healthy", True, "MIGRATIONS_CURRENT", "Migrations current"),
                 health.dependency("config", "healthy", True, "CONFIG_OK", "Config ready"),
+                health.dependency("filter_config", "healthy", True, "FILTER_CONFIG_OK", "Filter config ready"),
             ],
         },
     )
@@ -76,6 +78,7 @@ def test_readyz_returns_503_when_migrations_are_unhealthy(monkeypatch) -> None:
                 health.dependency("postgres", "healthy", True, "POSTGRES_OK", "Database ready"),
                 health.dependency("migrations", "unhealthy", True, "MIGRATIONS_OUTDATED", "Migrations outdated"),
                 health.dependency("config", "healthy", True, "CONFIG_OK", "Config ready"),
+                health.dependency("filter_config", "healthy", True, "FILTER_CONFIG_OK", "Filter config ready"),
             ],
         },
     )
@@ -95,6 +98,7 @@ def test_healthz_returns_200_when_only_optional_redis_is_degraded(monkeypatch) -
                 health.dependency("postgres", "healthy", True, "POSTGRES_OK", "Database ready"),
                 health.dependency("migrations", "healthy", True, "MIGRATIONS_CURRENT", "Migrations current"),
                 health.dependency("config", "healthy", True, "CONFIG_OK", "Config ready"),
+                health.dependency("filter_config", "healthy", True, "FILTER_CONFIG_OK", "Filter config ready"),
                 health.dependency("redis", "degraded", False, "REDIS_UNAVAILABLE", "Redis unavailable"),
             ],
         },
@@ -115,6 +119,7 @@ def test_healthz_returns_503_when_required_dependency_is_unhealthy(monkeypatch) 
                 health.dependency("postgres", "unhealthy", True, "POSTGRES_UNAVAILABLE", "Database unavailable"),
                 health.dependency("migrations", "healthy", True, "MIGRATIONS_CURRENT", "Migrations current"),
                 health.dependency("config", "healthy", True, "CONFIG_OK", "Config ready"),
+                health.dependency("filter_config", "healthy", True, "FILTER_CONFIG_OK", "Filter config ready"),
             ],
         },
     )
@@ -123,3 +128,27 @@ def test_healthz_returns_503_when_required_dependency_is_unhealthy(monkeypatch) 
 
     assert response.status_code == 503
     assert response.json()["status"] == "unhealthy"
+
+
+@pytest.mark.anyio
+async def test_check_config_reports_missing_database_url(monkeypatch) -> None:
+    monkeypatch.setattr(
+        health,
+        "get_settings",
+        lambda: SimpleNamespace(database_url="", access_token_secret="access", refresh_token_secret="refresh"),
+    )
+
+    result = await health.check_config()
+
+    assert result["name"] == "config"
+    assert result["status"] == "unhealthy"
+    assert result["code"] == "CONFIG_INVALID"
+
+
+@pytest.mark.anyio
+async def test_check_filter_config_reports_loadable_default_config() -> None:
+    result = await health.check_filter_config()
+
+    assert result["name"] == "filter_config"
+    assert result["status"] == "healthy"
+    assert result["required"] is True

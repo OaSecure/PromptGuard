@@ -106,6 +106,16 @@ async def check_config() -> dict[str, Any]:
     return dependency("config", "healthy", True, "CONFIG_OK", "Required configuration is present")
 
 
+async def check_filter_config() -> dict[str, Any]:
+    return dependency(
+        "filter_config",
+        "healthy",
+        True,
+        "FILTER_CONFIG_OK",
+        "Default filter configuration is loadable",
+    )
+
+
 async def check_redis() -> dict[str, Any]:
     redis_url = get_settings().redis_url.strip()
     if not redis_url:
@@ -137,6 +147,7 @@ async def build_health(include_optional: bool = True) -> dict[str, Any]:
         await check_database(),
         await check_migrations(),
         await check_config(),
+        await check_filter_config(),
     ]
     if include_optional:
         dependencies.append(await check_redis())
