@@ -83,7 +83,12 @@ def _user(role: str = "ADMIN", status_value: str = "ACTIVE") -> SimpleNamespace:
     )
 
 
-def _client(fake_session: _FakeSession, *, allow_admin: bool = True) -> TestClient:
+def _client(
+    fake_session: _FakeSession,
+    *,
+    allow_admin: bool = True,
+    current_admin: SimpleNamespace | None = None,
+) -> TestClient:
     app = FastAPI()
     app.include_router(admin_users.router)
 
@@ -93,7 +98,7 @@ def _client(fake_session: _FakeSession, *, allow_admin: bool = True) -> TestClie
     async def override_admin():
         if not allow_admin:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="admin access required")
-        return _user(role="ADMIN")
+        return current_admin or _user(role="ADMIN")
 
     app.dependency_overrides[admin_users.get_db_session] = override_session
     app.dependency_overrides[admin_users.require_admin] = override_admin
@@ -144,6 +149,8 @@ def test_create_admin_user_hashes_password_and_returns_safe_metadata() -> None:
     body = response.json()
     created_user = fake_session.added[0]
     assert response.status_code == 201
+    assert body["user_id"] == str(created_user.id)
+    assert body["id"] == str(created_user.id)
     assert body["login_id"] == "New-User@Example.com"
     assert body["email"] == "New-User@Example.com"
     assert body["role"] == "ADMIN"
@@ -173,6 +180,18 @@ def test_create_admin_user_rejects_duplicate_identifier() -> None:
     assert response.status_code == 409
 
 
+def test_create_admin_user_rejects_malformed_email() -> None:
+    client = _client(_FakeSession())
+
+    for email in ["foo@", "@example.com", "a@b", "bad address@example.com"]:
+        response = client.post(
+            "/admin/users",
+            json={"email": email, "password": "ConfiguredUserPassword!456"},
+        )
+
+        assert response.status_code == 422
+
+
 def test_list_and_detail_return_safe_metadata() -> None:
     user = _user(role="USER")
     fake_session = _FakeSession([user])
@@ -183,6 +202,8 @@ def test_list_and_detail_return_safe_metadata() -> None:
 
     assert list_response.status_code == 200
     assert detail_response.status_code == 200
+    assert list_response.json()[0]["user_id"] == str(user.id)
+    assert detail_response.json()["user_id"] == str(user.id)
     assert list_response.json()[0]["id"] == str(user.id)
     assert detail_response.json()["id"] == str(user.id)
     _assert_safe_user_payload(list_response.json()[0])
@@ -214,6 +235,21 @@ def test_role_and_status_patch_validate_values_and_update_existing_user() -> Non
     assert invalid_role_response.status_code == 422
     assert invalid_status_response.status_code == 422
     assert fake_session.commits == 2
+
+
+def test_admin_cannot_demote_or_disable_self() -> None:
+    current_admin = _user(role="ADMIN")
+    fake_session = _FakeSession([current_admin])
+    client = _client(fake_session, current_admin=current_admin)
+
+    role_response = client.patch(f"/admin/users/{current_admin.id}/role", json={"role": "USER"})
+    status_response = client.patch(f"/admin/users/{current_admin.id}/status", json={"status": "DISABLED"})
+
+    assert role_response.status_code == 400
+    assert status_response.status_code == 400
+    assert current_admin.role == "ADMIN"
+    assert current_admin.status == "ACTIVE"
+    assert fake_session.commits == 0
 
 
 def test_admin_users_router_uses_admin_guard() -> None:

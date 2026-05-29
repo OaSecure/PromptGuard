@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from email.utils import parseaddr
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -40,8 +41,20 @@ class AdminUserCreateRequest(BaseModel):
     @classmethod
     def normalize_email_input(cls, value: str) -> str:
         stripped = value.strip()
-        if "@" not in stripped:
-            raise ValueError("email must contain @")
+        _, parsed = parseaddr(stripped)
+        if parsed != stripped:
+            raise ValueError("email must be a valid address")
+        local_part, separator, domain = stripped.partition("@")
+        domain_parts = domain.split(".")
+        if (
+            separator != "@"
+            or not local_part
+            or not domain
+            or any(character.isspace() for character in stripped)
+            or len(domain_parts) < 2
+            or any(not part for part in domain_parts)
+        ):
+            raise ValueError("email must be a valid address")
         return stripped
 
 
@@ -54,6 +67,7 @@ class AdminStatusPatchRequest(BaseModel):
 
 
 class AdminUserResponse(BaseModel):
+    user_id: uuid.UUID
     id: uuid.UUID
     login_id: str
     username: str
@@ -78,6 +92,7 @@ def _normalize_identifier(value: str) -> str:
 
 def _safe_user_response(user: User) -> AdminUserResponse:
     return AdminUserResponse(
+        user_id=user.id,
         id=user.id,
         login_id=user.login_id,
         username=user.username,
@@ -187,9 +202,9 @@ async def update_admin_user_role(
     current_admin: User = Depends(require_admin),
     session: AsyncSession = Depends(get_db_session),
 ) -> AdminUserResponse:
-    del current_admin
-
     user = await _get_target_user(session, user_id)
+    if user.id == current_admin.id and payload.role != "ADMIN":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="admin cannot demote self")
     user.role = payload.role
     await session.commit()
     await session.refresh(user)
@@ -203,9 +218,9 @@ async def update_admin_user_status(
     current_admin: User = Depends(require_admin),
     session: AsyncSession = Depends(get_db_session),
 ) -> AdminUserResponse:
-    del current_admin
-
     user = await _get_target_user(session, user_id)
+    if user.id == current_admin.id and payload.status != "ACTIVE":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="admin cannot disable self")
     user.status = payload.status
     await session.commit()
     await session.refresh(user)
