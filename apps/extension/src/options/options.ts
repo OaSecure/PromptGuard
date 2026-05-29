@@ -5,7 +5,8 @@ import type { AuthMeResponse, ExtensionConfigResponse, NormalizedError } from ".
 
 const apiBaseUrlInput = document.querySelector<HTMLInputElement>("#apiBaseUrl");
 const mockModeInput = document.querySelector<HTMLInputElement>("#mockMode");
-const tokenInput = document.querySelector<HTMLInputElement>("#token");
+const loginIdInput = document.querySelector<HTMLInputElement>("#loginId");
+const passwordInput = document.querySelector<HTMLInputElement>("#password");
 const saveSettingsButton = document.querySelector<HTMLButtonElement>("#saveSettings");
 const testConnectionButton = document.querySelector<HTMLButtonElement>("#testConnection");
 const syncConfigButton = document.querySelector<HTMLButtonElement>("#syncConfig");
@@ -43,7 +44,7 @@ async function loadSettings(): Promise<void> {
 }
 
 /**
- * Saves operational settings and optionally stores a trimmed bearer token.
+ * Saves operational settings and optionally signs in with credentials.
  *
  * Token handling goes through the background router so the content script never
  * needs to touch auth state.
@@ -55,8 +56,8 @@ async function saveSettings(): Promise<void> {
     renderModeStatus(settings.mockMode);
     setText(serverStatus, "Not checked after settings change");
     setText(connectionStatus, "Saved");
-  } catch {
-    setText(connectionStatus, "Settings could not be saved.");
+  } catch (error) {
+    setText(connectionStatus, errorMessage(error, "Settings could not be saved."));
   } finally {
     setButtonBusy(saveSettingsButton, false);
   }
@@ -68,11 +69,22 @@ async function persistSettings(): Promise<{ mockMode: boolean }> {
     [STORAGE_KEYS.apiBaseUrl]: apiBaseUrlInput?.value.trim() || DEFAULT_CONFIG.api_base_url,
     [STORAGE_KEYS.mockMode]: mockMode
   });
-  const token = tokenInput?.value.trim() ?? "";
-  if (token) {
-    await chrome.runtime.sendMessage({ type: "AUTH_LOGIN_REQUEST", payload: { token } });
-    if (tokenInput) {
-      tokenInput.value = "";
+  const loginId = loginIdInput?.value.trim() ?? "";
+  const password = passwordInput?.value ?? "";
+  const trimmedPassword = password.trim();
+  if (loginId || trimmedPassword) {
+    if (!loginId || !trimmedPassword) {
+      throw new Error("Login ID and password are required to sign in.");
+    }
+    const response = (await chrome.runtime.sendMessage({
+      type: "AUTH_LOGIN_REQUEST",
+      payload: { login_id: loginId, password: trimmedPassword }
+    })) as unknown;
+    if (isNormalizedError(response)) {
+      throw new Error(response.message);
+    }
+    if (passwordInput) {
+      passwordInput.value = "";
     }
   }
   return { mockMode };
@@ -99,8 +111,8 @@ async function testConnection(): Promise<void> {
     }
     setText(connectionStatus, "Connection response could not be processed.");
     setText(serverStatus, "Unknown");
-  } catch {
-    setText(connectionStatus, "Connection check failed.");
+  } catch (error) {
+    setText(connectionStatus, errorMessage(error, "Connection check failed."));
     setText(serverStatus, "Unavailable");
   } finally {
     setButtonBusy(testConnectionButton, false);
@@ -130,8 +142,8 @@ async function syncConfig(): Promise<void> {
     }
     setText(connectionStatus, response.message);
     setText(serverStatus, "Unavailable");
-  } catch {
-    setText(connectionStatus, "Config sync failed.");
+  } catch (error) {
+    setText(connectionStatus, errorMessage(error, "Config sync failed."));
     setText(serverStatus, "Unavailable");
   } finally {
     setButtonBusy(syncConfigButton, false);
@@ -200,6 +212,13 @@ function isAuthMeResponse(value: unknown): value is AuthMeResponse {
     typeof (value as AuthMeResponse).status === "string" &&
     typeof (value as AuthMeResponse).role === "string"
   );
+}
+
+function errorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+  return fallback;
 }
 
 saveSettingsButton?.addEventListener("click", () => void saveSettings());
