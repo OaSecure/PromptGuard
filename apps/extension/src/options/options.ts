@@ -90,7 +90,6 @@ async function testConnection(): Promise<void> {
     if (isAuthMeResponse(response)) {
       setText(connectionStatus, `${response.status} (${response.role})`);
       setText(serverStatus, settings.mockMode ? "Mock API ready" : "Connected");
-      setText(policyVersion, response.policy_version);
       return;
     }
     if (isNormalizedError(response)) {
@@ -198,10 +197,8 @@ function isAuthMeResponse(value: unknown): value is AuthMeResponse {
     value !== null &&
     "status" in value &&
     "role" in value &&
-    "policy_version" in value &&
     typeof (value as AuthMeResponse).status === "string" &&
-    typeof (value as AuthMeResponse).role === "string" &&
-    typeof (value as AuthMeResponse).policy_version === "string"
+    typeof (value as AuthMeResponse).role === "string"
   );
 }
 
