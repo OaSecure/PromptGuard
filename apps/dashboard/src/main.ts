@@ -2,6 +2,7 @@ import "./styles/main.css";
 
 type EventAction = "Allowed" | "Warned" | "Masked" | "Blocked";
 type RouteId = "overview" | "events" | "users" | "filters" | "status";
+type RiskLevel = "Low" | "Medium" | "High" | "Critical";
 
 type OverviewStat = {
   label: string;
@@ -15,6 +16,21 @@ type UserSummary = {
   eventCount: number;
   topSignal: string;
   lastEventAt: string;
+};
+
+type EventRecord = {
+  id: string;
+  occurredAt: string;
+  user: string;
+  department: string;
+  service: string;
+  platform: string;
+  action: EventAction;
+  riskLevel: RiskLevel;
+  riskScore: number;
+  detectionSummary: string;
+  detectionLabels: string[];
+  promptHashPrefix: string;
 };
 
 const routes: Array<{ id: RouteId; label: string }> = [
@@ -45,6 +61,65 @@ const actionTotals: Record<EventAction, number> = {
   Masked: 38,
   Blocked: 12
 };
+
+const events: EventRecord[] = [
+  {
+    id: "evt_1007",
+    occurredAt: "2026-05-26 16:42",
+    user: "admin",
+    department: "Security",
+    service: "ChatGPT",
+    platform: "Web",
+    action: "Blocked",
+    riskLevel: "Critical",
+    riskScore: 96,
+    detectionSummary: "Secret and policy match",
+    detectionLabels: ["Secret", "Internal policy"],
+    promptHashPrefix: "hmac_8f41c2"
+  },
+  {
+    id: "evt_1006",
+    occurredAt: "2026-05-26 14:18",
+    user: "user01",
+    department: "Sales",
+    service: "Claude",
+    platform: "Web",
+    action: "Masked",
+    riskLevel: "High",
+    riskScore: 82,
+    detectionSummary: "Contract metadata match",
+    detectionLabels: ["Contract", "Client term"],
+    promptHashPrefix: "hmac_6ca914"
+  },
+  {
+    id: "evt_1005",
+    occurredAt: "2026-05-25 11:03",
+    user: "user02",
+    department: "Ops",
+    service: "ChatGPT",
+    platform: "Web",
+    action: "Warned",
+    riskLevel: "Medium",
+    riskScore: 61,
+    detectionSummary: "Personal data category match",
+    detectionLabels: ["Personal data"],
+    promptHashPrefix: "hmac_3b91a0"
+  },
+  {
+    id: "evt_1004",
+    occurredAt: "2026-05-25 09:36",
+    user: "user01",
+    department: "Sales",
+    service: "ChatGPT",
+    platform: "Web",
+    action: "Allowed",
+    riskLevel: "Low",
+    riskScore: 12,
+    detectionSummary: "No policy match",
+    detectionLabels: ["None"],
+    promptHashPrefix: "hmac_1ab73e"
+  }
+];
 
 const routePlaceholders: Record<Exclude<RouteId, "overview">, string> = {
   events: "Event list and safe metadata filters will connect here.",
@@ -169,6 +244,163 @@ function renderUserRow(user: UserSummary): HTMLTableRowElement {
   return row;
 }
 
+function uniqueValues<T extends keyof EventRecord>(key: T): Array<EventRecord[T]> {
+  return [...new Set(events.map((event) => event[key]))];
+}
+
+function option(value: string, label = value): HTMLOptionElement {
+  const element = document.createElement("option");
+  element.value = value;
+  element.textContent = label;
+  return element;
+}
+
+function renderBadge(text: string, className: string): HTMLElement {
+  const badge = document.createElement("span");
+  badge.className = className;
+  badge.textContent = text;
+  return badge;
+}
+
+function eventMatches(event: EventRecord, action: string, risk: string, service: string): boolean {
+  return (!action || event.action === action) && (!risk || event.riskLevel === risk) && (!service || event.service === service);
+}
+
+function renderEventDetail(panel: HTMLElement, event: EventRecord): void {
+  panel.replaceChildren();
+  appendText(panel, "h2", "Event Detail");
+
+  const meta = document.createElement("dl");
+  meta.className = "detail-list";
+
+  const fields: Array<[string, string]> = [
+    ["Event ID", event.id],
+    ["Time", event.occurredAt],
+    ["User", `${event.user} / ${event.department}`],
+    ["Service", `${event.service} on ${event.platform}`],
+    ["Action", event.action],
+    ["Risk", `${event.riskLevel} (${event.riskScore})`],
+    ["Detection summary", event.detectionSummary],
+    ["Prompt hash prefix", event.promptHashPrefix]
+  ];
+
+  for (const [label, value] of fields) {
+    appendText(meta, "dt", label);
+    appendText(meta, "dd", value);
+  }
+
+  const labels = document.createElement("div");
+  labels.className = "tag-row";
+  for (const label of event.detectionLabels) {
+    labels.append(renderBadge(label, "tag"));
+  }
+
+  panel.append(meta, labels);
+}
+
+function renderEventRow(event: EventRecord, onSelect: (event: EventRecord) => void): HTMLTableRowElement {
+  const row = document.createElement("tr");
+  row.tabIndex = 0;
+  row.setAttribute("role", "button");
+  row.setAttribute("aria-label", `Open event ${event.id}`);
+
+  appendText(row, "td", event.occurredAt);
+  appendText(row, "td", event.user);
+  appendText(row, "td", event.service);
+  const actionCell = document.createElement("td");
+  actionCell.append(renderBadge(event.action, `badge badge--${event.action.toLowerCase()}`));
+  row.append(actionCell);
+  appendText(row, "td", event.riskLevel);
+  appendText(row, "td", String(event.riskScore));
+
+  row.addEventListener("click", () => onSelect(event));
+  row.addEventListener("keydown", (keyboardEvent) => {
+    if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") {
+      keyboardEvent.preventDefault();
+      onSelect(event);
+    }
+  });
+
+  return row;
+}
+
+function renderEvents(content: HTMLElement): void {
+  const layout = document.createElement("section");
+  layout.className = "events-layout";
+
+  const listPanel = document.createElement("section");
+  listPanel.className = "panel";
+  const header = document.createElement("div");
+  header.className = "panel-header";
+  appendText(header, "h2", "Risk Events");
+  appendText(header, "p", "Metadata-only event review").className = "muted";
+
+  const filters = document.createElement("form");
+  filters.className = "filter-bar";
+  filters.setAttribute("aria-label", "Event metadata filters");
+
+  const actionSelect = document.createElement("select");
+  actionSelect.append(option("", "All actions"));
+  for (const action of uniqueValues("action")) {
+    actionSelect.append(option(action));
+  }
+
+  const riskSelect = document.createElement("select");
+  riskSelect.append(option("", "All risk levels"));
+  for (const level of uniqueValues("riskLevel")) {
+    riskSelect.append(option(level));
+  }
+
+  const serviceSelect = document.createElement("select");
+  serviceSelect.append(option("", "All services"));
+  for (const service of uniqueValues("service")) {
+    serviceSelect.append(option(service));
+  }
+
+  filters.append(actionSelect, riskSelect, serviceSelect);
+
+  const tableWrap = document.createElement("div");
+  tableWrap.className = "table-wrap";
+  const table = document.createElement("table");
+  const thead = document.createElement("thead");
+  const headRow = document.createElement("tr");
+  for (const heading of ["Time", "User", "Service", "Action", "Risk", "Score"]) {
+    appendText(headRow, "th", heading);
+  }
+  thead.append(headRow);
+  const tbody = document.createElement("tbody");
+  table.append(thead, tbody);
+  tableWrap.append(table);
+
+  const emptyState = document.createElement("p");
+  emptyState.className = "empty-message";
+  emptyState.textContent = "No events match the selected metadata filters.";
+
+  const detailPanel = document.createElement("aside");
+  detailPanel.className = "panel detail-panel";
+
+  function refresh(): void {
+    const visibleEvents = events.filter((event) => eventMatches(event, actionSelect.value, riskSelect.value, serviceSelect.value));
+    tbody.replaceChildren(...visibleEvents.map((event) => renderEventRow(event, renderEventDetail.bind(null, detailPanel))));
+    emptyState.hidden = visibleEvents.length > 0;
+
+    if (visibleEvents.length > 0) {
+      renderEventDetail(detailPanel, visibleEvents[0]);
+      return;
+    }
+
+    detailPanel.replaceChildren();
+    appendText(detailPanel, "h2", "Event Detail");
+    appendText(detailPanel, "p", "Select a different metadata filter to review an event.").className = "muted";
+  }
+
+  filters.addEventListener("change", refresh);
+  listPanel.append(header, filters, tableWrap, emptyState);
+  layout.append(listPanel, detailPanel);
+  content.replaceChildren(layout);
+  refresh();
+}
+
 function renderOverview(content: HTMLElement): void {
   const stats = document.createElement("section");
   stats.className = "stats";
@@ -241,6 +473,11 @@ function render(): void {
 
   if (route === "overview") {
     renderOverview(shell.content);
+    return;
+  }
+
+  if (route === "events") {
+    renderEvents(shell.content);
     return;
   }
 
