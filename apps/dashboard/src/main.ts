@@ -1,8 +1,8 @@
 import "./styles/main.css";
 
-type EventAction = "Allowed" | "Warned" | "Masked" | "Blocked";
-type RouteId = "overview" | "events" | "users" | "filters" | "status";
-type RiskLevel = "Low" | "Medium" | "High" | "Critical";
+type RouteId = "login" | "admin" | "events" | "users" | "event-detail";
+type EventAction = "Block" | "Mask" | "Warn";
+type RiskClass = "critical" | "high" | "medium";
 
 type OverviewStat = {
   label: string;
@@ -11,132 +11,19 @@ type OverviewStat = {
   description: string;
 };
 
-type UserSummary = {
-  name: string;
-  department: string;
-  eventCount: number;
-  topSignal: string;
-  lastEventAt: string;
-};
-
-type EventRecord = {
-  id: string;
-  occurredAt: string;
+type RiskEvent = {
+  eventId: string;
+  time: string;
   user: string;
-  department: string;
   service: string;
-  platform: string;
   action: EventAction;
-  riskLevel: RiskLevel;
+  riskLevel: "Critical" | "High" | "Medium";
+  riskClass: RiskClass;
   riskScore: number;
-  detectionSummary: string;
-  detectionLabels: string[];
-  promptHashPrefix: string;
-};
-
-const routes: Array<{ id: RouteId; label: string }> = [
-  { id: "events", label: "Events" },
-  { id: "users", label: "Users" },
-  { id: "filters", label: "Filters" },
-  { id: "status", label: "Status" }
-];
-
-const overviewStats: OverviewStat[] = [
-  { label: "Total Events", value: 128, description: "Analyzed AI requests for the selected period" },
-  { label: "Blocked", value: 12, tone: "danger", description: "Requests stopped before leaving the workflow" },
-  { label: "Masked", value: 38, tone: "safe", description: "Sensitive values replaced before send" },
-  { label: "Warned", value: 17, tone: "warning", description: "Requests held for user confirmation" },
-  { label: "Active Users", value: 24, tone: "users", description: "Users active in the selected period" }
-];
-
-const actionTotals: Record<EventAction, number> = {
-  Allowed: 61,
-  Blocked: 12,
-  Masked: 38,
-  Warned: 17
-};
-
-const userSummaries: UserSummary[] = [
-  { name: "admin", department: "Security", eventCount: 32, topSignal: "Secret", lastEventAt: "2026-05-26" },
-  { name: "user01", department: "Sales", eventCount: 28, topSignal: "Contract", lastEventAt: "2026-05-26" },
-  { name: "user02", department: "Ops", eventCount: 21, topSignal: "PII", lastEventAt: "2026-05-25" },
-  { name: "user03", department: "Planning", eventCount: 18, topSignal: "Strategy", lastEventAt: "2026-05-25" },
-  { name: "guest", department: "Support", eventCount: 9, topSignal: "Email", lastEventAt: "2026-05-24" }
-];
-
-const periodTotals = [
-  { date: "05-20", total: 14 },
-  { date: "05-21", total: 18 },
-  { date: "05-22", total: 20 },
-  { date: "05-23", total: 16 },
-  { date: "05-24", total: 24 },
-  { date: "05-25", total: 17 },
-  { date: "05-26", total: 19 }
-];
-
-const events: EventRecord[] = [
-  {
-    id: "evt_1007",
-    occurredAt: "2026-05-26 16:42",
-    user: "admin",
-    department: "Security",
-    service: "ChatGPT",
-    platform: "Web",
-    action: "Blocked",
-    riskLevel: "Critical",
-    riskScore: 96,
-    detectionSummary: "Secret and policy match",
-    detectionLabels: ["Secret", "Internal policy"],
-    promptHashPrefix: "hmac_8f41c2"
-  },
-  {
-    id: "evt_1006",
-    occurredAt: "2026-05-26 14:18",
-    user: "user01",
-    department: "Sales",
-    service: "Claude",
-    platform: "Web",
-    action: "Masked",
-    riskLevel: "High",
-    riskScore: 82,
-    detectionSummary: "Contract metadata match",
-    detectionLabels: ["Contract", "Client term"],
-    promptHashPrefix: "hmac_6ca914"
-  },
-  {
-    id: "evt_1005",
-    occurredAt: "2026-05-25 11:03",
-    user: "user02",
-    department: "Ops",
-    service: "ChatGPT",
-    platform: "Web",
-    action: "Warned",
-    riskLevel: "Medium",
-    riskScore: 61,
-    detectionSummary: "Personal data category match",
-    detectionLabels: ["Personal data"],
-    promptHashPrefix: "hmac_3b91a0"
-  },
-  {
-    id: "evt_1004",
-    occurredAt: "2026-05-25 09:36",
-    user: "user01",
-    department: "Sales",
-    service: "ChatGPT",
-    platform: "Web",
-    action: "Allowed",
-    riskLevel: "Low",
-    riskScore: 12,
-    detectionSummary: "No policy match",
-    detectionLabels: ["None"],
-    promptHashPrefix: "hmac_1ab73e"
-  }
-];
-
-const routePlaceholders: Record<Exclude<RouteId, "overview" | "events">, string> = {
-  users: "ADMIN-managed users, roles, status controls, and user statistics will connect here.",
-  filters: "Unified Filter Rule Management and dry-run controls will connect here.",
-  status: "API, database, migration, and dependency health metadata will connect here."
+  summary: string;
+  detector: string;
+  promptHash: string;
+  platform: string;
 };
 
 const app = document.querySelector<HTMLDivElement>("#app");
@@ -146,6 +33,85 @@ if (!app) {
 }
 
 const appRoot = app;
+let authenticated = false;
+
+const overviewStats: OverviewStat[] = [
+  { label: "Total Events", value: 128, description: "분석된 프롬프트/파일 요청 수" },
+  { label: "Blocked", value: 12, tone: "danger", description: "위험도가 높아 차단된 건수" },
+  { label: "Masked", value: 38, tone: "safe", description: "민감정보가 마스킹된 건수" },
+  { label: "Warned", value: 17, tone: "warning", description: "사용자에게 경고 처리된 건수" },
+  { label: "Active Users", value: 24, tone: "users", description: "기간 내 사용한 사용자 수" }
+];
+
+const actionStats: Record<string, number> = {
+  Allowed: 61,
+  Blocked: 12,
+  Masked: 38,
+  Warned: 17
+};
+
+const userStats: Record<string, number> = {
+  admin: 32,
+  user01: 28,
+  user02: 21,
+  user03: 18,
+  guest: 9
+};
+
+const periodStats: Record<string, number> = {
+  "05-20": 14,
+  "05-21": 18,
+  "05-22": 20,
+  "05-23": 16,
+  "05-24": 24,
+  "05-25": 17,
+  "05-26": 19
+};
+
+const events: RiskEvent[] = [
+  {
+    eventId: "EVT-20260529-003",
+    time: "10:32",
+    user: "김OO",
+    service: "ChatGPT",
+    action: "Block",
+    riskLevel: "Critical",
+    riskClass: "critical",
+    riskScore: 94,
+    summary: "API Key 형태의 민감정보 탐지",
+    detector: "secret / api_key",
+    promptHash: "ph_9a4c",
+    platform: "Web"
+  },
+  {
+    eventId: "EVT-20260529-002",
+    time: "10:28",
+    user: "박OO",
+    service: "ChatGPT",
+    action: "Mask",
+    riskLevel: "High",
+    riskClass: "high",
+    riskScore: 72,
+    summary: "전화번호 형태의 개인정보 탐지",
+    detector: "pii / phone",
+    promptHash: "ph_7d2a",
+    platform: "Web"
+  },
+  {
+    eventId: "EVT-20260529-001",
+    time: "10:15",
+    user: "이OO",
+    service: "ChatGPT",
+    action: "Warn",
+    riskLevel: "Medium",
+    riskClass: "medium",
+    riskScore: 51,
+    summary: "계약 관련 내부 정보 탐지",
+    detector: "business / contract",
+    promptHash: "ph_3f81",
+    platform: "Web"
+  }
+];
 
 function appendText(parent: HTMLElement, tagName: keyof HTMLElementTagNameMap, text: string): HTMLElement {
   const element = document.createElement(tagName);
@@ -154,196 +120,253 @@ function appendText(parent: HTMLElement, tagName: keyof HTMLElementTagNameMap, t
   return element;
 }
 
-function currentRoute(): RouteId {
-  const hash = window.location.hash.replace("#", "");
-  return routes.some((route) => route.id === hash) ? (hash as RouteId) : "overview";
+function createLink(text: string, hash: string, className: string): HTMLAnchorElement {
+  const link = document.createElement("a");
+  link.href = hash;
+  link.className = className;
+  link.textContent = text;
+  return link;
 }
 
-function renderShell(): { nav: HTMLElement; content: HTMLElement; logoutMessage: HTMLElement } {
-  const fragment = document.createDocumentFragment();
+function navigate(hash: string): void {
+  window.location.hash = hash;
+}
 
+function routeFromHash(): RouteId {
+  const hash = window.location.hash.replace("#", "");
+
+  if (hash.startsWith("events/detail/")) {
+    return "event-detail";
+  }
+
+  if (hash === "admin" || hash === "events" || hash === "users") {
+    return hash;
+  }
+
+  return authenticated ? "admin" : "login";
+}
+
+function renderHeader(eyebrow: string, title: string, description: string, links: HTMLElement[]): HTMLElement {
   const header = document.createElement("header");
   header.className = "admin-header";
 
-  const headerCopy = document.createElement("div");
-  appendText(headerCopy, "p", "OASecure Admin Dashboard").className = "eyebrow";
-  appendText(headerCopy, "h1", "Admin Dashboard");
-  appendText(headerCopy, "p", "Review organizational AI risk activity through safe metadata.").className = "header-desc";
+  const copy = document.createElement("div");
+  appendText(copy, "p", eyebrow).className = "eyebrow";
+  appendText(copy, "h1", title);
+  appendText(copy, "p", description).className = "header-desc";
 
-  const actions = document.createElement("nav");
-  actions.className = "header-actions";
-  actions.setAttribute("aria-label", "Dashboard sections");
-  const nav = document.createElement("div");
-  nav.className = "nav-links";
-  actions.append(nav);
+  const nav = document.createElement("nav");
+  nav.className = "header-actions";
+  nav.append(...links);
 
-  const logoutWrap = document.createElement("div");
-  logoutWrap.className = "logout-wrap";
-  const logoutButton = appendText(logoutWrap, "button", "Log out") as HTMLButtonElement;
-  logoutButton.type = "button";
-  logoutButton.className = "logout-button";
-  const logoutMessage = appendText(logoutWrap, "span", "");
-  logoutMessage.className = "session-message";
-  logoutButton.addEventListener("click", () => {
-    logoutMessage.textContent = "Dashboard session API will handle logout when authentication is connected.";
-  });
-  actions.append(logoutWrap);
-
-  header.append(headerCopy, actions);
-
-  const content = document.createElement("main");
-  content.className = "dashboard";
-
-  fragment.append(header, content);
-  appRoot.replaceChildren(fragment);
-
-  return { nav, content, logoutMessage };
+  header.append(copy, nav);
+  return header;
 }
 
-function renderNavigation(nav: HTMLElement, activeRoute: RouteId): void {
-  nav.replaceChildren();
+function renderLogin(): void {
+  const shell = document.createElement("main");
+  shell.className = "login-page";
 
-  const overview = document.createElement("a");
-  overview.href = "#overview";
-  overview.className = "nav-button";
-  overview.textContent = "Overview";
-  if (activeRoute === "overview") {
-    overview.setAttribute("aria-current", "page");
-  }
-  nav.append(overview);
+  const card = document.createElement("section");
+  card.className = "login-card";
+  appendText(card, "p", "OASecure Admin Dashboard").className = "eyebrow";
+  appendText(card, "h1", "관리자 로그인");
+  appendText(card, "p", "관리자 계정으로 로그인하면 대시보드와 이벤트 관리 화면을 확인할 수 있습니다.").className = "login-desc";
 
-  for (const route of routes) {
-    const link = document.createElement("a");
-    link.href = `#${route.id}`;
-    link.className = "nav-button";
-    link.textContent = route.label;
+  const form = document.createElement("form");
+  form.className = "login-form";
 
-    if (route.id === activeRoute) {
-      link.setAttribute("aria-current", "page");
+  const idLabel = appendText(form, "label", "아이디");
+  const idInput = document.createElement("input");
+  idInput.name = "username";
+  idInput.type = "text";
+  idInput.autocomplete = "username";
+  idLabel.append(idInput);
+
+  const passwordLabel = appendText(form, "label", "비밀번호");
+  const passwordInput = document.createElement("input");
+  passwordInput.name = "password";
+  passwordInput.type = "password";
+  passwordInput.autocomplete = "current-password";
+  passwordLabel.append(passwordInput);
+
+  const message = appendText(form, "p", "");
+  message.className = "login-message";
+
+  const button = appendText(form, "button", "로그인") as HTMLButtonElement;
+  button.type = "submit";
+  button.className = "login-button";
+
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+
+    if (idInput.value === "admin" && passwordInput.value === "1234") {
+      authenticated = true;
+      navigate("admin");
+      render();
+      return;
     }
 
-    nav.append(link);
-  }
+    message.textContent = "아이디 또는 비밀번호가 올바르지 않습니다.";
+  });
+
+  card.append(form);
+  shell.append(card);
+  appRoot.replaceChildren(shell);
 }
 
-function renderSectionTitle(title: string, description: string): HTMLElement {
-  const wrap = document.createElement("div");
-  wrap.className = "section-title-wrap";
-  const text = document.createElement("div");
-  appendText(text, "h2", title);
-  appendText(text, "p", description);
-  wrap.append(text);
-  return wrap;
-}
-
-function renderOverviewCard(stat: OverviewStat): HTMLElement {
-  const card = document.createElement("article");
+function renderOverviewCard(stat: OverviewStat, href?: string): HTMLElement {
+  const card = href ? document.createElement("a") : document.createElement("article");
   card.className = stat.tone ? `overview-card ${stat.tone}` : "overview-card";
+  if (href) {
+    (card as HTMLAnchorElement).href = href;
+    card.classList.add("event-link-card");
+  }
   appendText(card, "span", stat.label).className = "card-label";
   appendText(card, "strong", String(stat.value));
   appendText(card, "p", stat.description);
   return card;
 }
 
-function renderActionChart(): HTMLElement {
-  const card = document.createElement("article");
-  card.className = "chart-card";
-  const title = document.createElement("div");
-  title.className = "chart-title";
-  appendText(title, "h3", "Action Statistics");
-  appendText(title, "p", "Allowed, Blocked, Masked, and Warned distribution");
+function renderSectionTitle(title: string, description: string): HTMLElement {
+  const wrap = document.createElement("div");
+  wrap.className = "section-title-wrap";
+  const copy = document.createElement("div");
+  appendText(copy, "h2", title);
+  appendText(copy, "p", description);
+  wrap.append(copy);
+  return wrap;
+}
 
+function renderBarChart(): HTMLElement {
   const chart = document.createElement("div");
-  chart.className = "bar-chart";
-  const max = Math.max(...Object.values(actionTotals));
+  chart.className = "chart-box bar-chart";
+  const max = Math.max(...Object.values(actionStats));
 
-  for (const [action, total] of Object.entries(actionTotals) as Array<[EventAction, number]>) {
+  for (const [label, value] of Object.entries(actionStats)) {
     const row = document.createElement("div");
     row.className = "bar-row";
-    appendText(row, "span", action);
+    appendText(row, "span", label);
     const track = document.createElement("div");
     track.className = "bar-track";
     const fill = document.createElement("i");
-    fill.className = `bar-fill ${action.toLowerCase()}`;
-    fill.style.width = `${Math.max(8, Math.round((total / max) * 100))}%`;
+    fill.className = `bar-fill ${label.toLowerCase()}`;
+    fill.style.width = `${Math.max(8, Math.round((value / max) * 100))}%`;
     track.append(fill);
-    appendText(row, "strong", String(total));
-    row.insertBefore(track, row.lastChild);
+    row.append(track);
+    appendText(row, "strong", String(value));
     chart.append(row);
   }
 
-  card.append(title, chart);
-  return card;
+  return chart;
 }
 
 function renderUserChart(): HTMLElement {
-  const card = document.createElement("article");
-  card.className = "chart-card";
-  const title = document.createElement("div");
-  title.className = "chart-title";
-  appendText(title, "h3", "User Statistics");
-  appendText(title, "p", "AI request and detection event counts by user");
-
   const list = document.createElement("ol");
-  list.className = "donut-list";
-  userSummaries.forEach((user, index) => {
+  list.className = "chart-box donut-list";
+  const colors = ["#2f80ed", "#56ccf2", "#27ae60", "#f2994a", "#9b51e0"];
+  Object.entries(userStats).forEach(([label, value], index) => {
     const item = document.createElement("li");
-    item.style.setProperty("--slice-color", ["#2f80ed", "#56ccf2", "#27ae60", "#f2994a", "#9b51e0"][index]);
-    appendText(item, "span", user.name);
-    appendText(item, "strong", String(user.eventCount));
+    item.style.setProperty("--slice-color", colors[index]);
+    appendText(item, "span", label);
+    appendText(item, "strong", String(value));
     list.append(item);
   });
-
-  card.append(title, list);
-  return card;
+  return list;
 }
 
 function renderPeriodChart(): HTMLElement {
-  const card = document.createElement("article");
-  card.className = "chart-card wide";
-  const title = document.createElement("div");
-  title.className = "chart-title";
-  appendText(title, "h3", "Period Statistics");
-  appendText(title, "p", "Seven-day AI risk event trend");
-
   const chart = document.createElement("div");
-  chart.className = "period-chart";
-  const max = Math.max(...periodTotals.map((item) => item.total));
+  chart.className = "chart-box wide-chart period-chart";
+  const max = Math.max(...Object.values(periodStats));
 
-  for (const item of periodTotals) {
+  for (const [date, total] of Object.entries(periodStats)) {
     const column = document.createElement("div");
     column.className = "period-column";
+    appendText(column, "strong", String(total));
     const bar = document.createElement("i");
-    bar.style.height = `${Math.max(18, Math.round((item.total / max) * 100))}%`;
-    appendText(column, "strong", String(item.total));
+    bar.style.height = `${Math.max(18, Math.round((total / max) * 100))}%`;
     column.append(bar);
-    appendText(column, "span", item.date);
+    appendText(column, "span", date);
     chart.append(column);
   }
 
-  card.append(title, chart);
-  return card;
+  return chart;
 }
 
-function renderUserRow(user: UserSummary): HTMLTableRowElement {
+function renderDashboard(): void {
+  const fragment = document.createDocumentFragment();
+  fragment.append(
+    renderHeader("OASecure Admin Dashboard", "관리자 대시보드", "오늘 우리 조직의 AI 사용 위험 현황을 한눈에 확인합니다.", [
+      createLink("이벤트 관리", "#events", "nav-button"),
+      createLink("사용자 관리", "#users", "nav-button"),
+      createLink("로그아웃", "#login", "logout-button")
+    ])
+  );
+
+  const main = document.createElement("main");
+  main.className = "dashboard";
+
+  const overview = document.createElement("section");
+  overview.className = "overview-section";
+  overview.append(renderSectionTitle("Overview", "오늘 우리 조직의 AI 사용 위험 현황"));
+  const grid = document.createElement("div");
+  grid.className = "overview-grid";
+  grid.append(...overviewStats.map((stat) => renderOverviewCard(stat)));
+  overview.append(grid);
+
+  const charts = document.createElement("section");
+  charts.className = "chart-section";
+  charts.append(renderSectionTitle("Statistics", "이벤트별, 사용자별, 기간별 통계를 차트로 확인합니다."));
+  const chartGrid = document.createElement("div");
+  chartGrid.className = "chart-grid";
+
+  const eventCard = document.createElement("article");
+  eventCard.className = "chart-card";
+  const eventTitle = document.createElement("div");
+  eventTitle.className = "chart-title";
+  appendText(eventTitle, "h3", "이벤트별 통계");
+  appendText(eventTitle, "p", "Allowed, Blocked, Masked, Warned 비율");
+  eventCard.append(eventTitle, renderBarChart());
+
+  const userCard = document.createElement("article");
+  userCard.className = "chart-card";
+  const userTitle = document.createElement("div");
+  userTitle.className = "chart-title";
+  appendText(userTitle, "h3", "사용자별 통계");
+  appendText(userTitle, "p", "사용자별 AI 요청/탐지 이벤트 수");
+  userCard.append(userTitle, renderUserChart());
+
+  const periodCard = document.createElement("article");
+  periodCard.className = "chart-card wide";
+  const periodTitle = document.createElement("div");
+  periodTitle.className = "chart-title";
+  appendText(periodTitle, "h3", "기간별 통계");
+  appendText(periodTitle, "p", "최근 7일간 AI 사용 위험 이벤트 추이");
+  periodCard.append(periodTitle, renderPeriodChart());
+
+  chartGrid.append(eventCard, userCard, periodCard);
+  charts.append(chartGrid);
+  main.append(overview, charts);
+  fragment.append(main);
+  appRoot.replaceChildren(fragment);
+}
+
+function renderEventRow(event: RiskEvent): HTMLTableRowElement {
   const row = document.createElement("tr");
-  appendText(row, "td", user.name);
-  appendText(row, "td", user.department);
-  appendText(row, "td", user.topSignal);
-  appendText(row, "td", String(user.eventCount));
-  appendText(row, "td", user.lastEventAt);
+  appendText(row, "td", event.time);
+  appendText(row, "td", event.user);
+  appendText(row, "td", event.service);
+
+  const actionCell = document.createElement("td");
+  actionCell.append(renderBadge(event.action, `status-badge result-${event.action.toLowerCase()}ed`));
+  row.append(actionCell);
+
+  const riskCell = document.createElement("td");
+  riskCell.append(renderBadge(event.riskLevel, `risk-badge risk-${event.riskClass}`));
+  row.append(riskCell);
+  appendText(row, "td", event.detector.split(" / ")[1] ?? event.detector);
   return row;
-}
-
-function uniqueValues<T extends keyof EventRecord>(key: T): Array<EventRecord[T]> {
-  return [...new Set(events.map((event) => event[key]))];
-}
-
-function option(value: string, label = value): HTMLOptionElement {
-  const element = document.createElement("option");
-  element.value = value;
-  element.textContent = label;
-  return element;
 }
 
 function renderBadge(text: string, className: string): HTMLElement {
@@ -353,221 +376,211 @@ function renderBadge(text: string, className: string): HTMLElement {
   return badge;
 }
 
-function eventMatches(event: EventRecord, action: string, risk: string, service: string): boolean {
-  return (!action || event.action === action) && (!risk || event.riskLevel === risk) && (!service || event.service === service);
-}
+function renderEvents(): void {
+  const fragment = document.createDocumentFragment();
+  fragment.append(
+    renderHeader("OASecure Event Monitoring", "이벤트 관리", "탐지된 위험 이벤트를 확인하고 상세 정보를 조회합니다.", [
+      createLink("대시보드", "#admin", "nav-button"),
+      createLink("사용자 관리", "#users", "nav-button"),
+      createLink("로그아웃", "#login", "logout-button")
+    ])
+  );
 
-function renderEventDetail(panel: HTMLElement, event: EventRecord): void {
-  panel.replaceChildren();
-  appendText(panel, "h2", "Event Detail");
+  const main = document.createElement("main");
+  main.className = "dashboard";
 
-  const meta = document.createElement("dl");
-  meta.className = "detail-list";
+  const overview = document.createElement("section");
+  overview.className = "overview-section";
+  overview.append(renderSectionTitle("Events Overview", "오늘 탐지된 위험 이벤트 현황"));
+  const grid = document.createElement("div");
+  grid.className = "overview-grid event-overview-grid";
+  grid.append(
+    renderOverviewCard({ label: "Total Events", value: events.length, description: "전체 탐지 이벤트 수" }, "#events/detail/all"),
+    renderOverviewCard({ label: "Critical", value: events.filter((event) => event.riskClass === "critical").length, tone: "danger", description: "즉시 차단이 필요한 이벤트" }, "#events/detail/critical"),
+    renderOverviewCard({ label: "High", value: events.filter((event) => event.riskClass === "high").length, tone: "warning", description: "주의 깊게 확인해야 하는 이벤트" }, "#events/detail/high"),
+    renderOverviewCard({ label: "Medium", value: events.filter((event) => event.riskClass === "medium").length, tone: "safe", description: "모니터링이 필요한 이벤트" }, "#events/detail/medium")
+  );
+  overview.append(grid);
 
-  const fields: Array<[string, string]> = [
-    ["Event ID", event.id],
-    ["Time", event.occurredAt],
-    ["User", `${event.user} / ${event.department}`],
-    ["Service", `${event.service} on ${event.platform}`],
-    ["Action", event.action],
-    ["Risk", `${event.riskLevel} (${event.riskScore})`],
-    ["Detection summary", event.detectionSummary],
-    ["Prompt hash prefix", event.promptHashPrefix]
-  ];
-
-  for (const [label, value] of fields) {
-    appendText(meta, "dt", label);
-    appendText(meta, "dd", value);
-  }
-
-  const labels = document.createElement("div");
-  labels.className = "tag-row";
-  for (const label of event.detectionLabels) {
-    labels.append(renderBadge(label, "tag"));
-  }
-
-  panel.append(meta, labels);
-}
-
-function renderEventRow(event: EventRecord, onSelect: (event: EventRecord) => void): HTMLTableRowElement {
-  const row = document.createElement("tr");
-  row.tabIndex = 0;
-  row.setAttribute("role", "button");
-  row.setAttribute("aria-label", `Open event ${event.id}`);
-
-  appendText(row, "td", event.occurredAt);
-  appendText(row, "td", event.user);
-  appendText(row, "td", event.service);
-  const actionCell = document.createElement("td");
-  actionCell.append(renderBadge(event.action, `badge badge--${event.action.toLowerCase()}`));
-  row.append(actionCell);
-  appendText(row, "td", event.riskLevel);
-  appendText(row, "td", String(event.riskScore));
-
-  row.addEventListener("click", () => onSelect(event));
-  row.addEventListener("keydown", (keyboardEvent) => {
-    if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") {
-      keyboardEvent.preventDefault();
-      onSelect(event);
-    }
-  });
-
-  return row;
-}
-
-function renderEvents(content: HTMLElement): void {
-  const layout = document.createElement("section");
-  layout.className = "events-layout";
-
-  const listPanel = document.createElement("section");
-  listPanel.className = "table-card event-list-card";
-  const header = document.createElement("div");
-  header.className = "panel-header";
-  appendText(header, "h2", "Risk Events");
-  appendText(header, "p", "Metadata-only event review").className = "muted";
-
-  const filters = document.createElement("form");
-  filters.className = "filter-bar";
-  filters.setAttribute("aria-label", "Event metadata filters");
-
-  const actionSelect = document.createElement("select");
-  actionSelect.append(option("", "All actions"));
-  for (const action of uniqueValues("action")) {
-    actionSelect.append(option(action));
-  }
-
-  const riskSelect = document.createElement("select");
-  riskSelect.append(option("", "All risk levels"));
-  for (const level of uniqueValues("riskLevel")) {
-    riskSelect.append(option(level));
-  }
-
-  const serviceSelect = document.createElement("select");
-  serviceSelect.append(option("", "All services"));
-  for (const service of uniqueValues("service")) {
-    serviceSelect.append(option(service));
-  }
-
-  filters.append(actionSelect, riskSelect, serviceSelect);
-
-  const tableWrap = document.createElement("div");
-  tableWrap.className = "table-wrap";
-  const table = document.createElement("table");
-  table.className = "data-table";
-  const thead = document.createElement("thead");
-  const headRow = document.createElement("tr");
-  for (const heading of ["Time", "User", "Service", "Action", "Risk", "Score"]) {
-    appendText(headRow, "th", heading);
-  }
-  thead.append(headRow);
-  const tbody = document.createElement("tbody");
-  table.append(thead, tbody);
-  tableWrap.append(table);
-
-  const emptyState = document.createElement("p");
-  emptyState.className = "empty-message";
-  emptyState.textContent = "No events match the selected metadata filters.";
-
-  const detailPanel = document.createElement("aside");
-  detailPanel.className = "table-card detail-panel";
-
-  function refresh(): void {
-    const visibleEvents = events.filter((event) => eventMatches(event, actionSelect.value, riskSelect.value, serviceSelect.value));
-    tbody.replaceChildren(...visibleEvents.map((event) => renderEventRow(event, renderEventDetail.bind(null, detailPanel))));
-    emptyState.hidden = visibleEvents.length > 0;
-
-    if (visibleEvents.length > 0) {
-      renderEventDetail(detailPanel, visibleEvents[0]);
-      return;
-    }
-
-    detailPanel.replaceChildren();
-    appendText(detailPanel, "h2", "Event Detail");
-    appendText(detailPanel, "p", "Select a different metadata filter to review an event.").className = "muted";
-  }
-
-  filters.addEventListener("change", refresh);
-  listPanel.append(header, filters, tableWrap, emptyState);
-  layout.append(listPanel, detailPanel);
-  content.replaceChildren(layout);
-  refresh();
-}
-
-function renderUserTable(): HTMLElement {
-  const section = document.createElement("section");
-  section.className = "table-section";
-  section.append(renderSectionTitle("User Event Summary", "Top detection category and latest activity by user"));
-
-  const card = document.createElement("article");
+  const tableSection = document.createElement("section");
+  tableSection.className = "table-section";
+  tableSection.append(renderSectionTitle("Risk Events", "원문 프롬프트는 저장하지 않고 탐지 결과만 표시합니다."));
+  const card = document.createElement("div");
   card.className = "table-card";
   const table = document.createElement("table");
   table.className = "data-table";
   const thead = document.createElement("thead");
-  const headRow = document.createElement("tr");
-  for (const heading of ["User", "Department", "Top signal", "Events", "Last event"]) {
-    appendText(headRow, "th", heading);
+  const head = document.createElement("tr");
+  for (const label of ["시간", "사용자", "서비스", "Action", "위험도", "탐지 유형"]) {
+    appendText(head, "th", label);
   }
-  thead.append(headRow);
-
+  thead.append(head);
   const tbody = document.createElement("tbody");
-  tbody.append(...userSummaries.map(renderUserRow));
+  tbody.append(...events.map(renderEventRow));
+  table.append(thead, tbody);
+  card.append(table);
+  tableSection.append(card);
+
+  main.append(overview, tableSection);
+  fragment.append(main);
+  appRoot.replaceChildren(fragment);
+}
+
+function eventDetailTitle(filter: string): string {
+  if (filter === "critical") return "Critical 이벤트 상세보기";
+  if (filter === "high") return "High 이벤트 상세보기";
+  if (filter === "medium") return "Medium 이벤트 상세보기";
+  return "전체 이벤트 상세보기";
+}
+
+function filteredEvents(): RiskEvent[] {
+  const filter = window.location.hash.replace("#events/detail/", "");
+  if (filter === "critical" || filter === "high" || filter === "medium") {
+    return events.filter((event) => event.riskClass === filter);
+  }
+  return events;
+}
+
+function renderBoardRows(items: RiskEvent[]): HTMLTableRowElement[] {
+  return items.flatMap((event, index) => {
+    const row = document.createElement("tr");
+    row.className = "board-row";
+    appendText(row, "td", String(index + 1));
+
+    const titleCell = document.createElement("td");
+    const button = document.createElement("button");
+    button.className = "board-title-button";
+    button.type = "button";
+    const icon = appendText(button, "span", "＋");
+    icon.className = "toggle-icon";
+    button.append(document.createTextNode(event.summary));
+    titleCell.append(button);
+    row.append(titleCell);
+
+    appendText(row, "td", event.user);
+    const riskCell = document.createElement("td");
+    riskCell.append(renderBadge(event.riskLevel, `risk-badge risk-${event.riskClass}`));
+    row.append(riskCell);
+    appendText(row, "td", event.action);
+    appendText(row, "td", event.time);
+
+    const detailRow = document.createElement("tr");
+    detailRow.className = "board-detail-row";
+    const detailCell = document.createElement("td");
+    detailCell.colSpan = 6;
+    const detailBox = document.createElement("div");
+    detailBox.className = "board-detail-box";
+    const fields: Array<[string, string]> = [
+      ["이벤트 ID", event.eventId],
+      ["시간", event.time],
+      ["사용자", event.user],
+      ["서비스", event.service],
+      ["Action", event.action],
+      ["위험도 점수", String(event.riskScore)],
+      ["위험도", event.riskLevel],
+      ["탐지 요약", event.summary],
+      ["탐지 항목", event.detector],
+      ["프롬프트 해시", event.promptHash],
+      ["플랫폼", event.platform]
+    ];
+
+    for (const [label, value] of fields) {
+      const item = document.createElement("div");
+      appendText(item, "span", label);
+      appendText(item, "strong", value);
+      detailBox.append(item);
+    }
+
+    detailCell.append(detailBox);
+    detailRow.append(detailCell);
+
+    button.addEventListener("click", () => {
+      const isOpen = detailRow.style.display === "table-row";
+      detailRow.style.display = isOpen ? "none" : "table-row";
+      icon.textContent = isOpen ? "＋" : "－";
+    });
+
+    return [row, detailRow];
+  });
+}
+
+function renderEventDetail(): void {
+  const filter = window.location.hash.replace("#events/detail/", "");
+  const fragment = document.createDocumentFragment();
+  fragment.append(
+    renderHeader("OASecure Event Detail", eventDetailTitle(filter), "선택한 위험도에 해당하는 이벤트 제목을 클릭하면 상세 내용을 확인할 수 있습니다.", [
+      createLink("이벤트 목록", "#events", "nav-button"),
+      createLink("대시보드", "#admin", "nav-button"),
+      createLink("로그아웃", "#login", "logout-button")
+    ])
+  );
+
+  const main = document.createElement("main");
+  main.className = "dashboard";
+  const section = document.createElement("section");
+  section.className = "table-section";
+  section.append(renderSectionTitle("상세 이벤트 게시판", "원문 프롬프트는 저장하지 않고 탐지 결과만 표시합니다."));
+
+  const card = document.createElement("div");
+  card.className = "table-card";
+  const table = document.createElement("table");
+  table.className = "data-table detail-board-table";
+  const thead = document.createElement("thead");
+  const head = document.createElement("tr");
+  for (const label of ["No.", "제목", "사용자", "위험도", "Action", "시간"]) {
+    appendText(head, "th", label);
+  }
+  thead.append(head);
+  const tbody = document.createElement("tbody");
+  tbody.append(...renderBoardRows(filteredEvents()));
   table.append(thead, tbody);
   card.append(table);
   section.append(card);
-  return section;
+  main.append(section);
+  fragment.append(main);
+  appRoot.replaceChildren(fragment);
 }
 
-function renderOverview(content: HTMLElement): void {
-  const overview = document.createElement("section");
-  overview.className = "overview-section";
-  overview.append(renderSectionTitle("Overview", "AI usage risk overview for the organization"));
-  const overviewGrid = document.createElement("div");
-  overviewGrid.className = "overview-grid";
-  overviewGrid.append(...overviewStats.map(renderOverviewCard));
-  overview.append(overviewGrid);
-
-  const charts = document.createElement("section");
-  charts.className = "chart-section";
-  charts.append(renderSectionTitle("Statistics", "Review action, user, and period-level metadata."));
-  const chartGrid = document.createElement("div");
-  chartGrid.className = "chart-grid";
-  chartGrid.append(renderActionChart(), renderUserChart(), renderPeriodChart());
-  charts.append(chartGrid);
-
-  content.replaceChildren(overview, charts, renderUserTable());
-}
-
-function renderPlaceholder(content: HTMLElement, route: Exclude<RouteId, "overview" | "events">): void {
+function renderUsers(): void {
+  const fragment = document.createDocumentFragment();
+  fragment.append(
+    renderHeader("OASecure User Management", "사용자 관리", "관리자 화면에서 사용자 상태와 권한을 확인합니다.", [
+      createLink("대시보드", "#admin", "nav-button"),
+      createLink("이벤트 관리", "#events", "nav-button"),
+      createLink("로그아웃", "#login", "logout-button")
+    ])
+  );
+  const main = document.createElement("main");
+  main.className = "dashboard";
   const section = document.createElement("section");
   section.className = "table-section";
-  section.append(renderSectionTitle(routes.find((item) => item.id === route)?.label ?? "Dashboard", routePlaceholders[route]));
-
-  const card = document.createElement("article");
-  card.className = "table-card empty-state";
-  appendText(card, "h3", "Coming soon");
-  appendText(card, "p", "This screen will connect to the v0.10 API and session contract in a follow-up PR.").className = "muted";
+  section.append(renderSectionTitle("Users", "사용자별 이벤트 수와 상태를 확인합니다."));
+  const card = document.createElement("div");
+  card.className = "table-card";
+  appendText(card, "p", "사용자 관리 상세 기능은 다음 단계에서 연결합니다.").className = "notice-text";
   section.append(card);
-  content.replaceChildren(section);
+  main.append(section);
+  fragment.append(main);
+  appRoot.replaceChildren(fragment);
 }
 
-const shell = renderShell();
-
 function render(): void {
-  const route = currentRoute();
-  renderNavigation(shell.nav, route);
-  shell.logoutMessage.textContent = "";
+  const route = routeFromHash();
 
-  if (route === "overview") {
-    renderOverview(shell.content);
+  if (window.location.hash === "#login") {
+    authenticated = false;
+  }
+
+  if (!authenticated && route !== "login") {
+    renderLogin();
     return;
   }
 
-  if (route === "events") {
-    renderEvents(shell.content);
-    return;
-  }
-
-  renderPlaceholder(shell.content, route);
+  if (route === "login") renderLogin();
+  if (route === "admin") renderDashboard();
+  if (route === "events") renderEvents();
+  if (route === "event-detail") renderEventDetail();
+  if (route === "users") renderUsers();
 }
 
 window.addEventListener("hashchange", render);
