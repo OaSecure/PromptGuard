@@ -28,8 +28,9 @@ input {
 }
 
 .eyebrow {
+  text-align: center;
   color: #2f80ed;
-  font-size: 13px;
+  font-size: 20px;
   font-weight: 900;
   letter-spacing: 0.5px;
   margin-bottom: 8px;
@@ -126,6 +127,7 @@ input {
 .login-form {
   display: grid;
   gap: 16px;
+  margin-top: 60px;
 }
 
 .login-form label {
@@ -776,4 +778,10 @@ input {
   .board-detail-row td {
     padding: 18px;
   }
+}
+
+  .login-title {
+    text-align: center;
+    font-size: 55px !important;
+    margin-bottom: 40px;
 }

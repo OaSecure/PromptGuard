@@ -169,9 +169,9 @@ function renderLogin(): void {
 
   const card = document.createElement("section");
   card.className = "login-card";
-  appendText(card, "p", "OASecure Admin Dashboard").className = "eyebrow";
-  appendText(card, "h1", "관리자 로그인");
-  appendText(card, "p", "관리자 계정으로 로그인하면 대시보드와 이벤트 관리 화면을 확인할 수 있습니다.").className = "login-desc";
+  appendText(card, "p", "OASecure").className = "eyebrow";
+  const title = appendText(card, "h1", "로그인");
+  title.className = "login-title";
 
   const form = document.createElement("form");
   form.className = "login-form";
