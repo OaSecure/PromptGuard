@@ -1,13 +1,15 @@
 import uuid
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.password import hash_password, verify_password
+from app.core.rate_limit import rate_limit_key, rate_limiter
+from app.core.config import get_settings
 from app.core.tokens import create_access_token, create_refresh_token, decode_access_token, hash_refresh_token, utc_now
 from app.db.session import get_db_session
 from app.models.auth import RefreshToken, User
@@ -70,6 +72,15 @@ def invalid_credentials() -> HTTPException:
     return HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid credentials")
 
 
+def enforce_auth_rate_limit(request: Request, scope: str) -> None:
+    settings = get_settings()
+    rate_limiter.check(
+        rate_limit_key(request, scope),
+        settings.auth_rate_limit_requests,
+        settings.auth_rate_limit_window_seconds,
+    )
+
+
 async def get_user_by_login_id(session: AsyncSession, login_id: str) -> User | None:
     result = await session.execute(select(User).where(User.login_id_normalized == login_id.casefold()))
     return result.scalar_one_or_none()
@@ -123,7 +134,12 @@ async def require_admin(current_user: User = Depends(require_active_user)) -> Us
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(payload: LoginRequest, session: AsyncSession = Depends(get_db_session)) -> TokenResponse:
+async def login(
+    payload: LoginRequest,
+    request: Request,
+    session: AsyncSession = Depends(get_db_session),
+) -> TokenResponse:
+    enforce_auth_rate_limit(request, "auth:login")
     async with session.begin():
         user = await get_user_by_login_id(session, payload.login_id)
         if not is_login_allowed(user, payload.password):
@@ -148,7 +164,12 @@ async def me(current_user: User = Depends(require_active_user)) -> UserResponse:
 
 
 @router.post("/refresh", response_model=TokenResponse)
-async def refresh(payload: RefreshRequest, session: AsyncSession = Depends(get_db_session)) -> TokenResponse:
+async def refresh(
+    payload: RefreshRequest,
+    request: Request,
+    session: AsyncSession = Depends(get_db_session),
+) -> TokenResponse:
+    enforce_auth_rate_limit(request, "auth:refresh")
     token_hash = hash_refresh_token(payload.refresh_token)
 
     async with session.begin():
