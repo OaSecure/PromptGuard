@@ -109,8 +109,10 @@ async def require_active_user(
         raise invalid_credentials()
 
     user = await session.get(User, user_id)
-    if user is None or user.status != "ACTIVE":
+    if user is None:
         raise invalid_credentials()
+    if user.status != "ACTIVE":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="user is not active")
     return user
 
 

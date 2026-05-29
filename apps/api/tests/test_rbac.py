@@ -16,7 +16,9 @@ class _FakeSession:
         self.user = user
 
     async def get(self, model, user_id):
-        return self.user
+        if self.user is not None and self.user.id == user_id:
+            return self.user
+        return None
 
 
 def build_status_client(monkeypatch, user=None, health_status: str = "healthy", redis_status: str = "disabled") -> TestClient:
@@ -127,13 +129,13 @@ def test_server_status_with_admin_role_returns_200(monkeypatch) -> None:
     assert body["migrations"]["status"] == "healthy"
 
 
-def test_server_status_with_disabled_admin_returns_401(monkeypatch) -> None:
+def test_server_status_with_disabled_admin_returns_403(monkeypatch) -> None:
     user = fake_user(role="ADMIN", status="DISABLED")
     client = build_status_client(monkeypatch, user=user)
 
     response = client.get("/status/server", headers=bearer_header(user.id))
 
-    assert response.status_code == 401
+    assert response.status_code == 403
 
 
 def test_server_status_returns_503_when_required_dependency_unhealthy(monkeypatch) -> None:
