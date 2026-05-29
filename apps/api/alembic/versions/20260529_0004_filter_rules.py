@@ -107,6 +107,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["created_by"], ["users.id"]),
         sa.ForeignKeyConstraint(["updated_by"], ["users.id"]),
         sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("source", "detector_key", name="uq_filter_rules_source_detector_key"),
     )
     op.create_index("ix_filter_rules_archived_at", "filter_rules", ["archived_at"])
     op.create_index("ix_filter_rules_workspace_enabled", "filter_rules", ["workspace_id", "enabled"])
@@ -131,6 +132,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["changed_by"], ["users.id"]),
         sa.ForeignKeyConstraint(["filter_rule_id"], ["filter_rules.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("filter_rule_id", "version", name="uq_filter_rule_versions_rule_version"),
     )
     op.create_index("ix_filter_rule_versions_rule_version", "filter_rule_versions", ["filter_rule_id", "version"])
     op.create_index("ix_filter_rule_versions_workspace_created", "filter_rule_versions", ["workspace_id", "created_at"])

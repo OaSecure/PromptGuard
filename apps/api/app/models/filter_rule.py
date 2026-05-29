@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, func
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -51,6 +51,7 @@ class FilterRule(TimestampMixin, Base):
         CheckConstraint("severity in ('low', 'medium', 'high', 'critical')", name="ck_filter_rules_severity"),
         CheckConstraint("action in ('allow', 'warn', 'mask', 'block')", name="ck_filter_rules_action"),
         CheckConstraint("version > 0", name="ck_filter_rules_version_positive"),
+        UniqueConstraint("source", "detector_key", name="uq_filter_rules_source_detector_key"),
         Index("ix_filter_rules_workspace_enabled", "workspace_id", "enabled"),
         Index("ix_filter_rules_workspace_source_kind", "workspace_id", "source", "kind"),
         Index("ix_filter_rules_archived_at", "archived_at"),
@@ -82,6 +83,7 @@ class FilterRuleVersion(Base):
             "change_type in ('seed', 'create', 'update', 'enable', 'disable', 'archive')",
             name="ck_filter_rule_versions_change_type",
         ),
+        UniqueConstraint("filter_rule_id", "version", name="uq_filter_rule_versions_rule_version"),
         Index("ix_filter_rule_versions_rule_version", "filter_rule_id", "version"),
         Index("ix_filter_rule_versions_workspace_created", "workspace_id", "created_at"),
     )

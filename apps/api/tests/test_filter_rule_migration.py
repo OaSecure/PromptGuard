@@ -47,6 +47,13 @@ def test_filter_rule_model_has_v10_contract_columns() -> None:
         "updated_at",
     }.issubset(columns)
 
+    unique_constraints = {
+        constraint.name: tuple(column.name for column in constraint.columns)
+        for constraint in FilterRule.__table__.constraints
+        if constraint.name
+    }
+    assert unique_constraints["uq_filter_rules_source_detector_key"] == ("source", "detector_key")
+
 
 def test_filter_rule_version_model_has_v10_contract_columns() -> None:
     columns = set(FilterRuleVersion.__table__.columns.keys())
@@ -63,6 +70,13 @@ def test_filter_rule_version_model_has_v10_contract_columns() -> None:
         "created_at",
     }.issubset(columns)
 
+    unique_constraints = {
+        constraint.name: tuple(column.name for column in constraint.columns)
+        for constraint in FilterRuleVersion.__table__.constraints
+        if constraint.name
+    }
+    assert unique_constraints["uq_filter_rule_versions_rule_version"] == ("filter_rule_id", "version")
+
 
 def test_built_in_seed_rules_do_not_store_detector_logic() -> None:
     migration = load_filter_rule_migration()
@@ -76,3 +90,11 @@ def test_built_in_seed_rules_do_not_store_detector_logic() -> None:
         assert "regex" not in rule
         assert "checksum" not in rule
         assert "parser" not in rule
+
+
+def test_filter_rule_migration_declares_duplicate_guards() -> None:
+    migration = load_filter_rule_migration()
+    migration_source = Path(migration.__file__).read_text(encoding="utf-8")
+
+    assert "uq_filter_rules_source_detector_key" in migration_source
+    assert "uq_filter_rule_versions_rule_version" in migration_source
