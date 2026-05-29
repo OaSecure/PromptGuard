@@ -4,6 +4,9 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from app.core.config import get_settings
+from app.db import session as db_session
+from app.main import app as promptguard_app
 from app.routes import health
 
 
@@ -128,6 +131,27 @@ def test_healthz_returns_503_when_required_dependency_is_unhealthy(monkeypatch) 
 
     assert response.status_code == 503
     assert response.json()["status"] == "unhealthy"
+
+
+def test_readyz_reports_config_invalid_when_database_url_is_missing(monkeypatch) -> None:
+    monkeypatch.setenv("DATABASE_URL", "")
+    get_settings.cache_clear()
+    db_session._engine = None
+    db_session._sessionmaker = None
+
+    try:
+        response = TestClient(promptguard_app).get("/readyz")
+    finally:
+        get_settings.cache_clear()
+        db_session._engine = None
+        db_session._sessionmaker = None
+
+    assert response.status_code == 503
+    payload = response.json()
+    assert payload["status"] == "unhealthy"
+    config = next(item for item in payload["dependencies"] if item["name"] == "config")
+    assert config["status"] == "unhealthy"
+    assert config["code"] == "CONFIG_INVALID"
 
 
 @pytest.mark.anyio

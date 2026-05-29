@@ -9,7 +9,7 @@ from redis.asyncio import Redis
 from sqlalchemy import text
 
 from app.core.config import get_settings
-from app.db.session import engine
+from app.db.session import get_engine
 
 router = APIRouter(tags=["health"])
 
@@ -44,7 +44,7 @@ def get_migration_head() -> str:
 
 async def check_database() -> dict[str, Any]:
     try:
-        async with engine.connect() as connection:
+        async with get_engine().connect() as connection:
             await connection.execute(text("select 1"))
         return dependency("postgres", "healthy", True, "POSTGRES_OK", "PostgreSQL connection is ready")
     except Exception as exc:
@@ -60,7 +60,7 @@ async def check_database() -> dict[str, Any]:
 async def check_migrations() -> dict[str, Any]:
     try:
         expected_head = get_migration_head()
-        async with engine.connect() as connection:
+        async with get_engine().connect() as connection:
             result = await connection.execute(text("select version_num from alembic_version"))
             current_version = result.scalar_one_or_none()
 
