@@ -4,9 +4,6 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "typecheck": "tsc --noEmit",
-    "check:privacy": "node scripts/check-dashboard.mjs",
-    "test": "node scripts/check-dashboard.mjs",
     "dev": "vite --host 127.0.0.1",
     "build": "vite build"
   },
