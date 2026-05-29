@@ -4,9 +4,10 @@ import { saveAuthTokens } from "./authStore";
 import { getSettings, saveConfig } from "./configStore";
 import { mockAuthMe, mockConfig } from "./mockApi";
 import { getJsonWithAuthRefresh } from "./authenticatedApiClient";
+import { postJson } from "./apiClient";
 import { isExtensionConfigResponse } from "../shared/configValidation";
 import { isNormalizedError } from "../shared/errors";
-import type { AuthMeResponse, ExtensionConfigResponse, ExtensionMessage, NormalizedError } from "../shared/types";
+import type { AuthLoginResponse, AuthMeResponse, ExtensionConfigResponse, ExtensionMessage, NormalizedError } from "../shared/types";
 
 /**
  * Routes one validated extension runtime message to its background handler.
@@ -21,11 +22,7 @@ export async function routeMessage(message: ExtensionMessage): Promise<unknown> 
     case "FILES_ANALYZE_REQUEST":
       return analyzeFiles(message.payload);
     case "AUTH_LOGIN_REQUEST":
-      await saveAuthTokens({
-        accessToken: message.payload.token,
-        refreshToken: message.payload.refreshToken
-      });
-      return { ok: true };
+      return authLogin(message.payload);
     case "AUTH_ME_REQUEST":
       return authMe();
     case "CONFIG_SYNC_REQUEST":
@@ -37,6 +34,32 @@ export async function routeMessage(message: ExtensionMessage): Promise<unknown> 
   }
 }
 
+async function authLogin(payload: { login_id: string; password: string }): Promise<{ ok: true } | NormalizedError> {
+  const settings = await getSettings();
+  if (settings.mockMode) {
+    return { ok: true };
+  }
+  const credentials = {
+    login_id: payload.login_id.trim(),
+    password: payload.password.trim()
+  };
+  const response = await postJson<typeof credentials, unknown>("/auth/login", credentials, {
+    baseUrl: settings.apiBaseUrl,
+    timeoutMs: settings.config.timeout_ms
+  });
+  if (isNormalizedError(response)) {
+    return response;
+  }
+  if (!isAuthLoginResponse(response)) {
+    return { code: "VALIDATION_ERROR", message: "Login response could not be processed." };
+  }
+  await saveAuthTokens({
+    accessToken: response.access_token,
+    refreshToken: response.refresh_token
+  });
+  return { ok: true };
+}
+
 async function authMe(): Promise<AuthMeResponse | NormalizedError> {
   const settings = await getSettings();
   if (settings.mockMode) {
@@ -46,6 +69,19 @@ async function authMe(): Promise<AuthMeResponse | NormalizedError> {
     baseUrl: settings.apiBaseUrl,
     timeoutMs: settings.config.timeout_ms
   });
+}
+
+function isAuthLoginResponse(value: unknown): value is AuthLoginResponse {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "access_token" in value &&
+    "refresh_token" in value &&
+    typeof (value as AuthLoginResponse).access_token === "string" &&
+    (value as AuthLoginResponse).access_token.trim().length > 0 &&
+    typeof (value as AuthLoginResponse).refresh_token === "string" &&
+    (value as AuthLoginResponse).refresh_token.trim().length > 0
+  );
 }
 
 async function syncConfig(): Promise<ExtensionConfigResponse | NormalizedError> {

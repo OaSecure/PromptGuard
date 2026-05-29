@@ -144,6 +144,12 @@ export interface AuthMeResponse {
   status: "ACTIVE" | "DISABLED";
 }
 
+/** Token pair returned by the backend login endpoint. */
+export interface AuthLoginResponse {
+  access_token: string;
+  refresh_token: string;
+}
+
 /** Prompt inspection lifecycle names used by tests and state documentation. */
 export type PromptInspectionState =
   | "IDLE"
@@ -178,7 +184,7 @@ export type ExtensionMessage =
   | { type: "PROMPT_ANALYZE_RESULT"; payload: AnalyzeResponse | NormalizedError }
   | { type: "FILES_ANALYZE_REQUEST"; payload: FilesAnalyzeRequest }
   | { type: "FILES_ANALYZE_RESULT"; payload: FilesAnalyzeResponse | NormalizedError }
-  | { type: "AUTH_LOGIN_REQUEST"; payload: { token: string; refreshToken?: string } }
+  | { type: "AUTH_LOGIN_REQUEST"; payload: { login_id: string; password: string } }
   | { type: "AUTH_ME_REQUEST" }
   | { type: "CONFIG_SYNC_REQUEST" }
   | { type: "CONFIG_SYNC_RESULT"; payload: ExtensionConfigResponse | NormalizedError }
