@@ -5,6 +5,7 @@ from uuid import uuid4
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from app.main import app as main_app
 from app.core.tokens import create_access_token
 from app.routes import analyze as analyze_route
 from app.routes.auth import get_db_session
@@ -128,3 +129,41 @@ def test_analyze_response_does_not_echo_raw_prompt_or_context_values() -> None:
     assert "raw_prompt" not in encoded_body
     assert "masked_prompt" not in encoded_body
     assert "detected_raw_value" not in encoded_body
+
+
+def test_main_app_registers_analyze_route_in_openapi() -> None:
+    schema = main_app.openapi()
+
+    assert "/prompts/analyze" in schema["paths"]
+    assert "post" in schema["paths"]["/prompts/analyze"]
+
+
+def test_main_app_validation_errors_do_not_echo_raw_prompt_or_context_values() -> None:
+    user = _user()
+    raw_prompt = "SECRET-INVALID-PROMPT-DO-NOT-ECHO"
+    raw_context_value = "private-context-value-do-not-echo"
+    raw_secret = "ghp_seededsecret1234567890abcdef"
+
+    async def override_session():
+        yield _FakeSession(user)
+
+    main_app.dependency_overrides[get_db_session] = override_session
+    try:
+        response = TestClient(main_app).post(
+            "/prompts/analyze",
+            headers=_bearer_header(user.id),
+            json={
+                "prompt": raw_prompt,
+                "context": {"note": raw_context_value, "token": raw_secret},
+                "filter_config_version": "../bad",
+            },
+        )
+    finally:
+        main_app.dependency_overrides.pop(get_db_session, None)
+
+    encoded_body = json.dumps(response.json(), ensure_ascii=False)
+    assert response.status_code == 422
+    assert raw_prompt not in encoded_body
+    assert raw_context_value not in encoded_body
+    assert raw_secret not in encoded_body
+    assert "input" not in encoded_body
