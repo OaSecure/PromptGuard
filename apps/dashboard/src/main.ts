@@ -1,8 +1,12 @@
 import "./styles/main.css";
 
-type RouteId = "login" | "admin" | "events" | "users" | "event-detail";
+type RouteId = "login" | "admin" | "events" | "users" | "filters" | "event-detail";
 type EventAction = "Block" | "Mask" | "Warn";
 type RiskClass = "critical" | "high" | "medium";
+type RuleSource = "built_in" | "custom";
+type RuleKind = "detector" | "keyword" | "regex" | "context_rule";
+type RuleSeverity = "low" | "medium" | "high" | "critical";
+type RuleAction = "Allow" | "Warn" | "Mask" | "Block";
 
 type OverviewStat = {
   label: string;
@@ -26,6 +30,24 @@ type RiskEvent = {
   platform: string;
 };
 
+type FilterRule = {
+  id: string;
+  source: RuleSource;
+  kind: RuleKind;
+  category: string;
+  label: string;
+  description: string;
+  detectorKey?: string;
+  keyword?: string;
+  pattern?: string;
+  placeholder?: string;
+  severity: RuleSeverity;
+  action: RuleAction;
+  enabled: boolean;
+  version: number;
+  editableFields: string[];
+};
+
 const app = document.querySelector<HTMLDivElement>("#app");
 
 if (!app) {
@@ -34,13 +56,15 @@ if (!app) {
 
 const appRoot = app;
 let authenticated = false;
+let currentFilterPage = 1;
+const filterRowsPerPage = 5;
 
 const overviewStats: OverviewStat[] = [
-  { label: "Total Events", value: 128, description: "분석된 프롬프트/파일 요청 수" },
-  { label: "Blocked", value: 12, tone: "danger", description: "위험도가 높아 차단된 건수" },
-  { label: "Masked", value: 38, tone: "safe", description: "민감정보가 마스킹된 건수" },
-  { label: "Warned", value: 17, tone: "warning", description: "사용자에게 경고 처리된 건수" },
-  { label: "Active Users", value: 24, tone: "users", description: "기간 내 사용한 사용자 수" }
+  { label: "Total Events", value: 128, description: "분석 요청에서 생성된 안전한 메타데이터 이벤트" },
+  { label: "Blocked", value: 12, tone: "danger", description: "정책상 즉시 차단된 요청" },
+  { label: "Masked", value: 38, tone: "safe", description: "민감정보가 placeholder로 치환된 요청" },
+  { label: "Warned", value: 17, tone: "warning", description: "사용자 확인이 필요한 경고 처리" },
+  { label: "Active Users", value: 24, tone: "users", description: "기간 내 이벤트가 있는 사용자" }
 ];
 
 const actionStats: Record<string, number> = {
@@ -51,7 +75,7 @@ const actionStats: Record<string, number> = {
 };
 
 const userStats: Record<string, number> = {
-  admin: 32,
+  ADMIN: 32,
   user01: 28,
   user02: 21,
   user03: 18,
@@ -78,7 +102,7 @@ const events: RiskEvent[] = [
     riskLevel: "Critical",
     riskClass: "critical",
     riskScore: 94,
-    summary: "API Key 형태의 민감정보 탐지",
+    summary: "API key 형태의 secret detector match",
     detector: "secret / api_key",
     promptHash: "ph_9a4c",
     platform: "Web"
@@ -92,7 +116,7 @@ const events: RiskEvent[] = [
     riskLevel: "High",
     riskClass: "high",
     riskScore: 72,
-    summary: "전화번호 형태의 개인정보 탐지",
+    summary: "전화번호 형태의 PII detector match",
     detector: "pii / phone",
     promptHash: "ph_7d2a",
     platform: "Web"
@@ -100,16 +124,123 @@ const events: RiskEvent[] = [
   {
     eventId: "EVT-20260529-001",
     time: "10:15",
-    user: "이OO",
+    user: "최OO",
     service: "ChatGPT",
     action: "Warn",
     riskLevel: "Medium",
     riskClass: "medium",
     riskScore: 51,
-    summary: "계약 관련 내부 정보 탐지",
+    summary: "계약 관련 business context match",
     detector: "business / contract",
     promptHash: "ph_3f81",
     platform: "Web"
+  }
+];
+
+const filterRules: FilterRule[] = [
+  {
+    id: "rule-email",
+    source: "built_in",
+    kind: "detector",
+    category: "PII",
+    label: "Email Address",
+    description: "이메일 주소 형태의 개인정보를 탐지합니다.",
+    detectorKey: "EMAIL",
+    placeholder: "EMAIL",
+    severity: "medium",
+    action: "Mask",
+    enabled: true,
+    version: 1,
+    editableFields: ["enabled", "severity", "action"]
+  },
+  {
+    id: "rule-phone",
+    source: "built_in",
+    kind: "detector",
+    category: "PII",
+    label: "Phone Number",
+    description: "한국 전화번호 후보를 탐지합니다.",
+    detectorKey: "PHONE",
+    placeholder: "PHONE",
+    severity: "medium",
+    action: "Mask",
+    enabled: true,
+    version: 1,
+    editableFields: ["enabled", "severity", "action"]
+  },
+  {
+    id: "rule-rrn",
+    source: "built_in",
+    kind: "detector",
+    category: "PII",
+    label: "Resident Registration Number",
+    description: "checksum이 유효한 주민등록번호 후보를 탐지합니다.",
+    detectorKey: "RRN",
+    placeholder: "RRN",
+    severity: "high",
+    action: "Block",
+    enabled: true,
+    version: 1,
+    editableFields: ["enabled", "severity", "action"]
+  },
+  {
+    id: "rule-card",
+    source: "built_in",
+    kind: "detector",
+    category: "Payment",
+    label: "Card Number",
+    description: "Luhn 검증을 통과한 카드번호 후보를 탐지합니다.",
+    detectorKey: "CARD",
+    placeholder: "CARD",
+    severity: "high",
+    action: "Block",
+    enabled: true,
+    version: 1,
+    editableFields: ["enabled", "severity", "action"]
+  },
+  {
+    id: "rule-project",
+    source: "custom",
+    kind: "keyword",
+    category: "Custom",
+    label: "Internal Project Name",
+    description: "내부 프로젝트 코드명이 외부 AI에 입력되는지 확인합니다.",
+    keyword: "Project Hermes",
+    placeholder: "INTERNAL_PROJECT",
+    severity: "high",
+    action: "Mask",
+    enabled: true,
+    version: 3,
+    editableFields: ["label", "description", "keyword", "placeholder", "severity", "action", "enabled"]
+  },
+  {
+    id: "rule-ticket",
+    source: "custom",
+    kind: "regex",
+    category: "Custom",
+    label: "Internal Ticket Number",
+    description: "내부 티켓 번호 패턴을 탐지합니다.",
+    pattern: "INC-[0-9]{6}",
+    placeholder: "INTERNAL_TICKET",
+    severity: "medium",
+    action: "Warn",
+    enabled: true,
+    version: 2,
+    editableFields: ["label", "description", "pattern", "placeholder", "severity", "action", "enabled"]
+  },
+  {
+    id: "rule-contract",
+    source: "custom",
+    kind: "context_rule",
+    category: "Business Context",
+    label: "Contract Terms",
+    description: "계약, NDA, 할인율, 위약금 등 업무 문맥을 함께 탐지합니다.",
+    placeholder: "BUSINESS_CONTEXT",
+    severity: "high",
+    action: "Warn",
+    enabled: true,
+    version: 4,
+    editableFields: ["label", "description", "config_json", "severity", "action", "enabled"]
   }
 ];
 
@@ -139,7 +270,7 @@ function routeFromHash(): RouteId {
     return "event-detail";
   }
 
-  if (hash === "admin" || hash === "events" || hash === "users") {
+  if (hash === "admin" || hash === "events" || hash === "users" || hash === "filters") {
     return hash;
   }
 
@@ -163,6 +294,31 @@ function renderHeader(eyebrow: string, title: string, description: string, links
   return header;
 }
 
+function commonNav(active: RouteId): HTMLElement[] {
+  const links = [
+    createLink("대시보드", "#admin", "nav-button"),
+    createLink("이벤트", "#events", "nav-button"),
+    createLink("사용자", "#users", "nav-button"),
+    createLink("필터 규칙", "#filters", "nav-button"),
+    createLink("로그아웃", "#login", "logout-button")
+  ];
+
+  for (const link of links) {
+    if (link.hash === `#${active}`) {
+      link.classList.add("active");
+    }
+  }
+
+  return links;
+}
+
+function renderBadge(text: string, className: string): HTMLElement {
+  const badge = document.createElement("span");
+  badge.className = className;
+  badge.textContent = text;
+  return badge;
+}
+
 function renderLogin(): void {
   const shell = document.createElement("main");
   shell.className = "login-page";
@@ -170,17 +326,18 @@ function renderLogin(): void {
   const card = document.createElement("section");
   card.className = "login-card";
   appendText(card, "p", "OASecure").className = "eyebrow";
-  const title = appendText(card, "h1", "로그인");
-  title.className = "login-title";
+  appendText(card, "h1", "로그인").className = "login-title";
+  appendText(card, "p", "개발용 대시보드 미리보기입니다. ADMIN 계정으로 관리 화면을 확인합니다.").className = "login-desc";
 
   const form = document.createElement("form");
   form.className = "login-form";
 
-  const idLabel = appendText(form, "label", "아이디");
+  const idLabel = appendText(form, "label", "로그인 ID");
   const idInput = document.createElement("input");
-  idInput.name = "username";
+  idInput.name = "login_id";
   idInput.type = "text";
   idInput.autocomplete = "username";
+  idInput.value = "ADMIN";
   idLabel.append(idInput);
 
   const passwordLabel = appendText(form, "label", "비밀번호");
@@ -188,6 +345,7 @@ function renderLogin(): void {
   passwordInput.name = "password";
   passwordInput.type = "password";
   passwordInput.autocomplete = "current-password";
+  passwordInput.value = "1234";
   passwordLabel.append(passwordInput);
 
   const message = appendText(form, "p", "");
@@ -200,14 +358,14 @@ function renderLogin(): void {
   form.addEventListener("submit", (event) => {
     event.preventDefault();
 
-    if (idInput.value === "admin" && passwordInput.value === "1234") {
+    if (idInput.value.trim().toUpperCase() === "ADMIN" && passwordInput.value.length > 0) {
       authenticated = true;
       navigate("admin");
       render();
       return;
     }
 
-    message.textContent = "아이디 또는 비밀번호가 올바르지 않습니다.";
+    message.textContent = "로그인 ID 또는 비밀번호가 올바르지 않습니다.";
   });
 
   card.append(form);
@@ -296,20 +454,14 @@ function renderPeriodChart(): HTMLElement {
 
 function renderDashboard(): void {
   const fragment = document.createDocumentFragment();
-  fragment.append(
-    renderHeader("OASecure Admin Dashboard", "관리자 대시보드", "오늘 우리 조직의 AI 사용 위험 현황을 한눈에 확인합니다.", [
-      createLink("이벤트 관리", "#events", "nav-button"),
-      createLink("사용자 관리", "#users", "nav-button"),
-      createLink("로그아웃", "#login", "logout-button")
-    ])
-  );
+  fragment.append(renderHeader("OASecure Admin Dashboard", "관리자 대시보드", "조직의 AI 사용 위험 현황을 원문 없이 확인합니다.", commonNav("admin")));
 
   const main = document.createElement("main");
   main.className = "dashboard";
 
   const overview = document.createElement("section");
   overview.className = "overview-section";
-  overview.append(renderSectionTitle("Overview", "오늘 우리 조직의 AI 사용 위험 현황"));
+  overview.append(renderSectionTitle("Overview", "오늘의 위험 이벤트와 처리 결과 요약"));
   const grid = document.createElement("div");
   grid.className = "overview-grid";
   grid.append(...overviewStats.map((stat) => renderOverviewCard(stat)));
@@ -317,7 +469,7 @@ function renderDashboard(): void {
 
   const charts = document.createElement("section");
   charts.className = "chart-section";
-  charts.append(renderSectionTitle("Statistics", "이벤트별, 사용자별, 기간별 통계를 차트로 확인합니다."));
+  charts.append(renderSectionTitle("Statistics", "이벤트, 사용자, 기간별 통계를 빠르게 확인합니다."));
   const chartGrid = document.createElement("div");
   chartGrid.className = "chart-grid";
 
@@ -325,7 +477,7 @@ function renderDashboard(): void {
   eventCard.className = "chart-card";
   const eventTitle = document.createElement("div");
   eventTitle.className = "chart-title";
-  appendText(eventTitle, "h3", "이벤트별 통계");
+  appendText(eventTitle, "h3", "Action 분포");
   appendText(eventTitle, "p", "Allowed, Blocked, Masked, Warned 비율");
   eventCard.append(eventTitle, renderBarChart());
 
@@ -333,16 +485,16 @@ function renderDashboard(): void {
   userCard.className = "chart-card";
   const userTitle = document.createElement("div");
   userTitle.className = "chart-title";
-  appendText(userTitle, "h3", "사용자별 통계");
-  appendText(userTitle, "p", "사용자별 AI 요청/탐지 이벤트 수");
+  appendText(userTitle, "h3", "사용자별 이벤트");
+  appendText(userTitle, "p", "사용자별 안전한 aggregate count");
   userCard.append(userTitle, renderUserChart());
 
   const periodCard = document.createElement("article");
   periodCard.className = "chart-card wide";
   const periodTitle = document.createElement("div");
   periodTitle.className = "chart-title";
-  appendText(periodTitle, "h3", "기간별 통계");
-  appendText(periodTitle, "p", "최근 7일간 AI 사용 위험 이벤트 추이");
+  appendText(periodTitle, "h3", "기간별 추이");
+  appendText(periodTitle, "p", "최근 7일 이벤트 수");
   periodCard.append(periodTitle, renderPeriodChart());
 
   chartGrid.append(eventCard, userCard, periodCard);
@@ -369,42 +521,29 @@ function renderEventRow(event: RiskEvent): HTMLTableRowElement {
   return row;
 }
 
-function renderBadge(text: string, className: string): HTMLElement {
-  const badge = document.createElement("span");
-  badge.className = className;
-  badge.textContent = text;
-  return badge;
-}
-
 function renderEvents(): void {
   const fragment = document.createDocumentFragment();
-  fragment.append(
-    renderHeader("OASecure Event Monitoring", "이벤트 관리", "탐지된 위험 이벤트를 확인하고 상세 정보를 조회합니다.", [
-      createLink("대시보드", "#admin", "nav-button"),
-      createLink("사용자 관리", "#users", "nav-button"),
-      createLink("로그아웃", "#login", "logout-button")
-    ])
-  );
+  fragment.append(renderHeader("OASecure Event Monitoring", "이벤트 관리", "탐지된 위험 이벤트를 원문 없이 확인합니다.", commonNav("events")));
 
   const main = document.createElement("main");
   main.className = "dashboard";
 
   const overview = document.createElement("section");
   overview.className = "overview-section";
-  overview.append(renderSectionTitle("Events Overview", "오늘 탐지된 위험 이벤트 현황"));
+  overview.append(renderSectionTitle("Events Overview", "오늘의 탐지 이벤트 요약"));
   const grid = document.createElement("div");
   grid.className = "overview-grid event-overview-grid";
   grid.append(
-    renderOverviewCard({ label: "Total Events", value: events.length, description: "전체 탐지 이벤트 수" }, "#events/detail/all"),
-    renderOverviewCard({ label: "Critical", value: events.filter((event) => event.riskClass === "critical").length, tone: "danger", description: "즉시 차단이 필요한 이벤트" }, "#events/detail/critical"),
-    renderOverviewCard({ label: "High", value: events.filter((event) => event.riskClass === "high").length, tone: "warning", description: "주의 깊게 확인해야 하는 이벤트" }, "#events/detail/high"),
-    renderOverviewCard({ label: "Medium", value: events.filter((event) => event.riskClass === "medium").length, tone: "safe", description: "모니터링이 필요한 이벤트" }, "#events/detail/medium")
+    renderOverviewCard({ label: "Total Events", value: events.length, description: "전체 탐지 이벤트" }, "#events/detail/all"),
+    renderOverviewCard({ label: "Critical", value: events.filter((event) => event.riskClass === "critical").length, tone: "danger", description: "즉시 차단 대상" }, "#events/detail/critical"),
+    renderOverviewCard({ label: "High", value: events.filter((event) => event.riskClass === "high").length, tone: "warning", description: "주의 확인 대상" }, "#events/detail/high"),
+    renderOverviewCard({ label: "Medium", value: events.filter((event) => event.riskClass === "medium").length, tone: "safe", description: "모니터링 대상" }, "#events/detail/medium")
   );
   overview.append(grid);
 
   const tableSection = document.createElement("section");
   tableSection.className = "table-section";
-  tableSection.append(renderSectionTitle("Risk Events", "원문 프롬프트는 저장하지 않고 탐지 결과만 표시합니다."));
+  tableSection.append(renderSectionTitle("Risk Events", "prompt 원문과 탐지 원문값 없이 메타데이터만 표시합니다."));
   const card = document.createElement("div");
   card.className = "table-card";
   const table = document.createElement("table");
@@ -427,10 +566,10 @@ function renderEvents(): void {
 }
 
 function eventDetailTitle(filter: string): string {
-  if (filter === "critical") return "Critical 이벤트 상세보기";
-  if (filter === "high") return "High 이벤트 상세보기";
-  if (filter === "medium") return "Medium 이벤트 상세보기";
-  return "전체 이벤트 상세보기";
+  if (filter === "critical") return "Critical 이벤트 상세";
+  if (filter === "high") return "High 이벤트 상세";
+  if (filter === "medium") return "Medium 이벤트 상세";
+  return "전체 이벤트 상세";
 }
 
 function filteredEvents(): RiskEvent[] {
@@ -451,7 +590,7 @@ function renderBoardRows(items: RiskEvent[]): HTMLTableRowElement[] {
     const button = document.createElement("button");
     button.className = "board-title-button";
     button.type = "button";
-    const icon = appendText(button, "span", "＋");
+    const icon = appendText(button, "span", "+");
     icon.className = "toggle-icon";
     button.append(document.createTextNode(event.summary));
     titleCell.append(button);
@@ -476,7 +615,7 @@ function renderBoardRows(items: RiskEvent[]): HTMLTableRowElement[] {
       ["사용자", event.user],
       ["서비스", event.service],
       ["Action", event.action],
-      ["위험도 점수", String(event.riskScore)],
+      ["위험 점수", String(event.riskScore)],
       ["위험도", event.riskLevel],
       ["탐지 요약", event.summary],
       ["탐지 항목", event.detector],
@@ -497,7 +636,7 @@ function renderBoardRows(items: RiskEvent[]): HTMLTableRowElement[] {
     button.addEventListener("click", () => {
       const isOpen = detailRow.style.display === "table-row";
       detailRow.style.display = isOpen ? "none" : "table-row";
-      icon.textContent = isOpen ? "＋" : "－";
+      icon.textContent = isOpen ? "+" : "-";
     });
 
     return [row, detailRow];
@@ -507,19 +646,13 @@ function renderBoardRows(items: RiskEvent[]): HTMLTableRowElement[] {
 function renderEventDetail(): void {
   const filter = window.location.hash.replace("#events/detail/", "");
   const fragment = document.createDocumentFragment();
-  fragment.append(
-    renderHeader("OASecure Event Detail", eventDetailTitle(filter), "선택한 위험도에 해당하는 이벤트 제목을 클릭하면 상세 내용을 확인할 수 있습니다.", [
-      createLink("이벤트 목록", "#events", "nav-button"),
-      createLink("대시보드", "#admin", "nav-button"),
-      createLink("로그아웃", "#login", "logout-button")
-    ])
-  );
+  fragment.append(renderHeader("OASecure Event Detail", eventDetailTitle(filter), "선택한 위험도에 해당하는 이벤트를 상세 확인합니다.", commonNav("events")));
 
   const main = document.createElement("main");
   main.className = "dashboard";
   const section = document.createElement("section");
   section.className = "table-section";
-  section.append(renderSectionTitle("상세 이벤트 게시판", "원문 프롬프트는 저장하지 않고 탐지 결과만 표시합니다."));
+  section.append(renderSectionTitle("상세 이벤트", "원문 prompt와 주변 문맥은 표시하지 않습니다."));
 
   const card = document.createElement("div");
   card.className = "table-card";
@@ -543,23 +676,313 @@ function renderEventDetail(): void {
 
 function renderUsers(): void {
   const fragment = document.createDocumentFragment();
-  fragment.append(
-    renderHeader("OASecure User Management", "사용자 관리", "관리자 화면에서 사용자 상태와 권한을 확인합니다.", [
-      createLink("대시보드", "#admin", "nav-button"),
-      createLink("이벤트 관리", "#events", "nav-button"),
-      createLink("로그아웃", "#login", "logout-button")
-    ])
-  );
+  fragment.append(renderHeader("OASecure User Management", "사용자 관리", "관리자 화면에서 사용자 상태와 권한을 확인합니다.", commonNav("users")));
   const main = document.createElement("main");
   main.className = "dashboard";
   const section = document.createElement("section");
   section.className = "table-section";
-  section.append(renderSectionTitle("Users", "사용자별 이벤트 수와 상태를 확인합니다."));
+  section.append(renderSectionTitle("Users", "목록, 추가, role/status 변경 UI가 들어갈 자리입니다."));
   const card = document.createElement("div");
   card.className = "table-card";
-  appendText(card, "p", "사용자 관리 상세 기능은 다음 단계에서 연결합니다.").className = "notice-text";
+  appendText(card, "p", "사용자 관리 상세 기능은 다음 단계에서 API와 연결합니다. hard delete는 제공하지 않습니다.").className = "notice-text";
   section.append(card);
   main.append(section);
+  fragment.append(main);
+  appRoot.replaceChildren(fragment);
+}
+
+function createField(labelText: string, control: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement): HTMLLabelElement {
+  const label = document.createElement("label");
+  label.textContent = labelText;
+  label.append(control);
+  return label;
+}
+
+function createInput(value: string, placeholder = ""): HTMLInputElement {
+  const input = document.createElement("input");
+  input.value = value;
+  input.placeholder = placeholder;
+  return input;
+}
+
+function createSelect(values: string[], selected: string): HTMLSelectElement {
+  const select = document.createElement("select");
+  for (const value of values) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = value;
+    option.selected = value === selected;
+    select.append(option);
+  }
+  return select;
+}
+
+function renderFilterForm(): HTMLElement {
+  const card = document.createElement("article");
+  card.className = "filter-card";
+
+  const header = document.createElement("div");
+  header.className = "filter-card-header";
+  const copy = document.createElement("div");
+  appendText(copy, "h2", "Filter Rule 설정");
+  appendText(copy, "p", "custom keyword, regex, context_rule을 생성하고 built-in detector는 허용 필드만 조정합니다.");
+  appendText(header, "span", "Create Mode").className = "filter-pill";
+  header.prepend(copy);
+
+  const tabs = document.createElement("div");
+  tabs.className = "filter-tabs";
+  const kindSelect = createSelect(["context_rule", "keyword", "regex", "detector"], "context_rule");
+  for (const [label, kind] of [
+    ["Business Context", "context_rule"],
+    ["Keyword", "keyword"],
+    ["Regex", "regex"],
+    ["Detector", "detector"]
+  ]) {
+    const tab = document.createElement("button");
+    tab.type = "button";
+    tab.className = kind === "context_rule" ? "filter-tab active" : "filter-tab";
+    tab.textContent = label;
+    tab.addEventListener("click", () => {
+      tabs.querySelectorAll(".filter-tab").forEach((item) => item.classList.remove("active"));
+      tab.classList.add("active");
+      kindSelect.value = kind;
+    });
+    tabs.append(tab);
+  }
+
+  const form = document.createElement("form");
+  form.className = "filter-form";
+
+  const row1 = document.createElement("div");
+  row1.className = "form-row";
+  row1.append(createField("source", createSelect(["custom", "built_in"], "custom")), createField("kind", kindSelect));
+
+  const row2 = document.createElement("div");
+  row2.className = "form-row";
+  row2.append(createField("category", createInput("Business Context")), createField("label", createInput("", "예: Contract Terms")));
+
+  const description = createField("description", createInput("", "관리자가 이해할 수 있는 설명"));
+
+  const row3 = document.createElement("div");
+  row3.className = "form-row";
+  row3.append(createField("keyword", createInput("", "kind=keyword일 때 사용")), createField("pattern", createInput("", "예: INC-[0-9]{6}")));
+
+  const row4 = document.createElement("div");
+  row4.className = "form-row";
+  row4.append(createField("placeholder", createInput("", "예: INTERNAL_PROJECT")), createField("detector_key", createInput("", "built-in detector read-only")));
+
+  const row5 = document.createElement("div");
+  row5.className = "form-row three";
+  row5.append(
+    createField("severity", createSelect(["low", "medium", "high", "critical"], "high")),
+    createField("action", createSelect(["Allow", "Warn", "Mask", "Block"], "Mask")),
+    createField("enabled", createSelect(["enabled", "disabled"], "enabled"))
+  );
+
+  const contextBox = document.createElement("div");
+  contextBox.className = "context-box";
+  appendText(contextBox, "h3", "Business Context 설정");
+  const keywordGroups = document.createElement("textarea");
+  keywordGroups.value = "contract_terms:계약,NDA,위약금,갱신,해지 | money_terms:만원,%,할인,견적";
+  contextBox.append(createField("keyword groups", keywordGroups));
+  contextBox.append(createField("exclusion keywords", createInput("샘플, 교육용, 공개 문서")));
+  const contextRow = document.createElement("div");
+  contextRow.className = "form-row three";
+  contextRow.append(
+    createField("window size", createInput("500")),
+    createField("min condition count", createInput("2")),
+    createField("sensitivity", createSelect(["low", "medium", "high"], "medium"))
+  );
+  contextBox.append(contextRow);
+
+  const privacyNotice = document.createElement("p");
+  privacyNotice.className = "privacy-note";
+  privacyNotice.textContent = "Dry-run sample과 원문 탐지값은 저장하지 않습니다. 화면에는 metadata-only 결과만 표시합니다.";
+
+  const actions = document.createElement("div");
+  actions.className = "form-actions";
+  const reset = appendText(actions, "button", "초기화") as HTMLButtonElement;
+  reset.type = "button";
+  reset.className = "nav-button";
+  const save = appendText(actions, "button", "규칙 저장") as HTMLButtonElement;
+  save.type = "button";
+  save.className = "logout-button";
+
+  form.append(tabs, row1, row2, description, row3, row4, row5, contextBox, privacyNotice, actions);
+  card.append(header, form);
+  return card;
+}
+
+function renderDryRun(): HTMLElement {
+  const card = document.createElement("article");
+  card.className = "filter-card dryrun-card";
+  appendText(card, "h2", "Dry-run Test");
+  appendText(card, "p", "샘플 텍스트는 저장하지 않고 예상 action과 안전한 match metadata만 확인합니다.").className = "filter-subtext";
+
+  const sample = document.createElement("textarea");
+  sample.className = "dryrun-textarea";
+  sample.value = "계약서에 NDA와 위약금 조건, 15% 할인율이 포함되어 있는지 확인해줘.";
+  card.append(createField("sample text", sample));
+
+  const run = appendText(card, "button", "dry-run 실행") as HTMLButtonElement;
+  run.type = "button";
+  run.className = "logout-button full-button";
+
+  const result = document.createElement("div");
+  result.className = "dryrun-result";
+  appendText(result, "h3", "dry-run 결과");
+  appendText(result, "p", "아직 실행된 dry-run 결과가 없습니다.").className = "empty-state";
+
+  run.addEventListener("click", () => {
+    const text = sample.value;
+    const matched = ["계약", "NDA", "위약금", "할인율", "token", "API Key"].filter((keyword) => text.includes(keyword));
+    result.replaceChildren();
+    appendText(result, "h3", "dry-run 결과");
+    const rows: Array<[string, string, string?]> = [
+      ["matched", matched.length > 0 ? "true" : "false", matched.length > 0 ? "danger-text" : "safe-text"],
+      ["expected_action", matched.length > 0 ? "Warn" : "Allow"],
+      ["risk_level", matched.length > 0 ? "high" : "low"],
+      ["kind", "context_rule"],
+      ["match_count", String(matched.length)],
+      ["reason_code", matched.length > 0 ? "BUSINESS_CONTEXT_KEYWORDS" : "NO_MATCH"],
+      ["sample_persisted", "false", "safe-text"]
+    ];
+    for (const [label, value, className] of rows) {
+      const row = document.createElement("div");
+      row.className = "result-row";
+      appendText(row, "span", label);
+      const strong = appendText(row, "strong", value);
+      if (className) strong.className = className;
+      result.append(row);
+    }
+  });
+
+  card.append(result);
+  return card;
+}
+
+function renderRuleRow(rule: FilterRule): HTMLTableRowElement {
+  const row = document.createElement("tr");
+  const sourceCell = document.createElement("td");
+  sourceCell.append(renderBadge(rule.source, `source-badge ${rule.source}`));
+  row.append(sourceCell);
+  appendText(row, "td", rule.kind);
+  appendText(row, "td", rule.category);
+
+  const labelCell = document.createElement("td");
+  appendText(labelCell, "strong", rule.label);
+  appendText(labelCell, "small", rule.description);
+  row.append(labelCell);
+
+  const severityCell = document.createElement("td");
+  severityCell.append(renderBadge(rule.severity, `severity-badge ${rule.severity}`));
+  row.append(severityCell);
+  appendText(row, "td", rule.action);
+  const statusCell = document.createElement("td");
+  statusCell.append(renderBadge(rule.enabled ? "ON" : "OFF", `user-status ${rule.enabled ? "active" : "disabled"}`));
+  row.append(statusCell);
+  appendText(row, "td", `v${rule.version}`);
+
+  const actions = document.createElement("td");
+  const edit = appendText(actions, "button", rule.source === "built_in" ? "허용 필드 수정" : "수정") as HTMLButtonElement;
+  edit.type = "button";
+  edit.className = "text-action";
+  const toggle = appendText(actions, "button", rule.enabled ? "비활성화" : "활성화") as HTMLButtonElement;
+  toggle.type = "button";
+  toggle.className = "text-action";
+  row.append(actions);
+  return row;
+}
+
+function renderRuleTable(): HTMLElement {
+  const section = document.createElement("section");
+  section.className = "table-section";
+  const top = renderSectionTitle("등록된 Filter Rules", "built-in은 삭제하지 않고 editable_fields에 허용된 값만 변경합니다.");
+  const pageInfo = appendText(top, "span", "");
+  pageInfo.className = "filter-page-info";
+  section.append(top);
+
+  const card = document.createElement("div");
+  card.className = "table-card";
+  const table = document.createElement("table");
+  table.className = "data-table filter-table";
+  const thead = document.createElement("thead");
+  const head = document.createElement("tr");
+  for (const label of ["source", "kind", "category", "label", "severity", "action", "status", "version", "관리"]) {
+    appendText(head, "th", label);
+  }
+  thead.append(head);
+  const tbody = document.createElement("tbody");
+  table.append(thead, tbody);
+  card.append(table);
+
+  const pagination = document.createElement("div");
+  pagination.className = "pagination";
+  const prev = appendText(pagination, "button", "이전") as HTMLButtonElement;
+  prev.type = "button";
+  prev.className = "page-btn";
+  const numbers = document.createElement("div");
+  numbers.className = "page-numbers";
+  const next = appendText(pagination, "button", "다음") as HTMLButtonElement;
+  next.type = "button";
+  next.className = "page-btn";
+  pagination.append(numbers, next);
+
+  function paint(): void {
+    const totalPages = Math.ceil(filterRules.length / filterRowsPerPage);
+    const start = (currentFilterPage - 1) * filterRowsPerPage;
+    tbody.replaceChildren(...filterRules.slice(start, start + filterRowsPerPage).map(renderRuleRow));
+    pageInfo.textContent = `${currentFilterPage} / ${totalPages} 페이지`;
+    numbers.replaceChildren();
+    for (let page = 1; page <= totalPages; page += 1) {
+      const button = appendText(numbers, "button", String(page)) as HTMLButtonElement;
+      button.type = "button";
+      button.className = page === currentFilterPage ? "page-number active" : "page-number";
+      button.addEventListener("click", () => {
+        currentFilterPage = page;
+        paint();
+      });
+    }
+    prev.disabled = currentFilterPage === 1;
+    next.disabled = currentFilterPage === totalPages;
+  }
+
+  prev.addEventListener("click", () => {
+    if (currentFilterPage > 1) {
+      currentFilterPage -= 1;
+      paint();
+    }
+  });
+  next.addEventListener("click", () => {
+    const totalPages = Math.ceil(filterRules.length / filterRowsPerPage);
+    if (currentFilterPage < totalPages) {
+      currentFilterPage += 1;
+      paint();
+    }
+  });
+
+  paint();
+  section.append(card, pagination);
+  return section;
+}
+
+function renderFilters(): void {
+  currentFilterPage = 1;
+  const fragment = document.createDocumentFragment();
+  fragment.append(renderHeader("OASecure Admin / Filter Policy", "Filter Rule 관리", "기본 탐지 규칙, 사용자 정의 keyword/regex, Business Context 규칙을 하나의 화면에서 관리합니다.", commonNav("filters")));
+
+  const main = document.createElement("main");
+  main.className = "dashboard filter-dashboard";
+  const summary = document.createElement("section");
+  summary.className = "filter-summary";
+  appendText(summary, "strong", "v0.10 통합 Filter Rule 화면");
+  appendText(summary, "p", "source/kind/category 목록, built-in 수정 제한, custom keyword/regex/context_rule form, 저장 없는 dry-run panel을 포함합니다.");
+
+  const grid = document.createElement("section");
+  grid.className = "filter-grid";
+  grid.append(renderFilterForm(), renderDryRun());
+
+  main.append(summary, grid, renderRuleTable());
   fragment.append(main);
   appRoot.replaceChildren(fragment);
 }
@@ -581,6 +1004,7 @@ function render(): void {
   if (route === "events") renderEvents();
   if (route === "event-detail") renderEventDetail();
   if (route === "users") renderUsers();
+  if (route === "filters") renderFilters();
 }
 
 window.addEventListener("hashchange", render);
