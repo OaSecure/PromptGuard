@@ -34,6 +34,7 @@ label {
 }
 
 input[type="url"],
+input[type="text"],
 input[type="password"] {
   width: 100%;
   box-sizing: border-box;
