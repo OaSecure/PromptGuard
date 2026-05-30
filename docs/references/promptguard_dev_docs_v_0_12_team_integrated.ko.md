@@ -1193,15 +1193,15 @@ v0.12는 v0.11을 다시 고치지 않고, 현재 `main`에 머지된 구현 상
 | 77 | 대시보드/관리 | Overview | Overview 카드·추이 차트 구현 | 김영은 | 6-14(일) | 대시보드·UI | Total/Blocked/Masked/Warned/Active cards | 부분 | 구현된 조각: overview cards와 CSS 기반 action/user/period statistics visual scaffold가 구현됐다. Status audit source: PR #23, PR #26, `apps/dashboard/src/main.ts`, `apps/dashboard/src/styles/main.css`. 남은 구현: `/stats/overview`, `/stats/users`, `/stats/events` API 연결과 metadata privacy DOM tests. |
 | 78 | 대시보드/관리 | Events | Risk Events 목록·필터 구현 | 김영은 | 6-14(일) | 대시보드·UI | event table, filters | 부분 | 구현된 조각: metadata-only risk event list scaffold와 event navigation이 구현됐다. Status audit source: PR #16, PR #23, `apps/dashboard/src/main.ts`. 남은 구현: 기간/user/action/risk/detector/service filter API, pagination, loading/error state, real event table 연결. |
 | 79 | 대시보드/관리 | Events | 원문 없는 이벤트 상세 구현 | 김영은 | 6-14(일) | 대시보드·UI | event detail safe metadata | 부분 | 구현된 조각: event detail scaffold가 raw prompt/file/original filename 없이 safe metadata와 `promptHash` 중심으로 렌더링된다. Status audit source: PR #16, `apps/dashboard/src/main.ts`. 남은 구현: real event detail API, matched keyword count, privacy API/DOM regression tests. |
-| 80 | 대시보드/관리 | 사용자통계 | 사용자별 이벤트 통계 API 구현 | 유지수 | 6-15(월) | 서버·보안 | 사용자별 유형/횟수/action 분포 API | 안됨 | MVP 필수. 사용자별 aggregate API, 후속 drilldown API와 분리. |
-| 81 | 대시보드/관리 | 사용자통계 | 사용자별 이벤트 표 구현 | 유지수 | 6-15(월) | 대시보드·UI | 사용자, 부서, top detection, 마지막 이벤트 | 안됨 | MVP 필수. 상위 사용자/사용자별 summary table. 상세 점검 페이지는 후속. |
+| 80 | 대시보드/관리 | 사용자통계 | 사용자별 이벤트 통계 API 구현 | 김현성 | 6-15(월) | 서버·보안 | 사용자별 유형/횟수/action 분포 API | 안됨 | 김현성 MVP. 사용자별 이벤트 표가 mock 없이 동작하려면 이 aggregate API가 선행되어야 한다. 후속 drilldown API와 분리. |
+| 81 | 대시보드/관리 | 사용자통계 | 사용자별 이벤트 표 구현 | 김현성 | 6-15(월) | 대시보드·UI | 사용자, 부서, top detection, 마지막 이벤트 | 안됨 | 김현성 MVP. WBS 80 사용자통계 API에 연결한 상위 사용자/사용자별 summary table. 상세 점검 페이지는 후속. |
 | 82 | 대시보드/관리 | 사용자통계 | 사용자 action·탐지유형 차트 구현 | 유지수 | 6-15(월) | 대시보드·UI | stacked bar, detection heatmap 데이터 | 안됨 | MVP 필수. metadata-only chart; 개인 timeline/detail은 후속. |
-| 83 | 대시보드/관리 | Users | Users 관리 화면 구현 | 유지수 | 6-16(화) | 대시보드·UI | admin UI | 부분 | 구현된 조각: dashboard Users placeholder/navigation scaffold와 backend `/admin/users` API가 존재한다. Status audit source: PR #22, PR #23, `apps/api/app/routes/admin_users.py`, `apps/dashboard/src/main.ts`. 남은 구현: 실제 Users management UI/API client, create/role/status form, empty/loading/error/RBAC states. |
+| 83 | 대시보드/관리 | Users | Users 관리 화면 구현 | 김현성 | 6-16(화) | 대시보드·UI | admin UI | 부분 | 김현성 MVP. 구현된 조각: dashboard Users placeholder/navigation scaffold와 backend `/admin/users` API가 존재한다. Status audit source: PR #22, PR #23, `apps/api/app/routes/admin_users.py`, `apps/dashboard/src/main.ts`. 남은 구현: mock 데이터를 걷어내고 실제 `/admin/users` 목록/create/role/status API client, empty/loading/error/RBAC states 연결. |
 | 84 | 대시보드/관리 | 가입관리 | Invites·Registration 화면 구현 | 유지수 | 6-16(화) | 대시보드·UI | 초대 생성/폐기, 관리자 기반 사용자 생성/role 지정 설정 | 안됨 | invite/registration UI. |
 | 85 | 대시보드/관리 | 규칙 | Filter Rule 설정 요약을 Filter Rule 관리 화면에 통합 | 유지수 | 6-17(수) | 대시보드·UI | filter rule summary, detector override, retention metadata 표시 | 안됨 | 독립 설정 화면은 구현하지 않고 필요한 필터 설정 요약은 Filter Rule 관리 화면에 포함한다. |
 | 86 | 대시보드/관리 | 통계 | 탐지 유형별 통계 화면 구현 | 유지수 | 6-17(수) | 대시보드·UI | detection type trend와 action count | 안됨 | metadata charts. |
 | 87 | 대시보드/관리 | Filters | Filter Rule 관리 화면 구현 | 유지수 | 6-17(수) | 대시보드·UI | filter rule CRUD UI | 부분 | 구현된 조각: Vanilla TypeScript Filter Rule management mock UI, built-in/custom/context rule list, pagination, action/severity metadata scaffold가 구현됐다. Status audit source: PR #30, `apps/dashboard/src/main.ts`, `apps/dashboard/src/styles/main.css`. 남은 구현: backend Filter Rule CRUD API, validation/dry-run integration, real API client, privacy/error states. |
-| 88 | 대시보드/관리 | Status | 서버 health·degraded 상태 화면 | 유지수 | 6-17(수) | 대시보드·UI | API/DB/migration 상태 | 부분 | 구현된 조각: backend `/status/server`와 health/degraded metadata payload가 구현됐다. Status audit source: PR #15, `apps/api/app/routes/status.py`, `apps/api/tests/test_rbac.py`, `apps/api/tests/test_health.py`. 남은 구현: dashboard Status screen UI/API client, degraded/disabled visual states, session guard. |
+| 88 | 대시보드/관리 | Status | 서버 health·degraded 상태 화면 | 김현성 | 6-17(수) | 대시보드·UI | API/DB/migration 상태 | 부분 | 김현성 MVP. 구현된 조각: backend `/status/server`와 health/degraded metadata payload가 구현됐다. Status audit source: PR #15, `apps/api/app/routes/status.py`, `apps/api/tests/test_rbac.py`, `apps/api/tests/test_health.py`. 남은 구현: dashboard Status screen UI/API client, degraded/disabled visual states, session guard, raw prompt/full masked prompt/DB URL/stack trace 미표시 검증 유지. |
 | 89 | 대시보드/관리 | 원문금지 | Dashboard 원문 미노출 화면 테스트 | 전체 | — | 기획·QA·문서 | raw_prompt, masked_prompt, detected value 미표시 검증 | 안됨 | MVP 필수. overview/event/user/status/filter rule 화면의 DOM/API response를 seeded sensitive value로 검사. |
 | 90 | 통합·보안·문서 | Privacy | DB 원문 미저장 회귀 테스트 작성 | 전체 | — | 기획·QA·문서 | 금지 컬럼·seeded prompt DB scan | 안됨 | pytest/schema scan. |
 | 91 | 통합·보안·문서 | Privacy | 로그 원문 미저장 회귀 테스트 작성 | 전체 | — | 기획·QA·문서 | application/access/error log seeded scan | 안됨 | log capture tests. |
@@ -1222,16 +1222,16 @@ v0.12는 v0.11을 다시 고치지 않고, 현재 `main`에 머지된 구현 상
 
 ### 김현성
 
-구현 범위: 모노레포/빌드 조정, 확장앱, 확장앱-API 경계, 제외된 팀원에게서 재배분된 ADMIN 기반 사용자 생성·사용자 관리 API, Analyze 요청 검증, 원문 보호, idempotency, HMAC hash, rule pack 및 계약정보 문맥 작업, 애매한 문장 처리, filter rule API/pipeline, overlap merge.
+구현 범위: 모노레포/빌드 조정, 확장앱, 확장앱-API 경계, 제외된 팀원에게서 재배분된 ADMIN 기반 사용자 생성·사용자 관리 API, Analyze 요청 검증, 원문 보호, idempotency, HMAC hash, rule pack 및 계약정보 문맥 작업, 애매한 문장 처리, filter rule API/pipeline, overlap merge, 사용자통계 API/사용자별 이벤트 표, API-backed Users 관리 화면, dashboard status 화면.
 
-- 관련 WBS 행: 6, 9, 22-25, 28-31, 43, 44, 47, 49, 52, 53, 57-73.
+- 관련 WBS 행: 6, 9, 22-25, 28-31, 43, 44, 47, 49, 52, 53, 57-73, 80, 81, 83, 88.
 - 예정 집중 구간: 5-22~6-12. 확장앱 구현은 6-7~6-12에 집중한다.
 - 읽을 단원: `6. 인증·세션·권한 계약`, `7. API 경계와 상세 계약`, `10. 탐지·마스킹·점수·filter rule 계약`, `11. 확장앱 계약`, `15. 테스트·완료·릴리즈 게이트`, `16. WBS 문서 순서 기준 작업표`.
-- 구현 위치: `apps/extension/*`, `apps/api/*`의 invites, user management, analyze/filter rule/idempotency/hash 관련 모듈, extension API adapter와 테스트.
+- 구현 위치: `apps/extension/*`, `apps/api/*`의 invites, user management, analyze/filter rule/idempotency/hash/user statistics 관련 모듈, extension API adapter와 테스트, `apps/dashboard/*`의 users/status/user summary 화면.
 - 선행 작업: Python API scaffold, auth context, PostgreSQL idempotency/event table, user table, OpenAPI 출력.
 - 구현된 조각: extension DOM hook/hold/action handling, extension token storage, 부분 extension API client/config cache, 좁은 Analyze route/schema test, safe redaction/problem response helper, HMAC helper, contract-context helper, overlap merge helper, ADMIN 사용자 생성/목록/상세/role/status API.
-- 남은 구현: typed `inputs[]` request body, 실제 self-host API smoke, DB-backed filter config, raw prompt/clipboard/file logging 차단, `client_request_id` 중복 처리, HMAC persistence 연결, user aggregate 실제 event 집계, rule pack/AMBIGUOUS 처리, filter rule CRUD/pipeline, overlap merge pipeline 연결.
-- 완료 PR 기준: 확장앱 DOM hook 회귀가 유지되고, 실제 `/auth/me`, `/config/extension`, `/prompts/analyze` 호출이 통과하며, 맡은 invite/user API가 auth/RBAC 테스트를 통과하고, raw prompt와 full masked prompt가 DB/log/error/dashboard에 남지 않는다.
+- 남은 구현: typed `inputs[]` request body, 실제 self-host API smoke, DB-backed filter config, raw prompt/clipboard/file logging 차단, `client_request_id` 중복 처리, HMAC persistence 연결, user aggregate 실제 event 집계, 사용자별 이벤트 표 API 연결, Users 관리 화면 mock 제거와 `/admin/users` 목록/create/role/status 연결, dashboard status 화면 API 연결과 raw prompt/full masked prompt/DB URL/stack trace 미표시 검증, rule pack/AMBIGUOUS 처리, filter rule CRUD/pipeline, overlap merge pipeline 연결.
+- 완료 PR 기준: 확장앱 DOM hook 회귀가 유지되고, 실제 `/auth/me`, `/config/extension`, `/prompts/analyze` 호출이 통과하며, 맡은 invite/user API와 user statistics/dashboard users/status 화면이 auth/RBAC 테스트를 통과하고, raw prompt와 full masked prompt가 DB/log/error/dashboard에 남지 않는다.
 - 테스트 방법: `python apps/extension/tests/run_extension_checks.py all`, `cd apps/api && pytest tests/analyze tests/privacy tests/filter_rules tests/auth`.
 
 ### 김영은
@@ -1250,16 +1250,16 @@ v0.12는 v0.11을 다시 고치지 않고, 현재 `main`에 머지된 구현 상
 
 ### 유지수
 
-구현 범위: Python API foundation, Docker/PostgreSQL, migration, auth/RBAC, CORS/rate limit, PII/localized detector, server-side masking, Analyze orchestrator, user statistics API, 제외된 팀원에게서 재배분된 dashboard management/status 화면.
+구현 범위: Python API foundation, Docker/PostgreSQL, migration, auth/RBAC, CORS/rate limit, PII/localized detector, server-side masking, Analyze orchestrator, filter rule backend와 일부 dashboard filter management 화면.
 
-- 관련 WBS 행: 4, 7, 10, 11, 17-21, 26, 27, 34-36, 48, 55, 56, 80-88.
+- 관련 WBS 행: 4, 7, 10, 11, 17-21, 26, 27, 34-36, 48, 55, 56, 82, 84-87.
 - 예정 집중 구간: 5-24~6-17. 대시보드 관리/status 작업은 6-15~6-17에 집중한다.
 - 읽을 단원: `3. 서버·실행환경·인프라 계약`, `4. 상태 확인 계약`, `5. HTTP 오류 계약`, `6. 인증·세션·권한 계약`, `7. API 경계와 상세 계약`, `9. 데이터 모델·원문 저장 금지 계약`, `10. 탐지·마스킹·점수·filter rule 계약`, `12. 대시보드 계약`.
-- 구현 위치: `apps/api/*`, `infra/compose.yaml`, `.env.example`, Alembic migration, detector/masking/orchestrator modules, 향후 `apps/dashboard/*`의 users/filter rule/status 화면.
-- 선행 작업: repository scaffold, API dependency seed, PostgreSQL connection, settings loader, migration/auth baseline은 부분 구현됨. dashboard session과 event/user stats API는 아직 필요하다.
+- 구현 위치: `apps/api/*`, `infra/compose.yaml`, `.env.example`, Alembic migration, detector/masking/orchestrator modules, 향후 `apps/dashboard/*`의 filter rule 관련 화면.
+- 선행 작업: repository scaffold, API dependency seed, PostgreSQL connection, settings loader, migration/auth baseline은 부분 구현됨. dashboard session과 event aggregate 기반 API는 아직 필요하다.
 - 구현된 조각: health/status endpoints, Alembic baseline, auth/RBAC/token/CORS/rate-limit, EMAIL/PHONE/RRN/CARD detectors, placeholder masking, backend `/status/server`, dashboard filter/status 관련 scaffold 일부.
-- 남은 구현: compose runtime smoke, filter rule table/API, Analyze orchestrator, user stats API, user stats UI, users/filter rule/status 실제 API-backed 화면.
-- 완료 PR 기준: Redis 없이 default Compose가 API/PostgreSQL을 시작하고, 남은 filter/analyze/user stats/dashboard management/status 테스트가 통과하며, 재배분된 dashboard management/status 화면이 metadata-only와 RBAC 기준을 지킨다.
+- 남은 구현: compose runtime smoke, filter rule table/API, Analyze orchestrator, filter rule 실제 API-backed 화면.
+- 완료 PR 기준: Redis 없이 default Compose가 API/PostgreSQL을 시작하고, 남은 filter/analyze/filter-management 테스트가 통과하며, 담당 dashboard filter 화면이 metadata-only와 RBAC 기준을 지킨다.
 - 테스트 방법: `cd apps/api && pytest`, Docker smoke 이후 `/livez`, `/readyz`, `/healthz`, login/analyze/dashboard summary smoke, `cd apps/dashboard && npm test`.
 
 ### 전체
