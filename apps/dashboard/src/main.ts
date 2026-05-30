@@ -59,6 +59,16 @@ let authenticated = false;
 let currentFilterPage = 1;
 const filterRowsPerPage = 5;
 
+// Temporary dashboard preview auth. Replace this mock boundary with API-backed session auth.
+const mockDashboardCredentials = {
+  username: "admin",
+  password: "1234"
+};
+
+function isMockDashboardLogin(username: string, password: string): boolean {
+  return username === mockDashboardCredentials.username && password === mockDashboardCredentials.password;
+}
+
 const overviewStats: OverviewStat[] = [
   { label: "Total Events", value: 128, description: "분석 요청에서 생성된 안전한 메타데이터 이벤트" },
   { label: "Blocked", value: 12, tone: "danger", description: "정책상 즉시 차단된 요청" },
@@ -355,7 +365,7 @@ function renderLogin(): void {
   form.addEventListener("submit", (event) => {
     event.preventDefault();
 
-    if (idInput.value === "admin" && passwordInput.value === "1234") {
+    if (isMockDashboardLogin(idInput.value, passwordInput.value)) {
       authenticated = true;
       navigate("admin");
       render();
