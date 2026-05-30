@@ -327,17 +327,15 @@ function renderLogin(): void {
   card.className = "login-card";
   appendText(card, "p", "OASecure").className = "eyebrow";
   appendText(card, "h1", "로그인").className = "login-title";
-  appendText(card, "p", "개발용 대시보드 미리보기입니다. ADMIN 계정으로 관리 화면을 확인합니다.").className = "login-desc";
 
   const form = document.createElement("form");
   form.className = "login-form";
 
-  const idLabel = appendText(form, "label", "로그인 ID");
+  const idLabel = appendText(form, "label", "아이디");
   const idInput = document.createElement("input");
-  idInput.name = "login_id";
+  idInput.name = "username";
   idInput.type = "text";
   idInput.autocomplete = "username";
-  idInput.value = "ADMIN";
   idLabel.append(idInput);
 
   const passwordLabel = appendText(form, "label", "비밀번호");
@@ -345,7 +343,6 @@ function renderLogin(): void {
   passwordInput.name = "password";
   passwordInput.type = "password";
   passwordInput.autocomplete = "current-password";
-  passwordInput.value = "1234";
   passwordLabel.append(passwordInput);
 
   const message = appendText(form, "p", "");
@@ -358,14 +355,14 @@ function renderLogin(): void {
   form.addEventListener("submit", (event) => {
     event.preventDefault();
 
-    if (idInput.value.trim().toUpperCase() === "ADMIN" && passwordInput.value.length > 0) {
+    if (idInput.value === "admin" && passwordInput.value === "1234") {
       authenticated = true;
       navigate("admin");
       render();
       return;
     }
 
-    message.textContent = "로그인 ID 또는 비밀번호가 올바르지 않습니다.";
+    message.textContent = "아이디 또는 비밀번호가 올바르지 않습니다.";
   });
 
   card.append(form);
