@@ -120,6 +120,18 @@ def detection_category_label(summary: list[EventDetectionSummary]) -> str | None
     return "MULTIPLE"
 
 
+def safe_detection_evidence(value: dict[str, Any] | None) -> dict[str, list[int]]:
+    if not isinstance(value, dict):
+        return {}
+
+    raw_lengths = value.get("value_lengths")
+    if not isinstance(raw_lengths, list):
+        return {}
+
+    lengths = [item for item in raw_lengths if isinstance(item, int) and item >= 0]
+    return {"value_lengths": lengths[:100]} if lengths else {}
+
+
 def list_item(event: AnalysisEvent, user: User, detections: list[EventDetection]) -> EventListItem:
     summary = summarize_detections(detections)
     return EventListItem(
@@ -154,7 +166,7 @@ def detail_item(event: AnalysisEvent, user: User, detections: list[EventDetectio
                 count=detection.count,
                 reason_code=detection.reason_code,
                 match_count=detection.match_count,
-                safe_evidence=detection.safe_evidence,
+                safe_evidence=safe_detection_evidence(detection.safe_evidence),
             )
             for detection in sorted(detections, key=lambda item: (item.category, item.type, item.reason_code))
         ],

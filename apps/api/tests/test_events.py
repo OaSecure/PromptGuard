@@ -220,6 +220,29 @@ def test_get_event_returns_detail_without_raw_values() -> None:
     assert "raw_detected_value" not in encoded
 
 
+def test_get_event_whitelists_safe_evidence_shape() -> None:
+    event_user = _user()
+    event = _event(event_user)
+    detection = _detection(event)
+    detection.safe_evidence = {
+        "value_lengths": [16, -1, "bad", 32],
+        "raw_value": "admin@example.com",
+        "prompt_excerpt": "secret prompt excerpt",
+    }
+    fake_session = _FakeSession(rows=[(event, event_user)], detections=[detection])
+
+    response = _client(fake_session).get(f"/events/{event.id}")
+    body = response.json()
+    encoded = json.dumps(body, ensure_ascii=False)
+
+    assert response.status_code == 200
+    assert body["detections"][0]["safe_evidence"] == {"value_lengths": [16, 32]}
+    assert "admin@example.com" not in encoded
+    assert "secret prompt excerpt" not in encoded
+    assert "raw_value" not in encoded
+    assert "prompt_excerpt" not in encoded
+
+
 def test_get_event_returns_404_for_missing_event() -> None:
     response = _client(_FakeSession()).get(f"/events/{uuid.uuid4()}")
 
