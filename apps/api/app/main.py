@@ -1,8 +1,11 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.core.config import get_settings
 from app.routes.admin_users import router as admin_users_router
+from app.routes.analyze import router as analyze_router
 from app.routes.auth import router as auth_router
 from app.routes.health import router as health_router
 from app.routes.setup import router as setup_router
@@ -16,6 +19,22 @@ app = FastAPI(
     description="Self-hosted PromptGuard API.",
 )
 
+
+@app.exception_handler(RequestValidationError)
+async def request_validation_exception_handler(
+    _request: Request,
+    exc: RequestValidationError,
+) -> JSONResponse:
+    safe_errors = [
+        {
+            "loc": error.get("loc", ()),
+            "msg": error.get("msg", "Invalid request"),
+            "type": error.get("type", "value_error"),
+        }
+        for error in exc.errors()
+    ]
+    return JSONResponse(status_code=422, content={"detail": safe_errors})
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list(),
@@ -25,6 +44,7 @@ app.add_middleware(
 )
 
 app.include_router(admin_users_router)
+app.include_router(analyze_router)
 app.include_router(auth_router)
 app.include_router(health_router)
 app.include_router(setup_router)
