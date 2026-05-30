@@ -1,6 +1,6 @@
 import uuid
 from collections import Counter, defaultdict
-from datetime import datetime
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
@@ -16,6 +16,7 @@ from app.routes.auth import require_admin
 router = APIRouter(prefix="/stats", tags=["stats"])
 
 ACTIONS = ("ALLOW", "WARN", "MASK", "BLOCK")
+RISK_LEVELS = ("low", "medium", "high", "critical")
 
 
 class UserStatsRow(BaseModel):
@@ -45,8 +46,29 @@ class UserStatsAccumulator:
         self.detection_categories: Counter[str] = Counter()
 
 
+class DailyEventBucket(BaseModel):
+    date: str
+    event_count: int
+    action_distribution: dict[str, int]
+    risk_level_distribution: dict[str, int]
+
+
+class EventStatsResponse(BaseModel):
+    event_count: int
+    active_user_count: int
+    action_distribution: dict[str, int]
+    risk_level_distribution: dict[str, int]
+    detection_type_distribution: dict[str, int]
+    detection_category_distribution: dict[str, int]
+    daily_buckets: list[DailyEventBucket]
+
+
 def action_distribution(actions: Counter[str]) -> dict[str, int]:
     return {action: actions[action] for action in ACTIONS if actions[action] > 0}
+
+
+def risk_level_distribution(risk_levels: Counter[str]) -> dict[str, int]:
+    return {risk_level: risk_levels[risk_level] for risk_level in RISK_LEVELS if risk_levels[risk_level] > 0}
 
 
 def top_detector_category(categories: Counter[str]) -> str | None:
@@ -87,6 +109,76 @@ def sort_stats_rows(rows: list[UserStatsRow]) -> list[UserStatsRow]:
             -(row.last_event_at.timestamp() if row.last_event_at is not None else 0),
             row.username.casefold(),
         ),
+    )
+
+
+def utc_today() -> date:
+    return datetime.now(timezone.utc).date()
+
+
+def date_window(days: int, *, as_of: date | None = None) -> list[date]:
+    end_date = as_of or utc_today()
+    start_date = end_date - timedelta(days=days - 1)
+    return [start_date + timedelta(days=offset) for offset in range(days)]
+
+
+def event_date(event: AnalysisEvent) -> date:
+    created_at = event.created_at
+    if created_at.tzinfo is None:
+        return created_at.date()
+    return created_at.astimezone(timezone.utc).date()
+
+
+def event_stats_response(
+    *,
+    events: list[AnalysisEvent],
+    detections: list[EventDetection],
+    days: int,
+    as_of: date | None = None,
+) -> EventStatsResponse:
+    days_in_window = date_window(days, as_of=as_of)
+    allowed_dates = set(days_in_window)
+    events_in_window = [event for event in events if event_date(event) in allowed_dates]
+    event_ids = {event.id for event in events_in_window}
+
+    actions = Counter(event.action for event in events_in_window)
+    risk_levels = Counter(event.risk_level for event in events_in_window)
+    active_user_ids = {event.user_id for event in events_in_window}
+
+    detection_types: Counter[str] = Counter()
+    detection_categories: Counter[str] = Counter()
+    for detection in detections:
+        if detection.event_id not in event_ids:
+            continue
+        detection_types[detection.type] += detection.count
+        detection_categories[detection.category] += detection.count
+
+    events_by_date: dict[date, list[AnalysisEvent]] = defaultdict(list)
+    for event in events_in_window:
+        events_by_date[event_date(event)].append(event)
+
+    daily_buckets = []
+    for bucket_date in days_in_window:
+        bucket_events = events_by_date.get(bucket_date, [])
+        bucket_actions = Counter(event.action for event in bucket_events)
+        bucket_risk_levels = Counter(event.risk_level for event in bucket_events)
+        daily_buckets.append(
+            DailyEventBucket(
+                date=bucket_date.isoformat(),
+                event_count=len(bucket_events),
+                action_distribution=action_distribution(bucket_actions),
+                risk_level_distribution=risk_level_distribution(bucket_risk_levels),
+            )
+        )
+
+    return EventStatsResponse(
+        event_count=len(events_in_window),
+        active_user_count=len(active_user_ids),
+        action_distribution=action_distribution(actions),
+        risk_level_distribution=risk_level_distribution(risk_levels),
+        detection_type_distribution=dict(sorted(detection_types.items())),
+        detection_category_distribution=dict(sorted(detection_categories.items())),
+        daily_buckets=daily_buckets,
     )
 
 
@@ -133,3 +225,25 @@ async def user_stats(
 
     rows = [row_for_user(user, accumulators[user.id]) for user in users]
     return sort_stats_rows(rows)[:limit]
+
+
+@router.get("/events", response_model=EventStatsResponse)
+async def event_stats(
+    days: int = Query(default=30, ge=1, le=90),
+    current_admin: User = Depends(require_admin),
+    session: AsyncSession = Depends(get_db_session),
+) -> EventStatsResponse:
+    del current_admin
+
+    as_of = utc_today()
+    window_start = datetime.combine(date_window(days, as_of=as_of)[0], time.min, tzinfo=timezone.utc)
+    events_result = await session.execute(select(AnalysisEvent).where(AnalysisEvent.created_at >= window_start))
+    events = list(events_result.scalars().all())
+
+    event_ids = {event.id for event in events}
+    detections: list[EventDetection] = []
+    if event_ids:
+        detections_result = await session.execute(select(EventDetection).where(EventDetection.event_id.in_(event_ids)))
+        detections = list(detections_result.scalars().all())
+
+    return event_stats_response(events=events, detections=detections, days=days, as_of=as_of)
