@@ -65,3 +65,16 @@ def test_apply_placeholders_keeps_longer_overlapping_detection() -> None:
 
     assert masked.text == "[SECRET_1]"
     assert masked.applied_count == 1
+
+
+def test_apply_placeholders_keeps_longer_detection_when_overlap_starts_later() -> None:
+    text = "abc-secret-value"
+    detections = [
+        Detection("SHORT", "SECRET", 0, 6, "SECRET", 6),
+        Detection("LONG", "SECRET", 4, len(text), "SECRET", len(text) - 4),
+    ]
+
+    masked = apply_placeholders(text, detections)
+
+    assert masked.text == "abc-[SECRET_1]"
+    assert masked.applied_count == 1

@@ -19,7 +19,7 @@ def placeholder_prefix(detection: Detection) -> str:
 
 
 def non_overlapping_detections(detections: list[Detection]) -> list[Detection]:
-    ordered = sorted(detections, key=lambda item: (item.start, -(item.end - item.start), item.detector_key))
+    ordered = sorted(detections, key=lambda item: (-(item.end - item.start), item.start, item.detector_key))
     accepted: list[Detection] = []
 
     for detection in ordered:
