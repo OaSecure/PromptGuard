@@ -1,12 +1,32 @@
 import "./styles/main.css";
 
-type RouteId = "login" | "admin" | "events" | "users" | "filters" | "event-detail";
+type RouteId = "login" | "admin" | "events" | "users" | "filters" | "status" | "event-detail";
 type EventAction = "Block" | "Mask" | "Warn";
 type RiskClass = "critical" | "high" | "medium";
 type RuleSource = "built_in" | "custom";
 type RuleKind = "detector" | "keyword" | "regex" | "context_rule";
 type RuleSeverity = "low" | "medium" | "high" | "critical";
 type RuleAction = "Allow" | "Warn" | "Mask" | "Block";
+type DependencyTone = "healthy" | "degraded" | "unhealthy" | "disabled" | "unknown";
+
+type DependencyStatus = {
+  name?: string;
+  status?: string;
+  required?: boolean;
+  code?: string;
+  message?: string;
+};
+
+type ServerStatus = {
+  status?: string;
+  service?: string;
+  version?: string;
+  checked_at?: string;
+  api?: DependencyStatus;
+  postgres?: DependencyStatus;
+  migrations?: DependencyStatus;
+  redis?: DependencyStatus;
+};
 
 type OverviewStat = {
   label: string;
@@ -58,6 +78,8 @@ const appRoot = app;
 let authenticated = false;
 let currentFilterPage = 1;
 const filterRowsPerPage = 5;
+const apiBaseUrl = (import.meta.env.VITE_PROMPTGUARD_API_BASE_URL ?? "http://localhost:8000").replace(/\/$/, "");
+const dashboardTokenKey = "promptguard_access_token";
 
 // Temporary dashboard preview auth. Replace this mock boundary with API-backed session auth.
 const mockDashboardCredentials = {
@@ -273,6 +295,89 @@ function navigate(hash: string): void {
   window.location.hash = hash;
 }
 
+function normalizeStatus(status?: string): DependencyTone {
+  if (status === "healthy" || status === "ok") return "healthy";
+  if (status === "degraded") return "degraded";
+  if (status === "unhealthy" || status === "error") return "unhealthy";
+  if (status === "disabled") return "disabled";
+  return "unknown";
+}
+
+function statusLabel(status?: string): string {
+  const normalized = normalizeStatus(status);
+  if (normalized === "healthy") return "Healthy";
+  if (normalized === "degraded") return "Degraded";
+  if (normalized === "unhealthy") return "Unhealthy";
+  if (normalized === "disabled") return "Disabled";
+  return "Unknown";
+}
+
+function formatCheckedAt(value?: string): string {
+  if (!value) return "Not checked";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Not checked";
+  return new Intl.DateTimeFormat("ko-KR", {
+    dateStyle: "medium",
+    timeStyle: "short"
+  }).format(date);
+}
+
+function fallbackServerStatus(): ServerStatus {
+  return {
+    status: "unknown",
+    service: "promptguard-api",
+    version: "unknown",
+    checked_at: new Date().toISOString(),
+    api: {
+      name: "api",
+      status: "unknown",
+      required: true,
+      message: "Status API is not connected in this dashboard session."
+    },
+    postgres: {
+      name: "postgres",
+      status: "unknown",
+      required: true,
+      message: "PostgreSQL status is unavailable until an API token is connected."
+    },
+    migrations: {
+      name: "migrations",
+      status: "unknown",
+      required: true,
+      message: "Migration readiness is unavailable until an API token is connected."
+    },
+    redis: {
+      name: "redis",
+      status: "unknown",
+      required: false,
+      message: "Redis is optional and was not checked from the fallback view."
+    }
+  };
+}
+
+async function fetchServerStatus(): Promise<{ payload: ServerStatus; source: "api" | "fallback" }> {
+  const token = window.localStorage.getItem(dashboardTokenKey);
+
+  if (!token) {
+    return { payload: fallbackServerStatus(), source: "fallback" };
+  }
+
+  try {
+    const response = await fetch(`${apiBaseUrl}/status/server`, {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    });
+    const payload = (await response.json()) as ServerStatus;
+    if (!payload.status && !payload.postgres && !payload.migrations) {
+      return { payload: fallbackServerStatus(), source: "fallback" };
+    }
+    return { payload, source: "api" };
+  } catch {
+    return { payload: fallbackServerStatus(), source: "fallback" };
+  }
+}
+
 function routeFromHash(): RouteId {
   const hash = window.location.hash.replace("#", "");
 
@@ -280,7 +385,7 @@ function routeFromHash(): RouteId {
     return "event-detail";
   }
 
-  if (hash === "admin" || hash === "events" || hash === "users" || hash === "filters") {
+  if (hash === "admin" || hash === "events" || hash === "users" || hash === "filters" || hash === "status") {
     return hash;
   }
 
@@ -310,6 +415,7 @@ function commonNav(active: RouteId): HTMLElement[] {
     createLink("이벤트", "#events", "nav-button"),
     createLink("사용자", "#users", "nav-button"),
     createLink("필터 규칙", "#filters", "nav-button"),
+    createLink("Status", "#status", "nav-button"),
     createLink("로그아웃", "#login", "logout-button")
   ];
 
@@ -994,6 +1100,95 @@ function renderFilters(): void {
   appRoot.replaceChildren(fragment);
 }
 
+function renderDependencyCard(label: string, dependency?: DependencyStatus): HTMLElement {
+  const card = document.createElement("article");
+  card.className = "dependency-card";
+
+  const header = document.createElement("div");
+  header.className = "dependency-card-header";
+  appendText(header, "strong", label);
+  header.append(renderBadge(statusLabel(dependency?.status), `health-badge ${normalizeStatus(dependency?.status)}`));
+
+  const meta = document.createElement("dl");
+  meta.className = "dependency-meta";
+  appendText(meta, "dt", "Role");
+  appendText(meta, "dd", dependency?.required === false ? "Optional" : "Required");
+  appendText(meta, "dt", "Message");
+  appendText(meta, "dd", dependency?.message ?? "No additional details reported.");
+
+  card.append(header, meta);
+  return card;
+}
+
+function buildStatusView(payload: ServerStatus, source: "api" | "fallback"): HTMLElement {
+  const main = document.createElement("main");
+  main.className = "dashboard status-dashboard";
+
+  const summary = document.createElement("section");
+  summary.className = "status-summary-card";
+
+  const copy = document.createElement("div");
+  appendText(copy, "p", "Server Status").className = "eyebrow";
+  appendText(copy, "h2", statusLabel(payload.status));
+  appendText(copy, "p", source === "api" ? "Live metadata from the server status endpoint." : "Safe fallback metadata. Connect an API token to read live server status.").className = "status-summary-copy";
+
+  const badgeGroup = document.createElement("div");
+  badgeGroup.className = "status-badge-group";
+  badgeGroup.append(renderBadge(statusLabel(payload.status), `health-badge ${normalizeStatus(payload.status)}`));
+  badgeGroup.append(renderBadge(source === "api" ? "Live API" : "Fallback", `source-badge ${source === "api" ? "built_in" : "custom"}`));
+
+  summary.append(copy, badgeGroup);
+
+  const meta = document.createElement("section");
+  meta.className = "status-meta-grid";
+  const metaItems = [
+    ["Service", payload.service ?? "unknown"],
+    ["Version", payload.version ?? "unknown"],
+    ["Last Checked", formatCheckedAt(payload.checked_at)]
+  ];
+  for (const [label, value] of metaItems) {
+    const item = document.createElement("article");
+    item.className = "status-meta-card";
+    appendText(item, "span", label);
+    appendText(item, "strong", value);
+    meta.append(item);
+  }
+
+  const dependencies = document.createElement("section");
+  dependencies.className = "dependency-grid";
+  dependencies.append(
+    renderDependencyCard("API", payload.api ?? { status: payload.status, required: true }),
+    renderDependencyCard("PostgreSQL", payload.postgres),
+    renderDependencyCard("Migration", payload.migrations),
+    renderDependencyCard("Redis", payload.redis ?? { status: "unknown", required: false, message: "Redis status is not exposed by the current dashboard status payload." })
+  );
+
+  main.append(summary, meta, dependencies);
+  return main;
+}
+
+function renderStatus(): void {
+  const fragment = document.createDocumentFragment();
+  fragment.append(renderHeader("OASecure Admin / Status", "Server Status", "API, PostgreSQL, migration, Redis readiness metadata를 확인합니다.", commonNav("status")));
+
+  const loading = document.createElement("main");
+  loading.className = "dashboard status-dashboard";
+  const card = document.createElement("section");
+  card.className = "status-summary-card";
+  appendText(card, "p", "Loading status metadata...");
+  loading.append(card);
+  fragment.append(loading);
+  appRoot.replaceChildren(fragment);
+
+  void fetchServerStatus().then(({ payload, source }) => {
+    if (routeFromHash() !== "status") return;
+    const next = document.createDocumentFragment();
+    next.append(renderHeader("OASecure Admin / Status", "Server Status", "API, PostgreSQL, migration, Redis readiness metadata를 확인합니다.", commonNav("status")));
+    next.append(buildStatusView(payload, source));
+    appRoot.replaceChildren(next);
+  });
+}
+
 function render(): void {
   const route = routeFromHash();
 
@@ -1012,6 +1207,7 @@ function render(): void {
   if (route === "event-detail") renderEventDetail();
   if (route === "users") renderUsers();
   if (route === "filters") renderFilters();
+  if (route === "status") renderStatus();
 }
 
 window.addEventListener("hashchange", render);

@@ -934,6 +934,159 @@ textarea {
   color: #eb5757;
 }
 
+.status-dashboard {
+  display: grid;
+  gap: 22px;
+}
+
+.status-summary-card,
+.status-meta-card,
+.dependency-card {
+  background: #ffffff;
+  border: 1px solid rgba(216, 236, 251, 0.85);
+  border-radius: 24px;
+  box-shadow: 0 16px 35px rgba(47, 128, 237, 0.1);
+}
+
+.status-summary-card {
+  align-items: center;
+  display: flex;
+  gap: 20px;
+  justify-content: space-between;
+  padding: 28px;
+}
+
+.status-summary-card h2 {
+  color: #10284a;
+  font-size: 34px;
+  font-weight: 900;
+  margin-bottom: 8px;
+}
+
+.status-summary-copy {
+  color: #5b78a0;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.status-badge-group {
+  align-items: flex-end;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.status-meta-grid,
+.dependency-grid {
+  display: grid;
+  gap: 18px;
+}
+
+.status-meta-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.dependency-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.status-meta-card,
+.dependency-card {
+  min-width: 0;
+  padding: 22px;
+}
+
+.status-meta-card span {
+  color: #5b78a0;
+  display: block;
+  font-size: 13px;
+  font-weight: 900;
+  margin-bottom: 12px;
+  text-transform: uppercase;
+}
+
+.status-meta-card strong {
+  color: #10284a;
+  display: block;
+  font-size: 20px;
+  font-weight: 900;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.dependency-card-header {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.dependency-card-header strong {
+  color: #10284a;
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.dependency-meta {
+  display: grid;
+  gap: 8px;
+}
+
+.dependency-meta dt {
+  color: #315d9a;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.dependency-meta dd {
+  color: #5b78a0;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.45;
+  margin: 0 0 8px;
+  overflow-wrap: anywhere;
+}
+
+.health-badge {
+  align-items: center;
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 900;
+  justify-content: center;
+  min-width: 92px;
+  padding: 8px 12px;
+  white-space: nowrap;
+}
+
+.health-badge.healthy {
+  background: #e9f9ef;
+  color: #219653;
+}
+
+.health-badge.degraded {
+  background: #fff7e6;
+  color: #f2994a;
+}
+
+.health-badge.unhealthy {
+  background: #fff0f0;
+  color: #eb5757;
+}
+
+.health-badge.disabled {
+  background: #eef1f5;
+  color: #667085;
+}
+
+.health-badge.unknown {
+  background: #edf5fc;
+  color: #315d9a;
+}
+
 .filter-table {
   min-width: 1060px;
 }
@@ -1106,6 +1259,10 @@ textarea {
   .filter-grid {
     grid-template-columns: 1fr;
   }
+
+  .dependency-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 850px) {
@@ -1128,9 +1285,19 @@ textarea {
 
   .chart-grid,
   .detail-grid,
+  .status-meta-grid,
   .form-row,
   .form-row.three {
     grid-template-columns: 1fr;
+  }
+
+  .status-summary-card {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .status-badge-group {
+    align-items: flex-start;
   }
 
   .filter-card-header,
@@ -1150,7 +1317,8 @@ textarea {
 
 @media (max-width: 560px) {
   .overview-grid,
-  .event-overview-grid {
+  .event-overview-grid,
+  .dependency-grid {
     grid-template-columns: 1fr;
   }
 
