@@ -3,11 +3,28 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>PromptGuard Dashboard</title>
-    <link rel="stylesheet" href="./src/styles/main.css" />
+    <title>OASecure 로그인</title>
+    <link rel="stylesheet" href="./static/main.css" />
   </head>
   <body>
-    <div id="app"></div>
-    <script type="module" src="./src/main.ts"></script>
+    <main class="login-page">
+      <section class="login-card">
+        <p class="eyebrow">OASecure</p>
+        <h1 class="login-title">로그인</h1>
+        <form class="login-form" id="login-form">
+          <label>
+            아이디
+            <input name="username" type="text" autocomplete="username" />
+          </label>
+          <label>
+            비밀번호
+            <input name="password" type="password" autocomplete="current-password" />
+          </label>
+          <p class="login-message" id="login-message"></p>
+          <button class="login-button" type="submit">로그인</button>
+        </form>
+      </section>
+    </main>
+    <script src="./static/login.js"></script>
   </body>
 </html>

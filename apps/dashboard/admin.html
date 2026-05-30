@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OASecure 관리자 대시보드</title>
+    <link rel="stylesheet" href="./static/main.css" />
+  </head>
+  <body>
+    <header class="admin-header">
+      <div>
+        <p class="eyebrow">OASecure Admin Dashboard</p>
+        <h1>관리자 대시보드</h1>
+        <p class="header-desc">오늘 우리 조직의 AI 사용 위험 현황을 한눈에 확인합니다.</p>
+      </div>
+      <nav class="header-actions">
+        <a href="./events.html" class="nav-button">이벤트 관리</a>
+        <a href="./users.html" class="nav-button">사용자 관리</a>
+        <a href="./index.html" class="logout-button">로그아웃</a>
+      </nav>
+    </header>
+    <main class="dashboard">
+      <section class="overview-section">
+        <div class="section-title-wrap">
+          <div>
+            <h2>Overview</h2>
+            <p>오늘 우리 조직의 AI 사용 위험 현황</p>
+          </div>
+        </div>
+        <div class="overview-grid">
+          <article class="overview-card">
+            <span class="card-label">Total Events</span>
+            <strong>128</strong>
+            <p>분석된 프롬프트/파일 요청 수</p>
+          </article>
+          <article class="overview-card danger">
+            <span class="card-label">Blocked</span>
+            <strong>12</strong>
+            <p>위험도가 높아 차단된 건수</p>
+          </article>
+          <article class="overview-card safe">
+            <span class="card-label">Masked</span>
+            <strong>38</strong>
+            <p>민감정보가 마스킹된 건수</p>
+          </article>
+          <article class="overview-card warning">
+            <span class="card-label">Warned</span>
+            <strong>17</strong>
+            <p>사용자에게 경고 처리된 건수</p>
+          </article>
+          <article class="overview-card users">
+            <span class="card-label">Active Users</span>
+            <strong>24</strong>
+            <p>기간 내 사용한 사용자 수</p>
+          </article>
+        </div>
+      </section>
+      <section class="chart-section">
+        <div class="section-title-wrap">
+          <div>
+            <h2>Statistics</h2>
+            <p>이벤트별, 사용자별, 기간별 통계를 차트로 확인합니다.</p>
+          </div>
+        </div>
+        <div class="chart-grid">
+          <article class="chart-card">
+            <div class="chart-title">
+              <h3>이벤트별 통계</h3>
+              <p>Allowed, Blocked, Masked, Warned 비율</p>
+            </div>
+            <div class="chart-box bar-chart">
+              <div class="bar-row"><span>Allowed</span><div class="bar-track"><i class="bar-fill" style="width: 100%"></i></div><strong>61</strong></div>
+              <div class="bar-row"><span>Blocked</span><div class="bar-track"><i class="bar-fill blocked" style="width: 20%"></i></div><strong>12</strong></div>
+              <div class="bar-row"><span>Masked</span><div class="bar-track"><i class="bar-fill masked" style="width: 62%"></i></div><strong>38</strong></div>
+              <div class="bar-row"><span>Warned</span><div class="bar-track"><i class="bar-fill warned" style="width: 28%"></i></div><strong>17</strong></div>
+            </div>
+          </article>
+          <article class="chart-card">
+            <div class="chart-title">
+              <h3>사용자별 통계</h3>
+              <p>사용자별 AI 요청/탐지 이벤트 수</p>
+            </div>
+            <ol class="chart-box donut-list">
+              <li style="--slice-color: #2f80ed"><span>admin</span><strong>32</strong></li>
+              <li style="--slice-color: #56ccf2"><span>user01</span><strong>28</strong></li>
+              <li style="--slice-color: #27ae60"><span>user02</span><strong>21</strong></li>
+              <li style="--slice-color: #f2994a"><span>user03</span><strong>18</strong></li>
+              <li style="--slice-color: #9b51e0"><span>guest</span><strong>9</strong></li>
+            </ol>
+          </article>
+          <article class="chart-card wide">
+            <div class="chart-title">
+              <h3>기간별 통계</h3>
+              <p>최근 7일간 AI 사용 위험 이벤트 추이</p>
+            </div>
+            <div class="chart-box wide-chart period-chart">
+              <div class="period-column"><strong>14</strong><i style="height: 58%"></i><span>05-20</span></div>
+              <div class="period-column"><strong>18</strong><i style="height: 75%"></i><span>05-21</span></div>
+              <div class="period-column"><strong>20</strong><i style="height: 83%"></i><span>05-22</span></div>
+              <div class="period-column"><strong>16</strong><i style="height: 67%"></i><span>05-23</span></div>
+              <div class="period-column"><strong>24</strong><i style="height: 100%"></i><span>05-24</span></div>
+              <div class="period-column"><strong>17</strong><i style="height: 71%"></i><span>05-25</span></div>
+              <div class="period-column"><strong>19</strong><i style="height: 79%"></i><span>05-26</span></div>
+            </div>
+          </article>
+        </div>
+      </section>
+    </main>
+    <script src="./static/admin.js"></script>
+  </body>
+</html>

@@ -4,12 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --host 127.0.0.1",
+    "dev": "tsc -p tsconfig.json --watch",
     "typecheck": "tsc --noEmit",
-    "build": "vite build"
+    "build": "tsc -p tsconfig.json"
   },
   "devDependencies": {
-    "typescript": "^5.8.3",
-    "vite": "^6.0.7"
+    "typescript": "^5.8.3"
   }
 }
