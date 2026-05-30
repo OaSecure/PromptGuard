@@ -1,6 +1,6 @@
 import uuid
 from collections import Counter, defaultdict
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
@@ -235,7 +235,9 @@ async def event_stats(
 ) -> EventStatsResponse:
     del current_admin
 
-    events_result = await session.execute(select(AnalysisEvent))
+    as_of = utc_today()
+    window_start = datetime.combine(date_window(days, as_of=as_of)[0], time.min, tzinfo=timezone.utc)
+    events_result = await session.execute(select(AnalysisEvent).where(AnalysisEvent.created_at >= window_start))
     events = list(events_result.scalars().all())
 
     event_ids = {event.id for event in events}
@@ -244,4 +246,4 @@ async def event_stats(
         detections_result = await session.execute(select(EventDetection).where(EventDetection.event_id.in_(event_ids)))
         detections = list(detections_result.scalars().all())
 
-    return event_stats_response(events=events, detections=detections, days=days)
+    return event_stats_response(events=events, detections=detections, days=days, as_of=as_of)

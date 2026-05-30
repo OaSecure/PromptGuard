@@ -108,7 +108,8 @@ def test_event_stats_requires_admin_access() -> None:
     assert _client(fake_session, role="ADMIN").get("/stats/events").status_code == 200
 
 
-def test_event_stats_aggregates_chart_metadata() -> None:
+def test_event_stats_aggregates_chart_metadata(monkeypatch) -> None:
+    monkeypatch.setattr(stats, "utc_today", lambda: date(2026, 5, 30))
     user_a = uuid.uuid4()
     user_b = uuid.uuid4()
     masked = _event(
@@ -150,6 +151,7 @@ def test_event_stats_aggregates_chart_metadata() -> None:
     assert body["detection_type_distribution"] == {"CARD": 1, "EMAIL": 2, "PHONE": 1}
     assert body["detection_category_distribution"] == {"PAYMENT": 1, "PII": 3}
     assert len(body["daily_buckets"]) == 30
+    assert "analysis_events.created_at" in fake_session.statements[0]
     assert "abcdef1234567890abcdef1234567890" not in encoded
     assert "raw_prompt" not in encoded
     assert "masked_prompt" not in encoded
