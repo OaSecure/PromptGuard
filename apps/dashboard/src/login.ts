@@ -1,6 +1,16 @@
 const loginForm = document.querySelector<HTMLFormElement>("#login-form");
 const loginMessage = document.querySelector<HTMLElement>("#login-message");
 
+// Temporary static-dashboard mock until real dashboard session auth is wired.
+const MOCK_LOGIN = {
+  username: "admin",
+  password: "1234",
+} as const;
+
+function isMockLogin(username: string, password: string): boolean {
+  return username === MOCK_LOGIN.username && password === MOCK_LOGIN.password;
+}
+
 loginForm?.addEventListener("submit", (event) => {
   event.preventDefault();
 
@@ -8,7 +18,7 @@ loginForm?.addEventListener("submit", (event) => {
   const username = String(formData.get("username") ?? "");
   const password = String(formData.get("password") ?? "");
 
-  if (username === "admin" && password === "1234") {
+  if (isMockLogin(username, password)) {
     window.location.href = "./admin.html";
     return;
   }
