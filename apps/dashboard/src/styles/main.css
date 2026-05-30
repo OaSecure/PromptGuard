@@ -28,9 +28,8 @@ input {
 }
 
 .eyebrow {
-  text-align: center;
   color: #2f80ed;
-  font-size: 20px;
+  font-size: 13px;
   font-weight: 900;
   letter-spacing: 0.5px;
   margin-bottom: 8px;
@@ -97,24 +96,33 @@ input {
   display: flex;
   justify-content: center;
   min-height: 100vh;
-  padding: 24px;
+  padding: 44px 24px;
 }
 
 .login-card {
   background: #ffffff;
   border: 1px solid rgba(216, 236, 251, 0.85);
-  border-radius: 24px;
+  border-radius: 28px;
   box-shadow: 0 16px 35px rgba(47, 128, 237, 0.1);
-  max-width: 460px;
-  padding: 34px;
+  max-width: 574px;
+  padding: 46px 42px 30px;
   width: 100%;
 }
 
-.login-card h1 {
+.login-card .eyebrow {
+  font-size: 28px;
+  letter-spacing: 0;
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.login-title {
   color: #10284a;
-  font-size: 32px;
+  font-size: 68px;
   font-weight: 900;
-  margin-bottom: 10px;
+  line-height: 1.05;
+  margin-bottom: 84px;
+  text-align: center;
 }
 
 .login-desc {
@@ -126,26 +134,25 @@ input {
 
 .login-form {
   display: grid;
-  gap: 16px;
-  margin-top: 60px;
+  gap: 22px;
 }
 
 .login-form label {
   color: #315d9a;
   display: grid;
-  font-size: 14px;
+  font-size: 20px;
   font-weight: 900;
-  gap: 8px;
+  gap: 12px;
 }
 
 .login-form input {
   border: 1px solid #d8ecfb;
   border-radius: 14px;
   color: #10284a;
-  font-size: 16px;
+  font-size: 20px;
   font-weight: 700;
-  height: 52px;
-  padding: 0 16px;
+  height: 66px;
+  padding: 0 18px;
 }
 
 .login-button {
@@ -157,17 +164,18 @@ input {
   color: #ffffff;
   cursor: pointer;
   display: inline-flex;
-  font-size: 15px;
+  font-size: 20px;
   font-weight: 900;
-  height: 54px;
+  height: 68px;
   justify-content: center;
+  margin-top: 18px;
 }
 
 .login-message {
   color: #eb5757;
   font-size: 14px;
   font-weight: 800;
-  min-height: 20px;
+  min-height: 0;
 }
 
 .dashboard {
@@ -780,8 +788,3 @@ input {
   }
 }
 
-  .login-title {
-    text-align: center;
-    font-size: 55px !important;
-    margin-bottom: 40px;
-}
