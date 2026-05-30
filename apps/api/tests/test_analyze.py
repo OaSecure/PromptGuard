@@ -215,6 +215,33 @@ def test_analyze_response_does_not_echo_raw_prompt_or_context_values() -> None:
     assert events[0].prompt_hash != raw_prompt
 
 
+def test_analyze_persists_only_safe_context_metadata() -> None:
+    user = _user()
+    raw_secret = "ghp_seededsecret1234567890abcdef"
+    client, fake_session = _client(user)
+
+    response = client.post(
+        "/prompts/analyze",
+        headers=_bearer_header(user.id),
+        json={
+            "prompt": "hello",
+            "context": {
+                "service": f"ChatGPT {raw_secret}",
+                "service_domain": f"chat.openai.com/{raw_secret}",
+                "platform": "web",
+            },
+        },
+    )
+
+    events = [item for item in fake_session.added if isinstance(item, AnalysisEvent)]
+    assert response.status_code == 200
+    assert len(events) == 1
+    assert events[0].service is None
+    assert events[0].service_domain is None
+    assert events[0].platform == "web"
+    assert raw_secret not in json.dumps(response.json(), ensure_ascii=False)
+
+
 def test_main_app_registers_analyze_route_in_openapi() -> None:
     schema = main_app.openapi()
 

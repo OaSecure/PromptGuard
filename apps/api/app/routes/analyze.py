@@ -1,4 +1,5 @@
 import json
+import re
 import uuid
 from datetime import datetime
 from typing import Any, Literal
@@ -20,6 +21,8 @@ router = APIRouter(prefix="/prompts", tags=["prompts"])
 MAX_PROMPT_LENGTH = 20_000
 MAX_CONTEXT_JSON_LENGTH = 4_096
 DEFAULT_FILTER_RULE_SET_VERSION = "built-in:2026-05-30"
+SAFE_CONTEXT_LABEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$")
+SAFE_CONTEXT_DOMAIN_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,253}[A-Za-z0-9])?$")
 
 ACTION_ALLOW = "ALLOW"
 ACTION_MASK = "MASK"
@@ -98,15 +101,26 @@ class AnalyzeResponse(BaseModel):
     masked_prompt: str | None = None
 
 
-def safe_context_string(context: dict[str, Any], key: str, max_length: int) -> str | None:
+def safe_context_label(context: dict[str, Any], key: str) -> str | None:
     value = context.get(key)
     if not isinstance(value, str):
         return None
 
     value = value.strip()
-    if not value:
+    if not SAFE_CONTEXT_LABEL_RE.fullmatch(value):
         return None
-    return value[:max_length]
+    return value
+
+
+def safe_context_domain(context: dict[str, Any], key: str) -> str | None:
+    value = context.get(key)
+    if not isinstance(value, str):
+        return None
+
+    value = value.strip().lower()
+    if not SAFE_CONTEXT_DOMAIN_RE.fullmatch(value):
+        return None
+    return value
 
 
 def risk_level_for_score(score: int) -> Literal["low", "medium", "high", "critical"]:
@@ -214,9 +228,9 @@ async def analyze_prompt(
         risk_score=risk_score,
         risk_level=risk_level,
         filter_rule_set_version=filter_rule_set_version,
-        service=safe_context_string(payload.context, "service", 120),
-        service_domain=safe_context_string(payload.context, "service_domain", 255),
-        platform=safe_context_string(payload.context, "platform", 120),
+        service=safe_context_label(payload.context, "service"),
+        service_domain=safe_context_domain(payload.context, "service_domain"),
+        platform=safe_context_label(payload.context, "platform"),
     )
     session.add(event)
     for row in event_detection_rows(event_id, detections):
