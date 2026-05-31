@@ -20,7 +20,7 @@ depends_on: str | Sequence[str] | None = None
 
 DEFAULT_ADMIN_LOGIN_ID = "admin"
 INITIAL_ADMIN_PASSWORD_ENV = "PROMPTGUARD_INITIAL_ADMIN_PASSWORD"
-DEFAULT_INITIAL_ADMIN_PASSWORD = "Admin1234!ChangeMe"
+DEFAULT_INITIAL_ADMIN_PASSWORD = "1234"
 
 
 def get_initial_admin_password() -> str:
