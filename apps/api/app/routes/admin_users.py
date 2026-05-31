@@ -1,6 +1,4 @@
-import uuid
 from datetime import datetime
-from email.utils import parseaddr
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -14,22 +12,20 @@ from app.db.session import get_db_session
 from app.models.auth import User
 from app.routes.auth import require_admin
 
-router = APIRouter(prefix="/admin/users", tags=["admin-users"])
+router = APIRouter(prefix="/dashboard/users", tags=["dashboard-users"])
 
 UserRole = Literal["ADMIN", "USER"]
 UserStatus = Literal["ACTIVE", "DISABLED"]
 
 
-class AdminUserCreateRequest(BaseModel):
-    email: str = Field(min_length=3, max_length=320)
+class DashboardUserCreateRequest(BaseModel):
+    login_id: str = Field(min_length=2, max_length=80)
+    username: str = Field(min_length=2, max_length=80)
     password: str = Field(min_length=12, max_length=256)
-    display_name: str | None = Field(default=None, max_length=120)
     department: str | None = Field(default=None, max_length=120)
     role: UserRole = "USER"
-    login_id: str | None = Field(default=None, min_length=2, max_length=80)
-    username: str | None = Field(default=None, min_length=2, max_length=80)
 
-    @field_validator("email", "login_id", "username", "display_name", "department")
+    @field_validator("login_id", "username", "department")
     @classmethod
     def strip_optional_text(cls, value: str | None) -> str | None:
         if value is None:
@@ -37,25 +33,12 @@ class AdminUserCreateRequest(BaseModel):
         stripped = value.strip()
         return stripped or None
 
-    @field_validator("email")
+    @field_validator("login_id")
     @classmethod
-    def normalize_email_input(cls, value: str) -> str:
-        stripped = value.strip()
-        _, parsed = parseaddr(stripped)
-        if parsed != stripped:
-            raise ValueError("email must be a valid address")
-        local_part, separator, domain = stripped.partition("@")
-        domain_parts = domain.split(".")
-        if (
-            separator != "@"
-            or not local_part
-            or not domain
-            or any(character.isspace() for character in stripped)
-            or len(domain_parts) < 2
-            or any(not part for part in domain_parts)
-        ):
-            raise ValueError("email must be a valid address")
-        return stripped
+    def login_id_must_be_safe(cls, value: str) -> str:
+        if any(character.isspace() for character in value):
+            raise ValueError("login_id must not contain whitespace")
+        return value
 
 
 class AdminRolePatchRequest(BaseModel):
@@ -66,14 +49,10 @@ class AdminStatusPatchRequest(BaseModel):
     status: UserStatus
 
 
-class AdminUserResponse(BaseModel):
-    user_id: uuid.UUID
-    id: uuid.UUID
+class DashboardUserResponse(BaseModel):
     login_id: str
     username: str
-    email: str | None
     department: str | None
-    display_name: str | None
     role: str
     status: str
     created_at: datetime | None = None
@@ -90,15 +69,11 @@ def _normalize_identifier(value: str) -> str:
     return value.strip().casefold()
 
 
-def _safe_user_response(user: User) -> AdminUserResponse:
-    return AdminUserResponse(
-        user_id=user.id,
-        id=user.id,
+def _safe_user_response(user: User) -> DashboardUserResponse:
+    return DashboardUserResponse(
         login_id=user.login_id,
         username=user.username,
-        email=user.email,
         department=user.department,
-        display_name=user.display_name,
         role=user.role,
         status=user.status,
         created_at=getattr(user, "created_at", None),
@@ -108,55 +83,43 @@ def _safe_user_response(user: User) -> AdminUserResponse:
     )
 
 
-async def _find_user_by_login_or_email(
+async def _find_user_by_login(
     session: AsyncSession,
     *,
     login_id_normalized: str,
-    email_normalized: str,
 ) -> User | None:
-    result = await session.execute(
-        select(User).where(
-            (User.login_id_normalized == login_id_normalized) | (User.email_normalized == email_normalized)
-        )
-    )
+    result = await session.execute(select(User).where(User.login_id_normalized == login_id_normalized))
     return result.scalar_one_or_none()
 
 
-async def _get_target_user(session: AsyncSession, user_id: uuid.UUID) -> User:
-    user = await session.get(User, user_id)
+async def _get_target_user(session: AsyncSession, login_id: str) -> User:
+    user = await _find_user_by_login(session, login_id_normalized=_normalize_identifier(login_id))
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="user not found")
     return user
 
 
-@router.post("", response_model=AdminUserResponse, status_code=status.HTTP_201_CREATED)
-async def create_admin_user(
-    payload: AdminUserCreateRequest,
+@router.post("", response_model=DashboardUserResponse, status_code=status.HTTP_201_CREATED)
+async def create_dashboard_user(
+    payload: DashboardUserCreateRequest,
     current_admin: User = Depends(require_admin),
     session: AsyncSession = Depends(get_db_session),
-) -> AdminUserResponse:
+) -> DashboardUserResponse:
     del current_admin
 
-    login_id = payload.login_id or payload.email
-    username = payload.username or payload.display_name or login_id
-    login_id_normalized = _normalize_identifier(login_id)
-    email_normalized = _normalize_identifier(payload.email)
+    login_id_normalized = _normalize_identifier(payload.login_id)
 
-    if await _find_user_by_login_or_email(
-        session,
-        login_id_normalized=login_id_normalized,
-        email_normalized=email_normalized,
-    ):
+    if await _find_user_by_login(session, login_id_normalized=login_id_normalized):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="user already exists")
 
     user = User(
-        login_id=login_id,
+        login_id=payload.login_id,
         login_id_normalized=login_id_normalized,
-        username=username,
-        email=payload.email,
-        email_normalized=email_normalized,
+        username=payload.username,
+        email=None,
+        email_normalized=None,
         department=payload.department,
-        display_name=payload.display_name,
+        display_name=payload.username,
         role=payload.role,
         status="ACTIVE",
         password_hash=hash_password(payload.password),
@@ -173,36 +136,25 @@ async def create_admin_user(
     return _safe_user_response(user)
 
 
-@router.get("", response_model=list[AdminUserResponse])
-async def list_admin_users(
+@router.get("", response_model=list[DashboardUserResponse])
+async def list_dashboard_users(
     current_admin: User = Depends(require_admin),
     session: AsyncSession = Depends(get_db_session),
-) -> list[AdminUserResponse]:
+) -> list[DashboardUserResponse]:
     del current_admin
 
     result = await session.execute(select(User).order_by(User.created_at.desc(), User.login_id.asc()))
     return [_safe_user_response(user) for user in result.scalars().all()]
 
 
-@router.get("/{user_id}", response_model=AdminUserResponse)
-async def get_admin_user(
-    user_id: uuid.UUID,
-    current_admin: User = Depends(require_admin),
-    session: AsyncSession = Depends(get_db_session),
-) -> AdminUserResponse:
-    del current_admin
-
-    return _safe_user_response(await _get_target_user(session, user_id))
-
-
-@router.patch("/{user_id}/role", response_model=AdminUserResponse)
-async def update_admin_user_role(
-    user_id: uuid.UUID,
+@router.patch("/{login_id}/role", response_model=DashboardUserResponse)
+async def update_dashboard_user_role(
+    login_id: str,
     payload: AdminRolePatchRequest,
     current_admin: User = Depends(require_admin),
     session: AsyncSession = Depends(get_db_session),
-) -> AdminUserResponse:
-    user = await _get_target_user(session, user_id)
+) -> DashboardUserResponse:
+    user = await _get_target_user(session, login_id)
     if user.id == current_admin.id and payload.role != "ADMIN":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="admin cannot demote self")
     user.role = payload.role
@@ -211,14 +163,14 @@ async def update_admin_user_role(
     return _safe_user_response(user)
 
 
-@router.patch("/{user_id}/status", response_model=AdminUserResponse)
-async def update_admin_user_status(
-    user_id: uuid.UUID,
+@router.patch("/{login_id}/status", response_model=DashboardUserResponse)
+async def update_dashboard_user_status(
+    login_id: str,
     payload: AdminStatusPatchRequest,
     current_admin: User = Depends(require_admin),
     session: AsyncSession = Depends(get_db_session),
-) -> AdminUserResponse:
-    user = await _get_target_user(session, user_id)
+) -> DashboardUserResponse:
+    user = await _get_target_user(session, login_id)
     if user.id == current_admin.id and payload.status != "ACTIVE":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="admin cannot disable self")
     user.status = payload.status

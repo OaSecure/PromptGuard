@@ -37,7 +37,7 @@ class _FakeSession:
         self.statements.append(statement_text)
         if "WHERE" not in statement_text:
             return _ScalarResult(sorted(self.users, key=lambda user: (user.created_at, user.login_id), reverse=True))
-        return _ScalarResult([])
+        return _ScalarResult(self.users[:1])
 
     async def get(self, model, user_id):
         return next((user for user in self.users if user.id == user_id), None)
@@ -106,7 +106,18 @@ def _client(
 
 
 def _assert_safe_user_payload(body):
-    forbidden_keys = {"password", "password_hash", "password_hash_algorithm", "password_hash_params", "token"}
+    forbidden_keys = {
+        "id",
+        "user_id",
+        "email",
+        "password",
+        "password_hash",
+        "password_hash_algorithm",
+        "password_hash_params",
+        "token",
+        "session",
+        "session_id",
+    }
 
     assert forbidden_keys.isdisjoint(body)
     assert body["event_count"] == 0
@@ -115,15 +126,15 @@ def _assert_safe_user_payload(body):
     assert body["warned_count"] == 0
 
 
-def test_create_admin_user_is_admin_only() -> None:
+def test_create_dashboard_user_is_admin_only() -> None:
     client = _client(_FakeSession(), allow_admin=False)
 
     response = client.post(
-        "/admin/users",
+        "/dashboard/users",
         json={
-            "email": "new-user@example.com",
+            "login_id": "new-user",
+            "username": "New User",
             "password": "ConfiguredUserPassword!456",
-            "display_name": "New User",
             "role": "USER",
         },
     )
@@ -131,16 +142,16 @@ def test_create_admin_user_is_admin_only() -> None:
     assert response.status_code == 403
 
 
-def test_create_admin_user_hashes_password_and_returns_safe_metadata() -> None:
+def test_create_dashboard_user_hashes_password_and_returns_safe_metadata() -> None:
     fake_session = _FakeSession()
     client = _client(fake_session)
 
     response = client.post(
-        "/admin/users",
+        "/dashboard/users",
         json={
-            "email": "New-User@Example.com",
+            "login_id": "new-user",
+            "username": "New User",
             "password": "ConfiguredUserPassword!456",
-            "display_name": "New User",
             "department": "Security",
             "role": "ADMIN",
         },
@@ -149,20 +160,19 @@ def test_create_admin_user_hashes_password_and_returns_safe_metadata() -> None:
     body = response.json()
     created_user = fake_session.added[0]
     assert response.status_code == 201
-    assert body["user_id"] == str(created_user.id)
-    assert body["id"] == str(created_user.id)
-    assert body["login_id"] == "New-User@Example.com"
-    assert body["email"] == "New-User@Example.com"
+    assert body["login_id"] == "new-user"
+    assert body["username"] == "New User"
     assert body["role"] == "ADMIN"
     assert body["status"] == "ACTIVE"
-    assert created_user.login_id_normalized == "new-user@example.com"
-    assert created_user.email_normalized == "new-user@example.com"
+    assert created_user.login_id_normalized == "new-user"
+    assert created_user.email is None
+    assert created_user.email_normalized is None
     assert verify_password("ConfiguredUserPassword!456", created_user.password_hash)
     assert created_user.password_hash != "ConfiguredUserPassword!456"
     _assert_safe_user_payload(body)
 
 
-def test_create_admin_user_rejects_duplicate_identifier() -> None:
+def test_create_dashboard_user_rejects_duplicate_login_id() -> None:
     existing = _user()
 
     class DuplicateSession(_FakeSession):
@@ -173,20 +183,24 @@ def test_create_admin_user_rejects_duplicate_identifier() -> None:
     client = _client(DuplicateSession([existing]))
 
     response = client.post(
-        "/admin/users",
-        json={"email": existing.email, "password": "ConfiguredUserPassword!456"},
+        "/dashboard/users",
+        json={"login_id": existing.login_id, "username": "Duplicate", "password": "ConfiguredUserPassword!456"},
     )
 
     assert response.status_code == 409
 
 
-def test_create_admin_user_rejects_malformed_email() -> None:
+def test_create_dashboard_user_rejects_missing_or_malformed_login_id() -> None:
     client = _client(_FakeSession())
 
-    for email in ["foo@", "@example.com", "a@b", "bad address@example.com"]:
+    for payload in [
+        {"username": "Missing Login", "password": "ConfiguredUserPassword!456"},
+        {"login_id": "bad login", "username": "Bad Login", "password": "ConfiguredUserPassword!456"},
+        {"login_id": "", "username": "Bad Login", "password": "ConfiguredUserPassword!456"},
+    ]:
         response = client.post(
-            "/admin/users",
-            json={"email": email, "password": "ConfiguredUserPassword!456"},
+            "/dashboard/users",
+            json=payload,
         )
 
         assert response.status_code == 422
@@ -197,23 +211,17 @@ def test_list_and_detail_return_safe_metadata() -> None:
     fake_session = _FakeSession([user])
     client = _client(fake_session)
 
-    list_response = client.get("/admin/users")
-    detail_response = client.get(f"/admin/users/{user.id}")
+    list_response = client.get("/dashboard/users")
 
     assert list_response.status_code == 200
-    assert detail_response.status_code == 200
-    assert list_response.json()[0]["user_id"] == str(user.id)
-    assert detail_response.json()["user_id"] == str(user.id)
-    assert list_response.json()[0]["id"] == str(user.id)
-    assert detail_response.json()["id"] == str(user.id)
+    assert list_response.json()[0]["login_id"] == user.login_id
     _assert_safe_user_payload(list_response.json()[0])
-    _assert_safe_user_payload(detail_response.json())
 
 
-def test_get_admin_user_returns_404_for_missing_user() -> None:
+def test_role_patch_returns_404_for_missing_login_id() -> None:
     client = _client(_FakeSession())
 
-    response = client.get(f"/admin/users/{uuid.uuid4()}")
+    response = client.patch("/dashboard/users/missing-user/role", json={"role": "ADMIN"})
 
     assert response.status_code == 404
 
@@ -223,10 +231,10 @@ def test_role_and_status_patch_validate_values_and_update_existing_user() -> Non
     fake_session = _FakeSession([user])
     client = _client(fake_session)
 
-    role_response = client.patch(f"/admin/users/{user.id}/role", json={"role": "ADMIN"})
-    status_response = client.patch(f"/admin/users/{user.id}/status", json={"status": "DISABLED"})
-    invalid_role_response = client.patch(f"/admin/users/{user.id}/role", json={"role": "OWNER"})
-    invalid_status_response = client.patch(f"/admin/users/{user.id}/status", json={"status": "PENDING"})
+    role_response = client.patch(f"/dashboard/users/{user.login_id}/role", json={"role": "ADMIN"})
+    status_response = client.patch(f"/dashboard/users/{user.login_id}/status", json={"status": "DISABLED"})
+    invalid_role_response = client.patch(f"/dashboard/users/{user.login_id}/role", json={"role": "OWNER"})
+    invalid_status_response = client.patch(f"/dashboard/users/{user.login_id}/status", json={"status": "PENDING"})
 
     assert role_response.status_code == 200
     assert role_response.json()["role"] == "ADMIN"
@@ -242,8 +250,8 @@ def test_admin_cannot_demote_or_disable_self() -> None:
     fake_session = _FakeSession([current_admin])
     client = _client(fake_session, current_admin=current_admin)
 
-    role_response = client.patch(f"/admin/users/{current_admin.id}/role", json={"role": "USER"})
-    status_response = client.patch(f"/admin/users/{current_admin.id}/status", json={"status": "DISABLED"})
+    role_response = client.patch(f"/dashboard/users/{current_admin.login_id}/role", json={"role": "USER"})
+    status_response = client.patch(f"/dashboard/users/{current_admin.login_id}/status", json={"status": "DISABLED"})
 
     assert role_response.status_code == 400
     assert status_response.status_code == 400
@@ -252,15 +260,24 @@ def test_admin_cannot_demote_or_disable_self() -> None:
     assert fake_session.commits == 0
 
 
-def test_admin_users_router_uses_admin_guard() -> None:
+def test_dashboard_users_router_uses_admin_guard() -> None:
     guarded_paths = {
-        "/admin/users",
-        "/admin/users/{user_id}",
-        "/admin/users/{user_id}/role",
-        "/admin/users/{user_id}/status",
+        "/dashboard/users",
+        "/dashboard/users/{login_id}/role",
+        "/dashboard/users/{login_id}/status",
     }
 
     for route in admin_users.router.routes:
         if getattr(route, "path", None) in guarded_paths:
             dependency_calls = {dependency.call for dependency in route.dependant.dependencies}
             assert admin_users.require_admin in dependency_calls
+
+
+def test_legacy_admin_users_path_is_not_registered() -> None:
+    app = FastAPI()
+    app.include_router(admin_users.router)
+
+    paths = {getattr(route, "path", None) for route in app.routes}
+
+    assert "/admin/users" not in paths
+    assert "/admin/users/{user_id}/role" not in paths
