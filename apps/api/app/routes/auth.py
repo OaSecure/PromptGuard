@@ -50,14 +50,13 @@ class TokenResponse(BaseModel):
 
 
 class UserResponse(BaseModel):
-    id: uuid.UUID
     login_id: str
     username: str
-    email: str | None
     department: str | None
     display_name: str | None
     role: str
     status: str
+    last_login_at: datetime | None
 
 
 class LogoutResponse(BaseModel):
@@ -152,14 +151,13 @@ async def login(
 @router.get("/me", response_model=UserResponse)
 async def me(current_user: User = Depends(require_active_user)) -> UserResponse:
     return UserResponse(
-        id=current_user.id,
         login_id=current_user.login_id,
         username=current_user.username,
-        email=current_user.email,
         department=current_user.department,
         display_name=current_user.display_name,
         role=current_user.role,
         status=current_user.status,
+        last_login_at=current_user.last_login_at,
     )
 
 
@@ -184,8 +182,10 @@ async def refresh(
 
         refresh_token, user = row
         now = utc_now()
-        if refresh_token.revoked_at is not None or refresh_token.expires_at <= now or user.status != "ACTIVE":
+        if refresh_token.revoked_at is not None or refresh_token.expires_at <= now:
             raise invalid_credentials()
+        if user.status != "ACTIVE":
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="user is not active")
 
         new_token_id = uuid.uuid4()
         access_token, access_token_expires_at = create_access_token(user.id)
@@ -213,13 +213,21 @@ async def refresh(
 
 
 @router.post("/logout", response_model=LogoutResponse)
-async def logout(payload: LogoutRequest, session: AsyncSession = Depends(get_db_session)) -> LogoutResponse:
+async def logout(
+    payload: LogoutRequest,
+    current_user: User = Depends(require_active_user),
+    session: AsyncSession = Depends(get_db_session),
+) -> LogoutResponse:
     token_hash = hash_refresh_token(payload.refresh_token)
 
     async with session.begin():
         result = await session.execute(select(RefreshToken).where(RefreshToken.token_hash == token_hash))
         refresh_token = result.scalar_one_or_none()
-        if refresh_token is not None and refresh_token.revoked_at is None:
+        if (
+            refresh_token is not None
+            and refresh_token.revoked_at is None
+            and refresh_token.user_id == current_user.id
+        ):
             refresh_token.revoked_at = utc_now()
 
     return LogoutResponse(ok=True)
