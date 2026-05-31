@@ -199,6 +199,37 @@ def test_analyze_masks_email_and_phone_and_persists_safe_metadata() -> None:
     assert fake_session.commits == 1
 
 
+def test_detection_safe_evidence_does_not_store_raw_values() -> None:
+    user = _user()
+    client, fake_session = _client(user)
+    raw_email = "test@example.com"
+    raw_token = "ghp_secret_like_value_123"
+    prompt = f"Contact {raw_email} with token {raw_token}"
+
+    response = client.post(
+        "/prompts/analyze",
+        headers=_bearer_header(user.id),
+        json={"prompt": prompt},
+    )
+
+    detection_rows = [item for item in fake_session.added if isinstance(item, EventDetection)]
+
+    assert response.status_code == 200
+    assert detection_rows
+    for detection in detection_rows:
+        encoded_safe_evidence = json.dumps(detection.safe_evidence, ensure_ascii=False)
+        assert raw_email not in encoded_safe_evidence
+        assert raw_token not in encoded_safe_evidence
+        assert prompt not in encoded_safe_evidence
+        assert "raw_prompt" not in encoded_safe_evidence
+        assert "raw_detected_value" not in encoded_safe_evidence
+        assert "raw_match" not in encoded_safe_evidence
+        assert "context_excerpt" not in encoded_safe_evidence
+        assert "surrounding_context" not in encoded_safe_evidence
+        assert "raw_regex_match" not in encoded_safe_evidence
+        assert set(detection.safe_evidence).issubset({"value_lengths", "matched_condition_count"})
+
+
 def test_analyze_masks_rrn_and_card_as_high_risk() -> None:
     user = _user()
     client, fake_session = _client(user)
