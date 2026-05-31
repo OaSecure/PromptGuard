@@ -43,3 +43,9 @@ def test_initial_admin_password_can_come_from_environment(monkeypatch) -> None:
     monkeypatch.setenv(migration.INITIAL_ADMIN_PASSWORD_ENV, chosen_password)
 
     assert migration.get_initial_admin_password() == chosen_password
+
+
+def test_default_admin_seed_password_is_v1_mvp_default() -> None:
+    migration = load_admin_seed_migration()
+
+    assert migration.DEFAULT_INITIAL_ADMIN_PASSWORD == "1234"
