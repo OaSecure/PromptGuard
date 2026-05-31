@@ -38,10 +38,11 @@ class User(TimestampMixin, Base):
     last_event_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     refresh_tokens: Mapped[list["RefreshToken"]] = relationship(back_populates="user")
+    dashboard_sessions: Mapped[list["DashboardSession"]] = relationship(back_populates="user")
 
     __table_args__ = (
         CheckConstraint("role in ('ADMIN', 'USER')", name="ck_users_role"),
-        CheckConstraint("status in ('ACTIVE', 'PENDING', 'DISABLED')", name="ck_users_status"),
+        CheckConstraint("status in ('ACTIVE', 'DISABLED')", name="ck_users_status"),
         UniqueConstraint("login_id_normalized", name="uq_users_login_id_normalized"),
         UniqueConstraint("email_normalized", name="uq_users_email_normalized"),
         Index("ix_users_login_id_normalized", "login_id_normalized"),
@@ -101,8 +102,10 @@ class RefreshToken(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"))
+    login_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
     token_hash: Mapped[str] = mapped_column(String(128), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    idle_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     replaced_by_token_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
@@ -116,5 +119,30 @@ class RefreshToken(Base):
     __table_args__ = (
         UniqueConstraint("token_hash", name="uq_refresh_tokens_token_hash"),
         Index("ix_refresh_tokens_user_id", "user_id"),
+        Index("ix_refresh_tokens_login_expires", "login_id", "expires_at"),
         Index("ix_refresh_tokens_expires_at", "expires_at"),
+    )
+
+
+class DashboardSession(Base):
+    __tablename__ = "dashboard_sessions"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    login_id: Mapped[str] = mapped_column(String(80), nullable=False)
+    session_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    user: Mapped[User | None] = relationship(back_populates="dashboard_sessions")
+
+    __table_args__ = (
+        UniqueConstraint("session_hash", name="uq_dashboard_sessions_session_hash"),
+        Index("ix_dashboard_sessions_login_expires", "login_id", "expires_at"),
     )

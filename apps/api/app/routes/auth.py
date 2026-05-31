@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -89,14 +89,21 @@ def is_login_allowed(user: User | None, plain_password: str) -> bool:
     return user is not None and user.status == "ACTIVE" and verify_password(plain_password, user.password_hash)
 
 
+def refresh_idle_expires_at(now: datetime | None = None) -> datetime:
+    settings = get_settings()
+    return (now or utc_now()) + timedelta(days=getattr(settings, "refresh_token_idle_expires_days", 14))
+
+
 async def issue_token_pair(session: AsyncSession, user: User) -> TokenResponse:
     access_token, access_token_expires_at = create_access_token(user.id)
     refresh_token, refresh_token_hash, refresh_token_expires_at = create_refresh_token()
     session.add(
         RefreshToken(
             user_id=user.id,
+            login_id=user.login_id,
             token_hash=refresh_token_hash,
             expires_at=refresh_token_expires_at,
+            idle_expires_at=refresh_idle_expires_at(),
         )
     )
     return TokenResponse(
@@ -182,7 +189,11 @@ async def refresh(
 
         refresh_token, user = row
         now = utc_now()
-        if refresh_token.revoked_at is not None or refresh_token.expires_at <= now:
+        if (
+            refresh_token.revoked_at is not None
+            or refresh_token.expires_at <= now
+            or (refresh_token.idle_expires_at is not None and refresh_token.idle_expires_at <= now)
+        ):
             raise invalid_credentials()
         if user.status != "ACTIVE":
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="user is not active")
@@ -195,8 +206,10 @@ async def refresh(
             RefreshToken(
                 id=new_token_id,
                 user_id=user.id,
+                login_id=user.login_id,
                 token_hash=new_refresh_token_hash,
                 expires_at=new_refresh_token_expires_at,
+                idle_expires_at=refresh_idle_expires_at(now),
             )
         )
         await session.flush()
@@ -226,7 +239,7 @@ async def logout(
         if (
             refresh_token is not None
             and refresh_token.revoked_at is None
-            and refresh_token.user_id == current_user.id
+            and (refresh_token.user_id == current_user.id or refresh_token.login_id == current_user.login_id)
         ):
             refresh_token.revoked_at = utc_now()
 

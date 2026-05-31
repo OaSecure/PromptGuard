@@ -145,8 +145,10 @@ def _refresh_token_for(user_id: uuid.UUID, raw_token: str | None = None, **overr
     values = {
         "id": uuid.uuid4(),
         "user_id": user_id,
+        "login_id": None,
         "token_hash": token_hash,
         "expires_at": expires_at,
+        "idle_expires_at": None,
         "revoked_at": None,
         "replaced_by_token_id": None,
     }
@@ -175,6 +177,8 @@ def test_login_route_accepts_login_id_contract_and_stores_only_refresh_hash() ->
     assert body["refresh_token"]
     assert created_refresh.token_hash == hash_refresh_token(body["refresh_token"])
     assert created_refresh.token_hash != body["refresh_token"]
+    assert created_refresh.login_id == user.login_id
+    assert created_refresh.idle_expires_at is not None
     assert body["refresh_token"] not in json.dumps(created_refresh.__dict__, default=str)
     assert any("login_id_normalized" in statement for statement in fake_session.statements)
     assert user.last_login_at is not None
@@ -199,6 +203,7 @@ def test_login_route_uses_default_access_and_refresh_ttl() -> None:
     assert response.status_code == 200
     assert before + timedelta(minutes=14, seconds=50) <= access_expires_at <= after + timedelta(minutes=15, seconds=10)
     assert before + timedelta(days=29, hours=23, minutes=59) <= created_refresh.expires_at <= after + timedelta(days=30, minutes=1)
+    assert before + timedelta(days=13, hours=23, minutes=59) <= created_refresh.idle_expires_at <= after + timedelta(days=14, minutes=1)
 
 
 def test_login_route_rejects_missing_bad_password_and_disabled_user_the_same_way() -> None:
@@ -240,6 +245,8 @@ def test_refresh_rotates_token_and_stores_only_new_hash() -> None:
     assert body["refresh_token"] != raw_refresh
     assert refresh_token.revoked_at is not None
     assert refresh_token.replaced_by_token_id == new_refresh.id
+    assert new_refresh.login_id == user.login_id
+    assert new_refresh.idle_expires_at is not None
     assert new_refresh.token_hash == hash_refresh_token(body["refresh_token"])
     assert new_refresh.token_hash != body["refresh_token"]
     assert body["refresh_token"] not in json.dumps(new_refresh.__dict__, default=str)
@@ -264,6 +271,34 @@ def test_refresh_rejects_revoked_or_expired_token_with_401() -> None:
     assert expired_response.status_code == 401
 
 
+def test_refresh_rejects_idle_expired_token_with_401() -> None:
+    user = _user()
+    idle_expired_raw, idle_expired_token = _refresh_token_for(
+        user.id,
+        idle_expires_at=utc_now() - timedelta(seconds=1),
+    )
+
+    response = TestClient(_build_app(_FakeSession(users=[user], refresh_tokens=[idle_expired_token]))).post(
+        "/auth/refresh",
+        json={"refresh_token": idle_expired_raw},
+    )
+
+    assert response.status_code == 401
+
+
+def test_refresh_allows_legacy_token_without_idle_expiry_and_rotates_to_idle_expiry() -> None:
+    user = _user()
+    raw_refresh, refresh_token = _refresh_token_for(user.id, idle_expires_at=None)
+    fake_session = _FakeSession(users=[user], refresh_tokens=[refresh_token])
+
+    response = TestClient(_build_app(fake_session)).post("/auth/refresh", json={"refresh_token": raw_refresh})
+    new_refresh = next(item for item in fake_session.added if isinstance(item, RefreshToken) and item is not refresh_token)
+
+    assert response.status_code == 200
+    assert new_refresh.login_id == user.login_id
+    assert new_refresh.idle_expires_at is not None
+
+
 def test_refresh_rejects_disabled_user_existing_refresh_token_with_403() -> None:
     user = _user(status="DISABLED")
     raw_refresh, refresh_token = _refresh_token_for(user.id)
@@ -276,9 +311,8 @@ def test_refresh_rejects_disabled_user_existing_refresh_token_with_403() -> None
     assert refresh_token.revoked_at is None
 
 
-def test_refresh_idle_timeout_is_known_gap_without_schema_metadata() -> None:
-    assert not hasattr(RefreshToken, "last_used_at")
-    assert not hasattr(RefreshToken, "idle_expires_at")
+def test_refresh_idle_timeout_schema_metadata_exists() -> None:
+    assert hasattr(RefreshToken, "idle_expires_at")
 
 
 def test_me_returns_safe_user_metadata_only() -> None:

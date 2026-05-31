@@ -30,10 +30,25 @@ def test_default_admin_seed_password_is_hash_only_and_verifiable() -> None:
     assert verify_password(initial_password, password_hash)
 
 
-def test_default_admin_seed_login_id_is_admin() -> None:
+def test_default_admin_seed_login_id_starts_as_admin_before_contract_migration() -> None:
     migration = load_admin_seed_migration()
 
     assert migration.DEFAULT_ADMIN_LOGIN_ID == "admin"
+
+
+def test_auth_user_contract_migration_normalizes_admin_login_id() -> None:
+    migration_path = (
+        Path(__file__).resolve().parents[1]
+        / "alembic"
+        / "versions"
+        / "20260601_0007_auth_user_schema_contract.py"
+    )
+    migration_text = migration_path.read_text(encoding="utf-8")
+
+    assert "login_id = 'ADMIN'" in migration_text
+    assert "login_id_normalized = 'admin'" in migration_text
+    assert "username = 'ADMIN'" in migration_text
+    assert "status = 'ACTIVE'" in migration_text
 
 
 def test_initial_admin_password_can_come_from_environment(monkeypatch) -> None:
