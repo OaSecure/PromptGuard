@@ -6,6 +6,7 @@ import pytest
 import app.models  # noqa: F401
 from app.db import seed
 from app.db.base import Base
+from app.models.filters import FilterRule
 
 
 class _FakeResult:
@@ -83,6 +84,34 @@ async def test_seed_is_idempotent_and_does_not_reset_existing_admin_password(mon
     assert existing.password_hash == "existing-hash"
 
 
+@pytest.mark.anyio
+async def test_builtin_filter_rule_seed_is_idempotent() -> None:
+    session = _FakeSession()
+
+    created_count = await seed.ensure_builtin_filter_rules(session)
+
+    assert created_count == 4
+    assert session.flush_count == 1
+    assert all(isinstance(item, FilterRule) for item in session.added)
+    assert {item.origin for item in session.added} == {"built_in"}
+    assert {item.kind for item in session.added} == {"detector"}
+    assert {item.detector_key for item in session.added} == {"EMAIL", "PHONE", "RRN", "CARD"}
+    assert all(item.editable_fields == {"severity": True, "action": True, "enabled": True} for item in session.added)
+    assert all(item.config_json == {} for item in session.added)
+
+
+@pytest.mark.anyio
+async def test_builtin_filter_rule_seed_does_not_duplicate_existing_detector() -> None:
+    existing = SimpleNamespace(origin="built_in", kind="detector", detector_key="EMAIL")
+    session = _FakeSession(existing=existing)
+
+    created_count = await seed.ensure_builtin_filter_rules(session)
+
+    assert created_count == 0
+    assert session.added == []
+    assert session.flush_count == 0
+
+
 def test_migration_readiness_metadata_contains_current_stack_tables() -> None:
     tables = set(Base.metadata.tables)
     required_tables = {
@@ -96,8 +125,7 @@ def test_migration_readiness_metadata_contains_current_stack_tables() -> None:
     }
 
     assert required_tables.issubset(tables)
-    if "filter_rule_versions" in tables:
-        assert "filter_rule_versions" in Base.metadata.tables
+    assert "filter_rule_versions" not in tables
 
 
 def test_startup_script_does_not_echo_secret_values() -> None:

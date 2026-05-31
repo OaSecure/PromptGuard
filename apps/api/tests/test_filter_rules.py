@@ -1,11 +1,13 @@
 import json
+from sqlalchemy import inspect
 from types import SimpleNamespace
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, status
 from fastapi.testclient import TestClient
 
-from app.models.filters import FilterRule, FilterRuleVersion
+from app.db.base import Base
+from app.models.filters import FilterRule
 from app.routes import filters
 
 
@@ -59,7 +61,7 @@ def _admin():
 def _rule(**overrides):
     values = {
         "id": uuid4(),
-        "source": "custom",
+        "origin": "custom",
         "kind": "keyword",
         "category": "Custom",
         "label": "Internal Project",
@@ -114,6 +116,8 @@ def test_list_filters_returns_safe_rule_metadata() -> None:
 
     assert response.status_code == 200
     assert body[0]["id"] == str(rule.id)
+    assert body[0]["origin"] == "custom"
+    assert "source" not in body[0]
     assert body[0]["editable_fields"]["enabled"] is True
     assert "password_hash" not in encoded
     assert "raw_prompt" not in encoded
@@ -135,9 +139,9 @@ def test_create_custom_keyword_rule_records_version() -> None:
     )
 
     assert response.status_code == 201
-    assert response.json()["source"] == "custom"
+    assert response.json()["origin"] == "custom"
+    assert "source" not in response.json()
     assert any(isinstance(item, FilterRule) for item in fake_session.added)
-    assert any(isinstance(item, FilterRuleVersion) and item.change_type == "create" for item in fake_session.added)
     assert fake_session.commits == 1
 
 
@@ -159,7 +163,7 @@ def test_regex_rule_requires_valid_pattern() -> None:
 
 def test_built_in_rule_blocks_non_editable_fields() -> None:
     rule = _rule(
-        source="built_in",
+        origin="built_in",
         kind="detector",
         detector_key="EMAIL",
         editable_fields={"severity": True, "action": True, "enabled": True},
@@ -178,7 +182,42 @@ def test_disable_rule_increments_version_and_records_audit() -> None:
     assert response.status_code == 200
     assert response.json()["enabled"] is False
     assert rule.version == 2
-    assert any(isinstance(item, FilterRuleVersion) and item.change_type == "disable" for item in fake_session.added)
+    assert all(isinstance(item, FilterRule) for item in fake_session.added)
+
+
+def test_filter_rule_schema_uses_origin_and_excludes_versions() -> None:
+    columns = FilterRule.__table__.c
+    constraints = {
+        constraint.name: str(constraint.sqltext)
+        for constraint in FilterRule.__table__.constraints
+        if getattr(constraint, "sqltext", None) is not None
+    }
+    tables = set(Base.metadata.tables)
+
+    assert "origin" in columns
+    assert "source" not in columns
+    assert "filter_rule_versions" not in tables
+    assert not hasattr(FilterRule, "versions")
+    assert constraints["ck_filter_rules_origin"] == "origin in ('built_in', 'custom')"
+    assert "FilterRuleVersion" not in dir(__import__("app.models", fromlist=["*"]))
+    assert inspect(FilterRule).local_table.name == "filter_rules"
+
+
+def test_filter_rules_forbidden_raw_columns_are_absent() -> None:
+    forbidden = {
+        "sample_text",
+        "dry_run_sample",
+        "raw_sample",
+        "raw_match",
+        "raw_detected_value",
+        "matched_value",
+        "prompt_text",
+        "file_content",
+        "secret_value",
+        "token_raw",
+    }
+
+    assert forbidden.isdisjoint(set(FilterRule.__table__.c.keys()))
 
 
 def test_dry_run_returns_metadata_without_raw_sample() -> None:

@@ -60,7 +60,7 @@ def _bearer_header(user_id):
 def _filter_rule(**overrides):
     values = {
         "id": uuid4(),
-        "source": "custom",
+        "origin": "custom",
         "kind": "keyword",
         "category": "Custom",
         "label": "Internal Project",
@@ -258,7 +258,7 @@ def test_analyze_respects_disabled_built_in_filter_rule() -> None:
         user,
         rules=[
             _filter_rule(
-                source="built_in",
+                origin="built_in",
                 kind="detector",
                 category="PII",
                 detector_key="EMAIL",

@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db_session
 from app.core.tokens import utc_now
 from app.models.auth import User
-from app.models.filters import FilterRule, FilterRuleVersion
+from app.models.filters import FilterRule
 from app.routes.auth import require_admin
 from app.services.filter_rules import (
     action_for_matches,
@@ -24,7 +24,6 @@ from app.routes.analyze import risk_level_for_score
 
 router = APIRouter(prefix="/filters", tags=["filters"])
 
-RuleSource = Literal["built_in", "custom"]
 RuleKind = Literal["detector", "keyword", "regex", "context_rule"]
 RuleSeverity = Literal["low", "medium", "high", "critical"]
 RuleAction = Literal["ALLOW", "WARN", "MASK", "BLOCK"]
@@ -99,7 +98,7 @@ class FilterDryRunRequest(BaseModel):
 
 class FilterRuleResponse(BaseModel):
     id: uuid.UUID
-    source: str
+    origin: str
     kind: str
     category: str
     label: str
@@ -143,7 +142,7 @@ class FilterDryRunResponse(BaseModel):
 def _rule_response(rule: FilterRule) -> FilterRuleResponse:
     return FilterRuleResponse(
         id=rule.id,
-        source=rule.source,
+        origin=rule.origin,
         kind=rule.kind,
         category=rule.category,
         label=rule.label,
@@ -164,12 +163,12 @@ def _rule_response(rule: FilterRule) -> FilterRuleResponse:
     )
 
 
-def _snapshot(rule: FilterRule) -> dict[str, Any]:
-    return _rule_response(rule).model_dump(mode="json")
-
-
 def _validate_rule_shape(kind: str, keyword: str | None, pattern: str | None, config_json: dict[str, Any] | None) -> None:
-    if kind == "keyword" and not keyword:
+    configured_keywords = (config_json or {}).get("keywords")
+    has_configured_keywords = isinstance(configured_keywords, list) and any(
+        isinstance(item, str) and item.strip() for item in configured_keywords
+    )
+    if kind == "keyword" and not keyword and not has_configured_keywords:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="keyword is required")
     if kind == "regex":
         if not pattern:
@@ -189,28 +188,6 @@ async def _get_rule(session: AsyncSession, rule_id: uuid.UUID) -> FilterRule:
     return rule
 
 
-def _add_version(
-    session: AsyncSession,
-    *,
-    rule: FilterRule,
-    change_type: str,
-    before: dict[str, Any] | None,
-    after: dict[str, Any] | None,
-    admin: User,
-) -> None:
-    session.add(
-        FilterRuleVersion(
-            id=uuid.uuid4(),
-            filter_rule_id=rule.id,
-            version=rule.version,
-            change_type=change_type,
-            before_json=before,
-            after_json=after,
-            changed_by_user_id=admin.id,
-        )
-    )
-
-
 @router.get("", response_model=list[FilterRuleResponse])
 async def list_filters(
     current_admin: User = Depends(require_admin),
@@ -218,7 +195,7 @@ async def list_filters(
 ) -> list[FilterRuleResponse]:
     del current_admin
     result = await session.execute(
-        select(FilterRule).where(FilterRule.archived_at.is_(None)).order_by(FilterRule.source.asc(), FilterRule.kind.asc(), FilterRule.label.asc())
+        select(FilterRule).where(FilterRule.archived_at.is_(None)).order_by(FilterRule.origin.asc(), FilterRule.kind.asc(), FilterRule.label.asc())
     )
     return [_rule_response(rule) for rule in result.scalars().all()]
 
@@ -244,7 +221,7 @@ async def create_filter(
     _validate_rule_shape(payload.kind, payload.keyword, payload.pattern, payload.config_json)
     rule = FilterRule(
         id=uuid.uuid4(),
-        source="custom",
+        origin="custom",
         kind=payload.kind,
         category=payload.category,
         label=payload.label,
@@ -262,7 +239,6 @@ async def create_filter(
         updated_by_user_id=current_admin.id,
     )
     session.add(rule)
-    _add_version(session, rule=rule, change_type="create", before=None, after=_snapshot(rule), admin=current_admin)
     await session.commit()
     await session.refresh(rule)
     return _rule_response(rule)
@@ -286,12 +262,10 @@ async def update_filter(
     next_config = updates.get("config_json", rule.config_json)
     _validate_rule_shape(rule.kind, next_keyword, next_pattern, next_config)
 
-    before = _snapshot(rule)
     for field, value in updates.items():
         setattr(rule, field, value)
     rule.version += 1
     rule.updated_by_user_id = current_admin.id
-    _add_version(session, rule=rule, change_type="update", before=before, after=_snapshot(rule), admin=current_admin)
     await session.commit()
     await session.refresh(rule)
     return _rule_response(rule)
@@ -319,11 +293,9 @@ async def _set_enabled(rule_id: uuid.UUID, enabled: bool, current_admin: User, s
     rule = await _get_rule(session, rule_id)
     if not rule.editable_fields.get("enabled"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="enabled is not editable")
-    before = _snapshot(rule)
     rule.enabled = enabled
     rule.version += 1
     rule.updated_by_user_id = current_admin.id
-    _add_version(session, rule=rule, change_type="enable" if enabled else "disable", before=before, after=_snapshot(rule), admin=current_admin)
     await session.commit()
     await session.refresh(rule)
     return _rule_response(rule)
@@ -336,13 +308,11 @@ async def archive_filter(
     session: AsyncSession = Depends(get_db_session),
 ) -> None:
     rule = await _get_rule(session, rule_id)
-    if rule.source == "built_in":
+    if rule.origin == "built_in":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="built-in rules cannot be archived")
-    before = _snapshot(rule)
     rule.archived_at = utc_now()
     rule.version += 1
     rule.updated_by_user_id = current_admin.id
-    _add_version(session, rule=rule, change_type="archive", before=before, after=_snapshot(rule), admin=current_admin)
     await session.commit()
     return None
 

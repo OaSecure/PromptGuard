@@ -37,7 +37,7 @@ class RuleMatch:
 BUILT_IN_RULES: list[FilterRule] = [
     FilterRule(
         id=uuid.UUID("00000000-0000-4000-8000-000000000101"),
-        source="built_in",
+        origin="built_in",
         kind="detector",
         category="PII",
         label="Email Address",
@@ -52,7 +52,7 @@ BUILT_IN_RULES: list[FilterRule] = [
     ),
     FilterRule(
         id=uuid.UUID("00000000-0000-4000-8000-000000000102"),
-        source="built_in",
+        origin="built_in",
         kind="detector",
         category="PII",
         label="Phone Number",
@@ -67,7 +67,7 @@ BUILT_IN_RULES: list[FilterRule] = [
     ),
     FilterRule(
         id=uuid.UUID("00000000-0000-4000-8000-000000000103"),
-        source="built_in",
+        origin="built_in",
         kind="detector",
         category="PII",
         label="Resident Registration Number",
@@ -82,7 +82,7 @@ BUILT_IN_RULES: list[FilterRule] = [
     ),
     FilterRule(
         id=uuid.UUID("00000000-0000-4000-8000-000000000104"),
-        source="built_in",
+        origin="built_in",
         kind="detector",
         category="Payment",
         label="Card Number",
@@ -131,7 +131,7 @@ def action_for_matches(matches: list[RuleMatch]) -> RuleAction:
 
 
 def _reason_code(rule: FilterRule) -> str:
-    source = "BUILT_IN" if rule.source == "built_in" else "CUSTOM"
+    source = "BUILT_IN" if rule.origin == "built_in" else "CUSTOM"
     return f"{source}_{rule.kind.upper()}_{(rule.detector_key or rule.label).upper().replace(' ', '_')}"
 
 
@@ -143,7 +143,7 @@ def _built_in_matches(prompt: str, rules: list[FilterRule]) -> list[RuleMatch]:
 
     matches: list[RuleMatch] = []
     for rule in rules:
-        if rule.source != "built_in" or rule.kind != "detector" or not rule.detector_key:
+        if rule.origin != "built_in" or rule.kind != "detector" or not rule.detector_key:
             continue
         rule_detections = grouped.get(rule.detector_key, [])
         if not rule_detections:
@@ -277,7 +277,7 @@ def evaluate_filter_rules(prompt: str, rules: list[FilterRule]) -> list[RuleMatc
     rules = [rule for rule in rules if rule.enabled and rule.archived_at is None]
     matches = _built_in_matches(prompt, rules)
     for rule in rules:
-        if rule.source != "custom":
+        if rule.origin != "custom":
             continue
         if rule.kind == "keyword":
             match = _custom_keyword_match(prompt, rule)

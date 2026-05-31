@@ -17,9 +17,7 @@ from app.routes.filters import (
     CUSTOM_EDITABLE_FIELDS,
     FilterRuleCreateRequest,
     FilterRulePatchRequest,
-    _add_version,
     _get_rule,
-    _snapshot,
 )
 from app.routes.analyze import risk_level_for_score
 from app.services.filter_rules import RuleMatch, evaluate_filter_rules, score_for_matches
@@ -86,7 +84,7 @@ class DashboardDryRunResponse(BaseModel):
 def _dashboard_response(rule: FilterRule) -> DashboardFilterRuleResponse:
     return DashboardFilterRuleResponse(
         id=rule.id,
-        origin=rule.source,
+        origin=rule.origin,
         kind=rule.kind,
         category=rule.category,
         label=rule.label,
@@ -153,7 +151,7 @@ def _dashboard_rule_from_create(payload: FilterRuleCreateRequest, admin: User) -
             keyword = values[0]
     return FilterRule(
         id=uuid.uuid4(),
-        source="custom",
+        origin="custom",
         kind=payload.kind,
         category=payload.category,
         label=payload.label,
@@ -173,7 +171,7 @@ def _dashboard_rule_from_create(payload: FilterRuleCreateRequest, admin: User) -
 
 
 def _reject_forbidden_built_in_update(rule: FilterRule, updates: dict[str, Any]) -> None:
-    if rule.source != "built_in":
+    if rule.origin != "built_in":
         return
     forbidden = FORBIDDEN_BUILT_IN_FIELDS.intersection(updates)
     disallowed = set(updates).difference(ALLOWED_BUILT_IN_FIELDS)
@@ -189,7 +187,7 @@ async def list_dashboard_filters(
 ) -> list[DashboardFilterRuleResponse]:
     del current_admin
     result = await session.execute(
-        select(FilterRule).where(FilterRule.archived_at.is_(None)).order_by(FilterRule.source.asc(), FilterRule.kind.asc(), FilterRule.label.asc())
+        select(FilterRule).where(FilterRule.archived_at.is_(None)).order_by(FilterRule.origin.asc(), FilterRule.kind.asc(), FilterRule.label.asc())
     )
     return [_dashboard_response(rule) for rule in result.scalars().all()]
 
@@ -212,7 +210,6 @@ async def create_dashboard_filter(
 ) -> DashboardFilterRuleResponse:
     rule = _dashboard_rule_from_create(payload, current_admin)
     session.add(rule)
-    _add_version(session, rule=rule, change_type="create", before=None, after=_snapshot(rule), admin=current_admin)
     await session.commit()
     await session.refresh(rule)
     return _dashboard_response(rule)
@@ -244,12 +241,10 @@ async def update_dashboard_filter(
             re.compile(pattern)
         except re.error as exc:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="pattern is invalid") from exc
-    before = _snapshot(rule)
     for field, value in updates.items():
         setattr(rule, field, value)
     rule.version += 1
     rule.updated_by_user_id = current_admin.id
-    _add_version(session, rule=rule, change_type="update", before=before, after=_snapshot(rule), admin=current_admin)
     await session.commit()
     await session.refresh(rule)
     return _dashboard_response(rule)
@@ -275,11 +270,9 @@ async def disable_dashboard_filter(
 
 async def _set_dashboard_enabled(rule_id: uuid.UUID, enabled: bool, current_admin: User, session: AsyncSession) -> DashboardFilterRuleResponse:
     rule = await _get_rule(session, rule_id)
-    before = _snapshot(rule)
     rule.enabled = enabled
     rule.version += 1
     rule.updated_by_user_id = current_admin.id
-    _add_version(session, rule=rule, change_type="enable" if enabled else "disable", before=before, after=_snapshot(rule), admin=current_admin)
     await session.commit()
     await session.refresh(rule)
     return _dashboard_response(rule)
@@ -292,14 +285,12 @@ async def archive_dashboard_filter(
     session: AsyncSession = Depends(get_db_session),
 ) -> None:
     rule = await _get_rule(session, rule_id)
-    if rule.source == "built_in":
+    if rule.origin == "built_in":
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="built-in rules cannot be archived")
-    before = _snapshot(rule)
     rule.archived_at = utc_now()
     rule.enabled = False
     rule.version += 1
     rule.updated_by_user_id = current_admin.id
-    _add_version(session, rule=rule, change_type="archive", before=before, after=_snapshot(rule), admin=current_admin)
     await session.commit()
     return None
 

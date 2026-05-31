@@ -6,7 +6,7 @@ from fastapi import FastAPI, HTTPException, status
 from fastapi.testclient import TestClient
 
 from app.models.events import AnalysisEvent
-from app.models.filters import FilterRule, FilterRuleVersion
+from app.models.filters import FilterRule
 from app.routes import dashboard_filters
 
 
@@ -60,7 +60,7 @@ def _admin(role: str = "ADMIN"):
 def _rule(**overrides):
     values = {
         "id": uuid4(),
-        "source": "custom",
+        "origin": "custom",
         "kind": "keyword",
         "category": "Custom",
         "label": "Internal Strategy",
@@ -91,7 +91,7 @@ def _rule(**overrides):
 
 def _built_in_rule(**overrides):
     return _rule(
-        source="built_in",
+        origin="built_in",
         kind="detector",
         category="PII",
         label="Email Address",
@@ -193,7 +193,7 @@ def test_dashboard_filters_create_custom_keyword_and_invalid_regex() -> None:
 
     assert created.status_code == 201
     assert created.json()["origin"] == "custom"
-    assert any(isinstance(item, FilterRuleVersion) and item.change_type == "create" for item in fake_session.added)
+    assert any(isinstance(item, FilterRule) for item in fake_session.added)
     assert invalid_regex.status_code == 422
 
 
@@ -252,7 +252,7 @@ def test_dashboard_filters_custom_archive_sets_enabled_false() -> None:
     assert response.status_code == 204
     assert rule.archived_at is not None
     assert rule.enabled is False
-    assert any(isinstance(item, FilterRuleVersion) and item.change_type == "archive" for item in fake_session.added)
+    assert all(isinstance(item, FilterRule) for item in fake_session.added)
 
 
 def test_dashboard_filters_enable_disable_keeps_existing_version_behavior() -> None:
@@ -263,7 +263,7 @@ def test_dashboard_filters_enable_disable_keeps_existing_version_behavior() -> N
     assert response.status_code == 200
     assert response.json()["enabled"] is False
     assert rule.version == 2
-    assert any(isinstance(item, FilterRuleVersion) and item.change_type == "disable" for item in fake_session.added)
+    assert fake_session.added == []
 
 
 def test_dashboard_filter_dry_run_returns_safe_single_rule_metadata() -> None:
