@@ -10,10 +10,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db_session
 from app.models.auth import User
-from app.models.events import AnalysisEvent, EventDetection
+from app.models.events import AnalysisEvent, EventDetection, EventInput
 from app.routes.auth import require_admin
 
 router = APIRouter(prefix="/events", tags=["events"])
+dashboard_router = APIRouter(prefix="/dashboard/events", tags=["dashboard-events"])
 
 ActionFilter = Literal["ALLOW", "WARN", "MASK", "BLOCK"]
 RiskLevelFilter = Literal["low", "medium", "high", "critical"]
@@ -34,14 +35,23 @@ class EventDetectionSummary(BaseModel):
 
 
 class EventDetectionResponse(BaseModel):
+    input_id: str | None
+    input_index: int | None
+    kind: str | None
     category: str
     type: str
     source: str
+    filter_rule_id: uuid.UUID | None
+    detector_id: str | None
     severity: str
+    action: str | None
+    placeholder: str | None
     confidence: int
     count: int
     reason_code: str
     match_count: int
+    matched_keywords: list[str]
+    evidence_counts: dict[str, Any]
     safe_evidence: dict[str, Any]
 
 
@@ -62,8 +72,22 @@ class EventListItem(BaseModel):
 class EventDetail(EventListItem):
     platform: str | None
     detection_summary: list[EventDetectionSummary]
+    input_results: list["EventInputResponse"]
+    content_unavailable_inputs: list["EventInputResponse"]
     detections: list[EventDetectionResponse]
-    prompt_hash_prefix: str
+
+
+class EventInputResponse(BaseModel):
+    input_id: str
+    input_index: int
+    kind: str
+    source: str
+    size_bytes: int
+    content_included: bool
+    content_scanned: bool
+    decision_basis: str
+    content_unavailable_reason: str | None
+    limit_exceeded: bool
 
 
 def apply_event_filters(
@@ -137,28 +161,66 @@ def list_item(event: AnalysisEvent, user: User, detections: list[EventDetection]
     )
 
 
-def detail_item(event: AnalysisEvent, user: User, detections: list[EventDetection]) -> EventDetail:
+def input_response(input_row: EventInput) -> EventInputResponse:
+    return EventInputResponse(
+        input_id=input_row.input_id,
+        input_index=input_row.input_index,
+        kind=input_row.kind,
+        source=input_row.source,
+        size_bytes=input_row.size_bytes,
+        content_included=input_row.content_included,
+        content_scanned=input_row.content_scanned,
+        decision_basis=input_row.decision_basis,
+        content_unavailable_reason=input_row.content_unavailable_reason,
+        limit_exceeded=input_row.limit_exceeded,
+    )
+
+
+def detail_item(
+    event: AnalysisEvent,
+    user: User,
+    detections: list[EventDetection],
+    inputs: list[EventInput],
+) -> EventDetail:
     base = list_item(event, user, detections)
     summary = summarize_detections(detections)
+    input_results = [input_response(input_row) for input_row in sorted(inputs, key=lambda item: item.input_index)]
     return EventDetail(
         **base.model_dump(),
         platform=event.platform,
         detection_summary=summary,
+        input_results=input_results,
+        content_unavailable_inputs=[
+            item
+            for item in input_results
+            if not item.content_included or item.decision_basis == "content_unavailable"
+        ],
         detections=[
             EventDetectionResponse(
+                input_id=detection.input_id,
+                input_index=detection.input_index,
+                kind=detection.kind,
                 category=detection.category,
                 type=detection.type,
                 source=detection.source,
+                filter_rule_id=detection.filter_rule_id,
+                detector_id=detection.detector_id,
                 severity=detection.severity,
+                action=detection.action,
+                placeholder=detection.placeholder,
                 confidence=detection.confidence,
                 count=detection.count,
                 reason_code=detection.reason_code,
                 match_count=detection.match_count,
+                matched_keywords=detection.matched_keywords,
+                evidence_counts=detection.evidence_counts,
                 safe_evidence=detection.safe_evidence,
             )
-            for detection in sorted(detections, key=lambda item: (item.category, item.type, item.reason_code))
+            for detection in sorted(
+                detections,
+                key=lambda item: (item.input_index or 0, item.category, item.type, item.reason_code),
+            )
         ],
-        prompt_hash_prefix=event.prompt_hash[:12],
     )
 
 
@@ -176,8 +238,21 @@ async def load_detections_by_event_id(
     return grouped
 
 
-@router.get("", response_model=list[EventListItem])
-async def list_events(
+async def load_inputs_by_event_id(
+    session: AsyncSession,
+    event_ids: list[uuid.UUID],
+) -> dict[uuid.UUID, list[EventInput]]:
+    if not event_ids:
+        return {}
+
+    result = await session.execute(select(EventInput).where(EventInput.event_id.in_(event_ids)))
+    grouped: dict[uuid.UUID, list[EventInput]] = defaultdict(list)
+    for input_row in result.scalars().all():
+        grouped[input_row.event_id].append(input_row)
+    return grouped
+
+
+async def _list_events(
     action: ActionFilter | None = None,
     risk_level: RiskLevelFilter | None = None,
     user_id: uuid.UUID | None = None,
@@ -202,8 +277,7 @@ async def list_events(
     ]
 
 
-@router.get("/{event_id}", response_model=EventDetail)
-async def get_event(
+async def _get_event(
     event_id: uuid.UUID,
     current_admin: User = Depends(require_admin),
     session: AsyncSession = Depends(get_db_session),
@@ -221,4 +295,16 @@ async def get_event(
 
     event, user = row
     detections_by_event_id = await load_detections_by_event_id(session, [event.id])
-    return detail_item(event, user, detections_by_event_id.get(event.id, []))
+    inputs_by_event_id = await load_inputs_by_event_id(session, [event.id])
+    return detail_item(
+        event,
+        user,
+        detections_by_event_id.get(event.id, []),
+        inputs_by_event_id.get(event.id, []),
+    )
+
+
+router.get("", response_model=list[EventListItem])(_list_events)
+router.get("/{event_id}", response_model=EventDetail)(_get_event)
+dashboard_router.get("", response_model=list[EventListItem])(_list_events)
+dashboard_router.get("/{event_id}", response_model=EventDetail)(_get_event)

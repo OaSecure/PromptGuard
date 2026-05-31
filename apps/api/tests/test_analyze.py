@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app as main_app
 from app.core.tokens import create_access_token
-from app.models.events import AnalysisEvent, EventDetection
+from app.models.events import AnalysisEvent, EventDetection, EventInput
 from app.models.filters import FilterRule
 from app.routes import analyze as analyze_route
 from app.routes.auth import get_db_session
@@ -139,6 +139,8 @@ def test_analyze_accepts_schema_and_returns_safe_context() -> None:
     assert body["workspace_context"] == {"source": "authenticated_user", "user_id": str(user.id)}
     assert fake_session.commits == 1
     assert user.last_event_at is not None
+    events = [item for item in fake_session.added if isinstance(item, AnalysisEvent)]
+    assert str(events[0].client_request_id) == client_request_id
 
 
 def test_analyze_masks_email_and_phone_and_persists_safe_metadata() -> None:
@@ -155,6 +157,7 @@ def test_analyze_masks_email_and_phone_and_persists_safe_metadata() -> None:
     body = response.json()
     encoded_body = json.dumps(body, ensure_ascii=False)
     events = [item for item in fake_session.added if isinstance(item, AnalysisEvent)]
+    input_rows = [item for item in fake_session.added if isinstance(item, EventInput)]
     detection_rows = [item for item in fake_session.added if isinstance(item, EventDetection)]
 
     assert response.status_code == 200
@@ -172,8 +175,26 @@ def test_analyze_masks_email_and_phone_and_persists_safe_metadata() -> None:
     assert events[0].prompt_hash != prompt
     assert events[0].service == "ChatGPT"
     assert events[0].platform == "web"
+    assert len(input_rows) == 1
+    assert input_rows[0].input_id == "composer"
+    assert input_rows[0].input_index == 0
+    assert input_rows[0].kind == "text"
+    assert input_rows[0].source == "composer"
+    assert input_rows[0].size_bytes == len(prompt.encode("utf-8"))
+    assert input_rows[0].content_included is True
+    assert input_rows[0].content_scanned is True
+    assert input_rows[0].decision_basis == "detection"
+    assert input_rows[0].decision_basis not in {"ALLOW", "WARN", "MASK", "BLOCK"}
     assert len(detection_rows) == 2
     assert {item.type for item in detection_rows} == {"EMAIL", "PHONE"}
+    assert {item.source for item in detection_rows} == {"composer"}
+    assert {item.detector_id for item in detection_rows} == {"built_in_detector"}
+    assert all(item.input_id == "composer" for item in detection_rows)
+    assert all(item.input_index == 0 for item in detection_rows)
+    assert all(item.kind == "text" for item in detection_rows)
+    assert all(item.action == "MASK" for item in detection_rows)
+    assert all(item.matched_keywords == [] for item in detection_rows)
+    assert all(item.evidence_counts == {"match_count": 1} for item in detection_rows)
     assert all("raw" not in json.dumps(item.safe_evidence) for item in detection_rows)
     assert fake_session.commits == 1
 
@@ -229,6 +250,8 @@ def test_analyze_respects_disabled_built_in_filter_rule() -> None:
     assert body["action"] == "ALLOW"
     assert body["detections"] == []
     assert detection_rows == []
+    input_rows = [item for item in fake_session.added if isinstance(item, EventInput)]
+    assert input_rows[0].decision_basis == "no_detection"
 
 
 def test_analyze_records_custom_keyword_filter_metadata_without_raw_value() -> None:
@@ -250,8 +273,10 @@ def test_analyze_records_custom_keyword_filter_metadata_without_raw_value() -> N
     assert body["risk_level"] == "high"
     assert body["detections"][0]["type"] == "INTERNAL_PROJECT"
     assert "Project Hermes" not in encoded
-    assert detection_rows[0].source == "custom_keyword"
+    assert detection_rows[0].source == "composer"
+    assert detection_rows[0].detector_id == "custom_keyword"
     assert "Project Hermes" not in json.dumps(detection_rows[0].safe_evidence)
+    assert detection_rows[0].matched_keywords == []
     assert events[0].filter_rule_set_version.startswith("filter-rules:")
 
 

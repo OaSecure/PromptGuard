@@ -19,11 +19,13 @@ SEVERITY_SCORE = {"low": 25, "medium": 55, "high": 80, "critical": 95}
 
 @dataclass(frozen=True)
 class RuleMatch:
+    rule_id: uuid.UUID | None
     category: str
     type: str
     source: str
     severity: RuleSeverity
     action: RuleAction
+    placeholder: str | None
     confidence: int
     count: int
     reason_code: str
@@ -148,11 +150,13 @@ def _built_in_matches(prompt: str, rules: list[FilterRule]) -> list[RuleMatch]:
             continue
         matches.append(
             RuleMatch(
+                rule_id=rule.id,
                 category=rule.category,
                 type=rule.detector_key,
                 source="built_in_detector",
                 severity=rule.severity,  # type: ignore[arg-type]
                 action=rule.action,  # type: ignore[arg-type]
+                placeholder=rule.placeholder,
                 confidence=100,
                 count=len(rule_detections),
                 reason_code=_reason_code(rule),
@@ -190,11 +194,13 @@ def _custom_keyword_match(prompt: str, rule: FilterRule) -> RuleMatch | None:
     if not detections:
         return None
     return RuleMatch(
+        rule_id=rule.id,
         category=rule.category,
         type=rule.placeholder or "CUSTOM_KEYWORD",
         source="custom_keyword",
         severity=rule.severity,  # type: ignore[arg-type]
         action=rule.action,  # type: ignore[arg-type]
+        placeholder=rule.placeholder,
         confidence=90,
         count=len(detections),
         reason_code=_reason_code(rule),
@@ -222,11 +228,13 @@ def _custom_regex_match(prompt: str, rule: FilterRule) -> RuleMatch | None:
     if not detections:
         return None
     return RuleMatch(
+        rule_id=rule.id,
         category=rule.category,
         type=rule.placeholder or "CUSTOM_REGEX",
         source="custom_regex",
         severity=rule.severity,  # type: ignore[arg-type]
         action=rule.action,  # type: ignore[arg-type]
+        placeholder=rule.placeholder,
         confidence=90,
         count=len(detections),
         reason_code=_reason_code(rule),
@@ -249,11 +257,13 @@ def _context_rule_match(prompt: str, rule: FilterRule) -> RuleMatch | None:
     if matched_terms < min_count:
         return None
     return RuleMatch(
+        rule_id=rule.id,
         category=rule.category,
         type=rule.placeholder or "CONTEXT_RULE",
         source="custom_context_rule",
         severity=rule.severity,  # type: ignore[arg-type]
         action=rule.action,  # type: ignore[arg-type]
+        placeholder=rule.placeholder,
         confidence=80,
         count=matched_terms,
         reason_code=_reason_code(rule),

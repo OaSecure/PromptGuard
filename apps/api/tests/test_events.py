@@ -7,7 +7,7 @@ from fastapi import FastAPI, HTTPException, status
 from fastapi.testclient import TestClient
 
 from app.models.auth import User
-from app.models.events import AnalysisEvent, EventDetection
+from app.models.events import AnalysisEvent, EventDetection, EventInput
 from app.routes import events
 
 
@@ -36,14 +36,17 @@ class _ExecuteResult:
 
 
 class _FakeSession:
-    def __init__(self, rows=None, detections=None):
+    def __init__(self, rows=None, detections=None, inputs=None):
         self.rows = list(rows or [])
         self.detections = list(detections or [])
+        self.inputs = list(inputs or [])
         self.statements = []
 
     async def execute(self, statement):
         statement_text = str(statement)
         self.statements.append(statement_text)
+        if "event_inputs" in statement_text:
+            return _ExecuteResult(scalars=self.inputs)
         if "event_detections" in statement_text:
             return _ExecuteResult(scalars=self.detections)
 
@@ -95,6 +98,7 @@ def _event(
     return AnalysisEvent(
         id=uuid.uuid4(),
         user_id=user.id,
+        login_id=user.login_id,
         prompt_hash="abcdef1234567890abcdef1234567890",
         prompt_hash_key_id="dev-key-1",
         action=action,
@@ -112,21 +116,49 @@ def _detection(event: AnalysisEvent, detection_type: str = "EMAIL") -> EventDete
     return EventDetection(
         id=uuid.uuid4(),
         event_id=event.id,
+        input_id="composer",
+        input_index=0,
+        kind="text",
         category="PII",
         type=detection_type,
-        source="built_in_detector",
+        source="composer",
+        filter_rule_id=uuid.UUID("00000000-0000-4000-8000-000000000101"),
+        detector_id="built_in_detector",
+        action="MASK",
+        placeholder=detection_type,
         severity="medium",
         confidence=100,
         count=1,
         reason_code=f"PII_{detection_type}_DETECTED",
         match_count=1,
+        matched_keywords=[],
+        evidence_counts={"match_count": 1},
         safe_evidence={"value_lengths": [16]},
+    )
+
+
+def _input(event: AnalysisEvent, *, decision_basis: str = "detection") -> EventInput:
+    return EventInput(
+        id=uuid.uuid4(),
+        event_id=event.id,
+        input_id="composer",
+        input_index=0,
+        kind="text",
+        source="composer",
+        size_bytes=42,
+        content_included=True,
+        content_scanned=True,
+        decision_basis=decision_basis,
+        content_unavailable_reason=None,
+        limit_exceeded=False,
+        created_at=event.created_at,
     )
 
 
 def _client(fake_session: _FakeSession, *, role: str | None = "ADMIN") -> TestClient:
     app = FastAPI()
     app.include_router(events.router)
+    app.include_router(events.dashboard_router)
 
     async def override_session():
         yield fake_session
@@ -151,6 +183,41 @@ def test_events_require_admin_access() -> None:
     assert _client(fake_session, role=None).get("/events").status_code == 401
     assert _client(fake_session, role="USER").get("/events").status_code == 403
     assert _client(fake_session, role="ADMIN").get("/events").status_code == 200
+
+
+def test_event_metadata_models_keep_safe_schema_contract() -> None:
+    event_indexes = {index.name: tuple(index.columns.keys()) for index in AnalysisEvent.__table__.indexes}
+    assert event_indexes["ix_analysis_events_login_client_request_id"] == ("login_id", "client_request_id")
+    assert AnalysisEvent.__table__.c.client_request_id.nullable is True
+    assert not any(index.unique for index in AnalysisEvent.__table__.indexes if index.name == "ix_analysis_events_login_client_request_id")
+
+    input_columns = set(EventInput.__table__.c.keys())
+    assert {
+        "event_id",
+        "input_id",
+        "input_index",
+        "kind",
+        "source",
+        "size_bytes",
+        "content_included",
+        "content_scanned",
+        "decision_basis",
+        "content_unavailable_reason",
+        "limit_exceeded",
+    }.issubset(input_columns)
+    assert {
+        "content",
+        "prompt",
+        "prompt_text",
+        "raw_prompt",
+        "file_content",
+        "masked_prompt",
+        "original_filename",
+        "raw_file_name",
+        "raw_detected_value",
+        "raw_match",
+        "context_excerpt",
+    }.isdisjoint(input_columns)
 
 
 def test_list_events_returns_metadata_only_latest_first() -> None:
@@ -203,21 +270,71 @@ def test_get_event_returns_detail_without_raw_values() -> None:
     detection = _detection(event)
     fake_session = _FakeSession(rows=[(event, event_user)], detections=[detection])
 
-    response = _client(fake_session).get(f"/events/{event.id}")
+    fake_session.inputs = [_input(event)]
+
+    response = _client(fake_session).get(f"/dashboard/events/{event.id}")
     body = response.json()
     encoded = json.dumps(body, ensure_ascii=False)
 
     assert response.status_code == 200
     assert body["event_id"] == str(event.id)
     assert body["platform"] == "web"
-    assert body["prompt_hash_prefix"] == "abcdef123456"
-    assert body["prompt_hash_prefix"] != event.prompt_hash
+    assert "prompt_hash_prefix" not in body
+    assert "prompt_hash" not in body
+    assert "prompt_hash_key_id" not in body
+    assert "request_fingerprint" not in body
+    assert "input_bundle_hash_prefix" not in body
+    assert body["input_results"][0]["input_id"] == "composer"
+    assert body["input_results"][0]["source"] == "composer"
+    assert body["input_results"][0]["decision_basis"] == "detection"
+    assert body["content_unavailable_inputs"] == []
     assert body["detection_summary"] == [{"category": "PII", "type": "EMAIL", "count": 1}]
+    assert body["detections"][0]["input_id"] == "composer"
+    assert body["detections"][0]["source"] == "composer"
+    assert body["detections"][0]["detector_id"] == "built_in_detector"
+    assert body["detections"][0]["action"] == "MASK"
+    assert body["detections"][0]["placeholder"] == "EMAIL"
+    assert body["detections"][0]["matched_keywords"] == []
+    assert body["detections"][0]["evidence_counts"] == {"match_count": 1}
     assert body["detections"][0]["safe_evidence"] == {"value_lengths": [16]}
     assert "abcdef1234567890abcdef1234567890" not in encoded
     assert "raw_prompt" not in encoded
     assert "masked_prompt" not in encoded
     assert "raw_detected_value" not in encoded
+
+
+def test_get_event_reports_content_unavailable_inputs_as_metadata_only() -> None:
+    event_user = _user()
+    event = _event(event_user)
+    unavailable = _input(event, decision_basis="content_unavailable")
+    unavailable.content_included = False
+    unavailable.content_scanned = False
+    unavailable.content_unavailable_reason = "size_limit"
+    unavailable.limit_exceeded = True
+    fake_session = _FakeSession(rows=[(event, event_user)], inputs=[unavailable])
+
+    response = _client(fake_session).get(f"/dashboard/events/{event.id}")
+    body = response.json()
+    encoded = json.dumps(body, ensure_ascii=False)
+
+    assert response.status_code == 200
+    assert body["content_unavailable_inputs"] == [
+        {
+            "input_id": "composer",
+            "input_index": 0,
+            "kind": "text",
+            "source": "composer",
+            "size_bytes": 42,
+            "content_included": False,
+            "content_scanned": False,
+            "decision_basis": "content_unavailable",
+            "content_unavailable_reason": "size_limit",
+            "limit_exceeded": True,
+        }
+    ]
+    assert "raw_prompt" not in encoded
+    assert "file_content" not in encoded
+    assert "original_filename" not in encoded
 
 
 def test_get_event_returns_404_for_missing_event() -> None:

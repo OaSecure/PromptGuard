@@ -11,7 +11,7 @@ from app.core.prompt_hash import compute_prompt_hash
 from app.core.tokens import utc_now
 from app.masking.placeholder import apply_placeholders
 from app.models.auth import User
-from app.models.events import AnalysisEvent, EventDetection
+from app.models.events import AnalysisEvent, EventDetection, EventInput
 from app.routes.auth import get_db_session, require_active_user
 from app.services.filter_rules import (
     RuleMatch,
@@ -134,6 +134,23 @@ def response_detections(matches: list[RuleMatch]) -> list[AnalyzeDetection]:
     ]
 
 
+def event_input_row(event_id: uuid.UUID, prompt: str, matches: list[RuleMatch]) -> EventInput:
+    return EventInput(
+        id=uuid.uuid4(),
+        event_id=event_id,
+        input_id="composer",
+        input_index=0,
+        kind="text",
+        source="composer",
+        size_bytes=len(prompt.encode("utf-8")),
+        content_included=True,
+        content_scanned=True,
+        decision_basis="detection" if matches else "no_detection",
+        content_unavailable_reason=None,
+        limit_exceeded=False,
+    )
+
+
 def event_detection_rows(event_id: uuid.UUID, matches: list[RuleMatch]) -> list[EventDetection]:
     rows: list[EventDetection] = []
     for match in matches:
@@ -141,14 +158,23 @@ def event_detection_rows(event_id: uuid.UUID, matches: list[RuleMatch]) -> list[
             EventDetection(
                 id=uuid.uuid4(),
                 event_id=event_id,
+                input_id="composer",
+                input_index=0,
+                kind="text",
                 category=match.category,
                 type=match.type,
-                source=match.source,
+                source="composer",
+                filter_rule_id=match.rule_id,
+                detector_id=match.source,
+                action=match.action,
+                placeholder=match.placeholder,
                 severity=match.severity,
                 confidence=match.confidence,
                 count=match.count,
                 reason_code=match.reason_code,
                 match_count=match.match_count,
+                matched_keywords=[],
+                evidence_counts={"match_count": match.match_count},
                 safe_evidence=match.safe_evidence,
             )
         )
@@ -187,6 +213,8 @@ async def analyze_prompt(
     event = AnalysisEvent(
         id=event_id,
         user_id=current_user.id,
+        login_id=getattr(current_user, "login_id", None),
+        client_request_id=payload.client_request_id,
         prompt_hash=prompt_hash.digest,
         prompt_hash_key_id=prompt_hash.key_id,
         action=action,
@@ -198,6 +226,7 @@ async def analyze_prompt(
         platform=safe_context_string(payload.context, "platform", 120),
     )
     session.add(event)
+    session.add(event_input_row(event_id, payload.prompt, matches))
     for row in event_detection_rows(event_id, matches):
         session.add(row)
 
