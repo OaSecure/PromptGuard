@@ -7,6 +7,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         dashboard: "index.html",
+        filters: "filters.html",
         status: "status.html"
       }
     }
