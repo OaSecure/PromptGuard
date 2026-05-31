@@ -91,7 +91,7 @@ def is_login_allowed(user: User | None, plain_password: str) -> bool:
 
 def refresh_idle_expires_at(now: datetime | None = None) -> datetime:
     settings = get_settings()
-    return (now or utc_now()) + timedelta(days=getattr(settings, "refresh_token_idle_expires_days", 14))
+    return (now or utc_now()) + timedelta(days=getattr(settings, "refresh_idle_timeout_days", 14))
 
 
 async def issue_token_pair(session: AsyncSession, user: User) -> TokenResponse:

@@ -21,10 +21,11 @@ def load_admin_seed_migration():
 
 def test_default_admin_seed_password_is_hash_only_and_verifiable() -> None:
     migration = load_admin_seed_migration()
-    initial_password = "MyChosenAdminPassword!123"
+    initial_password = migration.DEFAULT_INITIAL_ADMIN_PASSWORD
 
     password_hash = migration.hash_initial_admin_password(initial_password)
 
+    assert initial_password == "1234"
     assert password_hash != initial_password
     assert initial_password not in password_hash
     assert verify_password(initial_password, password_hash)
@@ -45,9 +46,9 @@ def test_auth_user_contract_migration_normalizes_admin_login_id() -> None:
     )
     migration_text = migration_path.read_text(encoding="utf-8")
 
-    assert "login_id = 'ADMIN'" in migration_text
+    assert "login_id = 'admin'" in migration_text
     assert "login_id_normalized = 'admin'" in migration_text
-    assert "username = 'ADMIN'" in migration_text
+    assert "username = 'admin'" in migration_text
     assert "status = 'ACTIVE'" in migration_text
 
 

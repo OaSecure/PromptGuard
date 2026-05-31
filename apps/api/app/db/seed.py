@@ -13,9 +13,9 @@ from app.models.auth import User
 from app.models.filters import FilterRule
 
 
-DEFAULT_ADMIN_LOGIN_ID = "ADMIN"
+DEFAULT_ADMIN_LOGIN_ID = "admin"
 DEFAULT_ADMIN_LOGIN_ID_NORMALIZED = "admin"
-DEFAULT_ADMIN_USERNAME = "ADMIN"
+DEFAULT_ADMIN_USERNAME = "admin"
 DEFAULT_ADMIN_DISPLAY_NAME = "PromptGuard Admin"
 BUILT_IN_DETECTOR_RULES = [
     {

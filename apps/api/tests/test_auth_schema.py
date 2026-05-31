@@ -2,6 +2,7 @@ from datetime import timedelta
 
 from sqlalchemy import inspect
 
+from app.core.config import Settings
 from app.core.tokens import utc_now
 from app.models.auth import DashboardSession, RefreshToken, User
 
@@ -39,6 +40,12 @@ def test_refresh_token_schema_stores_hash_and_idle_metadata_only() -> None:
     }.isdisjoint(set(columns.keys()))
 
 
+def test_refresh_idle_timeout_uses_documented_env_name() -> None:
+    settings = Settings(REFRESH_IDLE_TIMEOUT_DAYS=9)
+
+    assert settings.refresh_idle_timeout_days == 9
+
+
 def test_dashboard_session_schema_is_hash_only_and_login_id_based() -> None:
     columns = DashboardSession.__table__.c
     assert columns.user_id.nullable is True
@@ -64,14 +71,14 @@ def test_dashboard_session_schema_is_hash_only_and_login_id_based() -> None:
 
 def test_dashboard_session_can_be_created_without_user_id() -> None:
     session = DashboardSession(
-        login_id="ADMIN",
+        login_id="admin",
         user_id=None,
         session_hash="a" * 64,
         expires_at=utc_now() + timedelta(hours=1),
     )
 
     assert session.user_id is None
-    assert session.login_id == "ADMIN"
+    assert session.login_id == "admin"
     assert session.session_hash == "a" * 64
 
 
