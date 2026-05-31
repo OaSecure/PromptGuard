@@ -18,7 +18,6 @@ StatusValue = Literal["healthy", "degraded", "unhealthy", "unknown"]
 
 
 class DashboardStatusResponse(BaseModel):
-    status: StatusValue
     last_checked: str
     api_status: StatusValue
     postgres_status: StatusValue
@@ -69,7 +68,6 @@ def sanitize_dashboard_status(health: dict[str, object], filter_status: StatusVa
     postgres = dependency_status(health, "postgres")
     migrations = dependency_status(health, "migrations")
     return DashboardStatusResponse(
-        status=overall,
         last_checked=safe_last_checked(health.get("checked_at")),
         api_status=overall,
         postgres_status=postgres,
@@ -80,6 +78,7 @@ def sanitize_dashboard_status(health: dict[str, object], filter_status: StatusVa
 
 def should_return_unavailable(payload: DashboardStatusResponse) -> bool:
     return "unhealthy" in {
+        payload.api_status,
         payload.postgres_status,
         payload.migration_status,
         payload.filter_rules_status,

@@ -3,7 +3,6 @@ import "./styles/main.css";
 type StatusValue = "healthy" | "degraded" | "unhealthy" | "unknown";
 
 type DashboardStatus = {
-  status: StatusValue;
   last_checked: string;
   api_status: StatusValue;
   postgres_status: StatusValue;
@@ -83,6 +82,19 @@ function card(label: string, status: StatusValue): HTMLElement {
   return element;
 }
 
+function overallStatus(payload: DashboardStatus): StatusValue {
+  const statuses = [
+    payload.api_status,
+    payload.postgres_status,
+    payload.migration_status,
+    payload.filter_rules_status
+  ];
+  if (statuses.includes("unhealthy")) return "unhealthy";
+  if (statuses.includes("degraded")) return "degraded";
+  if (statuses.every((status) => status === "healthy")) return "healthy";
+  return "unknown";
+}
+
 function renderLoading(): void {
   const main = document.createElement("main");
   main.className = "dashboard status-dashboard";
@@ -114,10 +126,11 @@ function renderStatus(payload: DashboardStatus): void {
   const summary = document.createElement("section");
   summary.className = "status-summary-card";
   const copy = document.createElement("div");
+  const summaryStatus = overallStatus(payload);
   appendText(copy, "p", "Server Status").className = "eyebrow";
-  appendText(copy, "h2", statusLabel(payload.status));
+  appendText(copy, "h2", statusLabel(summaryStatus));
   appendText(copy, "p", "Dashboard-safe status summary. Detailed configuration values are not displayed.").className = "status-summary-copy";
-  summary.append(copy, badge(payload.status));
+  summary.append(copy, badge(summaryStatus));
 
   const meta = document.createElement("section");
   meta.className = "status-meta-grid";

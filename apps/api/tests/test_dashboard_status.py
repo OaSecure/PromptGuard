@@ -118,7 +118,6 @@ def test_dashboard_status_with_admin_returns_sanitized_allowlist(monkeypatch) ->
     body = response.json()
     assert response.status_code == 200
     assert set(body) == {
-        "status",
         "last_checked",
         "api_status",
         "postgres_status",
@@ -180,7 +179,7 @@ def test_dashboard_status_returns_503_when_required_dependency_unhealthy(monkeyp
     )
 
     assert response.status_code == 503
-    assert response.json()["status"] == "unhealthy"
+    assert response.json()["api_status"] == "unhealthy"
 
 
 def test_dashboard_status_generates_last_checked_when_health_timestamp_is_invalid(monkeypatch) -> None:
@@ -202,7 +201,6 @@ def test_dashboard_status_values_are_limited_to_dashboard_status_set(monkeypatch
     body = response.json()
     allowed = {"healthy", "degraded", "unhealthy", "unknown"}
 
-    assert body["status"] in allowed
     assert body["api_status"] in allowed
     assert body["postgres_status"] in allowed
     assert body["migration_status"] in allowed
