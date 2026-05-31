@@ -32,7 +32,14 @@ def _bearer_header(user_id):
     return {"Authorization": f"Bearer {token}"}
 
 
-def _client(monkeypatch, *, user=None, fail_filter_rules: bool = False, health_status: str = "healthy") -> TestClient:
+def _client(
+    monkeypatch,
+    *,
+    user=None,
+    fail_filter_rules: bool = False,
+    health_status: str = "healthy",
+    checked_at: str | None = "2026-05-31T00:00:00Z",
+) -> TestClient:
     app = FastAPI()
     app.include_router(dashboard_status.router)
 
@@ -46,7 +53,7 @@ def _client(monkeypatch, *, user=None, fail_filter_rules: bool = False, health_s
             "service": "promptguard-api",
             "version": "0.1.0",
             "environment": "development",
-            "checked_at": "2026-05-31T00:00:00Z",
+            "checked_at": checked_at,
             "dependencies": [
                 {
                     "name": "postgres",
@@ -110,13 +117,24 @@ def test_dashboard_status_with_admin_returns_sanitized_allowlist(monkeypatch) ->
 
     body = response.json()
     assert response.status_code == 200
-    assert set(body) == {"status", "last_checked", "api", "postgres", "migrations", "filter_rules"}
+    assert set(body) == {
+        "status",
+        "last_checked",
+        "api_status",
+        "postgres_status",
+        "migration_status",
+        "filter_rules_status",
+    }
     assert body["last_checked"] == "2026-05-31T00:00:00Z"
-    assert body["api"] == {"status": "healthy"}
-    assert body["postgres"] == {"status": "healthy"}
-    assert body["migrations"] == {"status": "healthy"}
-    assert body["filter_rules"] == {"status": "healthy"}
-    assert all(set(body[key]) == {"status"} for key in ["api", "postgres", "migrations", "filter_rules"])
+    assert body["api_status"] == "healthy"
+    assert body["postgres_status"] == "healthy"
+    assert body["migration_status"] == "healthy"
+    assert body["filter_rules_status"] == "healthy"
+    assert "api" not in body
+    assert "postgres" not in body
+    assert "migrations" not in body
+    assert "filter_rules" not in body
+    assert "dependencies" not in body
 
 
 def test_dashboard_status_does_not_leak_raw_details(monkeypatch) -> None:
@@ -127,13 +145,14 @@ def test_dashboard_status_does_not_leak_raw_details(monkeypatch) -> None:
     )
     encoded = json.dumps(response.json(), ensure_ascii=False).casefold()
 
-    assert response.status_code == 200
-    assert response.json()["filter_rules"] == {"status": "unknown"}
+    assert response.status_code == 503
+    assert response.json()["filter_rules_status"] == "unhealthy"
     forbidden = [
         "postgres://",
         "password",
         "secret",
         "token",
+        "stack",
         "traceback",
         "runtimeerror",
         "environment",
@@ -142,6 +161,12 @@ def test_dashboard_status_does_not_leak_raw_details(monkeypatch) -> None:
         "config_json",
         "editable_fields",
         "env detail",
+        "message",
+        "code",
+        "request_id",
+        "service",
+        "version",
+        "redis",
     ]
     for value in forbidden:
         assert value not in encoded
@@ -156,3 +181,29 @@ def test_dashboard_status_returns_503_when_required_dependency_unhealthy(monkeyp
 
     assert response.status_code == 503
     assert response.json()["status"] == "unhealthy"
+
+
+def test_dashboard_status_generates_last_checked_when_health_timestamp_is_invalid(monkeypatch) -> None:
+    user = _user()
+    response = _client(monkeypatch, user=user, checked_at="not-a-date").get(
+        "/dashboard/status",
+        headers=_bearer_header(user.id),
+    )
+    body = response.json()
+
+    assert response.status_code == 200
+    assert body["last_checked"] != ""
+    assert body["last_checked"] != "not-a-date"
+
+
+def test_dashboard_status_values_are_limited_to_dashboard_status_set(monkeypatch) -> None:
+    user = _user()
+    response = _client(monkeypatch, user=user).get("/dashboard/status", headers=_bearer_header(user.id))
+    body = response.json()
+    allowed = {"healthy", "degraded", "unhealthy", "unknown"}
+
+    assert body["status"] in allowed
+    assert body["api_status"] in allowed
+    assert body["postgres_status"] in allowed
+    assert body["migration_status"] in allowed
+    assert body["filter_rules_status"] in allowed

@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Response, status
@@ -13,24 +14,20 @@ from app.routes.health import build_health
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
-StatusValue = Literal["healthy", "degraded", "unhealthy", "disabled", "unknown"]
-
-
-class DashboardDependencyStatus(BaseModel):
-    status: StatusValue
+StatusValue = Literal["healthy", "degraded", "unhealthy", "unknown"]
 
 
 class DashboardStatusResponse(BaseModel):
     status: StatusValue
     last_checked: str
-    api: DashboardDependencyStatus
-    postgres: DashboardDependencyStatus
-    migrations: DashboardDependencyStatus
-    filter_rules: DashboardDependencyStatus
+    api_status: StatusValue
+    postgres_status: StatusValue
+    migration_status: StatusValue
+    filter_rules_status: StatusValue
 
 
 def sanitize_status(value: object) -> StatusValue:
-    if value in {"healthy", "degraded", "unhealthy", "disabled"}:
+    if value in {"healthy", "degraded", "unhealthy"}:
         return value  # type: ignore[return-value]
     return "unknown"
 
@@ -51,20 +48,42 @@ async def filter_rules_status(session: AsyncSession) -> StatusValue:
         await session.execute(select(FilterRule.id).limit(1))
         return "healthy"
     except Exception:
+        return "unhealthy"
+
+
+def safe_last_checked(value: object) -> str:
+    if isinstance(value, str):
+        try:
+            datetime.fromisoformat(value.replace("Z", "+00:00"))
+            return value
+        except ValueError:
+            pass
+    try:
+        return datetime.now(UTC).isoformat()
+    except Exception:
         return "unknown"
 
 
 def sanitize_dashboard_status(health: dict[str, object], filter_status: StatusValue) -> DashboardStatusResponse:
     overall = sanitize_status(health.get("status"))
-    checked_at = health.get("checked_at")
+    postgres = dependency_status(health, "postgres")
+    migrations = dependency_status(health, "migrations")
     return DashboardStatusResponse(
         status=overall,
-        last_checked=checked_at if isinstance(checked_at, str) else "",
-        api=DashboardDependencyStatus(status=overall),
-        postgres=DashboardDependencyStatus(status=dependency_status(health, "postgres")),
-        migrations=DashboardDependencyStatus(status=dependency_status(health, "migrations")),
-        filter_rules=DashboardDependencyStatus(status=filter_status),
+        last_checked=safe_last_checked(health.get("checked_at")),
+        api_status=overall,
+        postgres_status=postgres,
+        migration_status=migrations,
+        filter_rules_status=filter_status,
     )
+
+
+def should_return_unavailable(payload: DashboardStatusResponse) -> bool:
+    return "unhealthy" in {
+        payload.postgres_status,
+        payload.migration_status,
+        payload.filter_rules_status,
+    }
 
 
 @router.get("/status", response_model=DashboardStatusResponse)
@@ -74,6 +93,7 @@ async def dashboard_status(
     session: AsyncSession = Depends(get_db_session),
 ) -> DashboardStatusResponse:
     health = await build_health(include_optional=False)
-    if health["status"] == "unhealthy":
+    payload = sanitize_dashboard_status(health, await filter_rules_status(session))
+    if should_return_unavailable(payload):
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
-    return sanitize_dashboard_status(health, await filter_rules_status(session))
+    return payload

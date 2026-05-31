@@ -1,18 +1,14 @@
 import "./styles/main.css";
 
-type StatusValue = "healthy" | "degraded" | "unhealthy" | "disabled" | "unknown";
-
-type DependencyStatus = {
-  status: StatusValue;
-};
+type StatusValue = "healthy" | "degraded" | "unhealthy" | "unknown";
 
 type DashboardStatus = {
   status: StatusValue;
   last_checked: string;
-  api: DependencyStatus;
-  postgres: DependencyStatus;
-  migrations: DependencyStatus;
-  filter_rules: DependencyStatus;
+  api_status: StatusValue;
+  postgres_status: StatusValue;
+  migration_status: StatusValue;
+  filter_rules_status: StatusValue;
 };
 
 const app = document.querySelector<HTMLDivElement>("#status-app");
@@ -35,7 +31,6 @@ function statusLabel(value: StatusValue): string {
   if (value === "healthy") return "Healthy";
   if (value === "degraded") return "Degraded";
   if (value === "unhealthy") return "Unhealthy";
-  if (value === "disabled") return "Disabled";
   return "Unknown";
 }
 
@@ -135,10 +130,10 @@ function renderStatus(payload: DashboardStatus): void {
   const dependencies = document.createElement("section");
   dependencies.className = "dependency-grid";
   dependencies.append(
-    card("API", payload.api.status),
-    card("PostgreSQL", payload.postgres.status),
-    card("Migration", payload.migrations.status),
-    card("Filter Rules", payload.filter_rules.status)
+    card("API", payload.api_status),
+    card("PostgreSQL", payload.postgres_status),
+    card("Migration", payload.migration_status),
+    card("Filter Rules", payload.filter_rules_status)
   );
 
   main.append(summary, meta, dependencies);
