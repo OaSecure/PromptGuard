@@ -64,7 +64,7 @@ async def bootstrap_admin(
             )
 
         user = User(
-            login_id="ADMIN",
+            login_id="admin",
             login_id_normalized="admin",
             username="admin",
             email=None,

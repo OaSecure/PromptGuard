@@ -31,9 +31,9 @@ def upgrade() -> None:
         """
         update users
         set
-          login_id = 'ADMIN',
+          login_id = 'admin',
           login_id_normalized = 'admin',
-          username = 'ADMIN',
+          username = 'admin',
           status = 'ACTIVE'
         where role = 'ADMIN'
           and login_id_normalized = 'admin'

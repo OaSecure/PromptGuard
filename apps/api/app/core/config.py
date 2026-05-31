@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     initial_admin_password: str = Field(default="Admin1234!ChangeMe", alias="PROMPTGUARD_INITIAL_ADMIN_PASSWORD")
     access_token_expires_minutes: int = Field(default=15, alias="ACCESS_TOKEN_EXPIRES_MINUTES")
     refresh_token_expires_days: int = Field(default=30, alias="REFRESH_TOKEN_EXPIRES_DAYS")
-    refresh_token_idle_expires_days: int = Field(default=14, alias="REFRESH_TOKEN_IDLE_EXPIRES_DAYS")
+    refresh_idle_timeout_days: int = Field(default=14, alias="REFRESH_IDLE_TIMEOUT_DAYS")
     auth_rate_limit_requests: int = Field(default=10, alias="AUTH_RATE_LIMIT_REQUESTS")
     auth_rate_limit_window_seconds: int = Field(default=60, alias="AUTH_RATE_LIMIT_WINDOW_SECONDS")
 
