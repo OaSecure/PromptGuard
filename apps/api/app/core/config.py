@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     refresh_token_secret: str = Field(default="change-me-refresh-token-secret", alias="REFRESH_TOKEN_SECRET")
     prompt_hash_secret: str = Field(default="change-me-prompt-hash-secret", alias="PROMPT_HASH_SECRET")
     prompt_hash_key_id: str = Field(default="dev-key-1", alias="PROMPT_HASH_KEY_ID")
+    initial_admin_password: str = Field(default="Admin1234!ChangeMe", alias="PROMPTGUARD_INITIAL_ADMIN_PASSWORD")
     access_token_expires_minutes: int = Field(default=15, alias="ACCESS_TOKEN_EXPIRES_MINUTES")
     refresh_token_expires_days: int = Field(default=30, alias="REFRESH_TOKEN_EXPIRES_DAYS")
     refresh_token_idle_expires_days: int = Field(default=14, alias="REFRESH_TOKEN_IDLE_EXPIRES_DAYS")

@@ -251,3 +251,46 @@ jobs:
               docker compose -f "$file" config
             fi
           done
+
+      - name: Run API migration startup smoke
+        if: steps.compose.outputs.exists == 'true'
+        env:
+          PROMPTGUARD_INITIAL_ADMIN_PASSWORD: ci-initial-admin-password
+          ACCESS_TOKEN_SECRET: ci-access-token-secret
+          REFRESH_TOKEN_SECRET: ci-refresh-token-secret
+        run: |
+          set -euo pipefail
+          docker compose -f compose.yml down -v --remove-orphans
+          docker compose -f compose.yml up --build -d api
+
+          for attempt in {1..60}; do
+            if curl -fsS http://localhost:8000/healthz >/dev/null; then
+              break
+            fi
+            if [ "${attempt}" -eq 60 ]; then
+              docker compose -f compose.yml logs api
+              exit 1
+            fi
+            sleep 2
+          done
+
+          docker compose -f compose.yml exec -T api alembic current
+          docker compose -f compose.yml exec -T api pytest tests/test_migration_runner.py -q
+          docker compose -f compose.yml restart api
+
+          for attempt in {1..60}; do
+            if curl -fsS http://localhost:8000/healthz >/dev/null; then
+              break
+            fi
+            if [ "${attempt}" -eq 60 ]; then
+              docker compose -f compose.yml logs api
+              exit 1
+            fi
+            sleep 2
+          done
+
+          docker compose -f compose.yml exec -T api pytest tests/test_migration_runner.py -q
+
+      - name: Stop Docker Compose services
+        if: always() && steps.compose.outputs.exists == 'true'
+        run: docker compose -f compose.yml down -v --remove-orphans
