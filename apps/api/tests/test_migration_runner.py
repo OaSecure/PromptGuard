@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from app.core.config import Settings
 import app.models  # noqa: F401
 from app.db import seed
 from app.db.base import Base
@@ -32,6 +33,10 @@ class _FakeSession:
         self.flush_count += 1
 
 
+def test_seed_default_admin_password_matches_documented_development_default() -> None:
+    assert Settings().initial_admin_password == "1234"
+
+
 @pytest.mark.anyio
 async def test_seed_creates_default_admin_without_plaintext_password(monkeypatch) -> None:
     initial_password = "SeedPassword123!DoNotStore"
@@ -45,9 +50,9 @@ async def test_seed_creates_default_admin_without_plaintext_password(monkeypatch
     assert len(session.added) == 1
 
     admin = session.added[0]
-    assert admin.login_id == "ADMIN"
+    assert admin.login_id == "admin"
     assert admin.login_id_normalized == "admin"
-    assert admin.username == "ADMIN"
+    assert admin.username == "admin"
     assert admin.role == "ADMIN"
     assert admin.status == "ACTIVE"
     assert admin.email is None
@@ -61,9 +66,9 @@ async def test_seed_creates_default_admin_without_plaintext_password(monkeypatch
 @pytest.mark.anyio
 async def test_seed_is_idempotent_and_does_not_reset_existing_admin_password(monkeypatch) -> None:
     existing = SimpleNamespace(
-        login_id="ADMIN",
+        login_id="admin",
         login_id_normalized="admin",
-        username="ADMIN",
+        username="admin",
         role="ADMIN",
         status="ACTIVE",
         password_hash="existing-hash",
