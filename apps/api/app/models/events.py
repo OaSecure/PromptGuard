@@ -64,7 +64,7 @@ class EventInput(Base):
     content_scanned: Mapped[bool] = mapped_column(Boolean, nullable=False)
     decision_basis: Mapped[str] = mapped_column(String(40), nullable=False)
     content_unavailable_reason: Mapped[str | None] = mapped_column(String(120), nullable=True)
-    limit_exceeded: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    limit_exceeded: Mapped[str | None] = mapped_column(String(80), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     event: Mapped[AnalysisEvent] = relationship(back_populates="inputs")
@@ -75,6 +75,15 @@ class EventInput(Base):
         CheckConstraint(
             "decision_basis in ('detection', 'no_detection', 'metadata_only', 'content_unavailable')",
             name="ck_event_inputs_decision_basis",
+        ),
+        CheckConstraint(
+            "limit_exceeded is null or limit_exceeded in ("
+            "'MAX_ANALYZE_REQUEST_BYTES', "
+            "'MAX_COMPOSER_TEXT_BYTES', "
+            "'MAX_FILE_TEXT_SCAN_BYTES', "
+            "'MAX_CONVERTED_PASTE_TEXT_BYTES'"
+            ")",
+            name="ck_event_inputs_limit_exceeded",
         ),
         Index("ix_event_inputs_event_id", "event_id"),
         Index("ix_event_inputs_event_input", "event_id", "input_id"),

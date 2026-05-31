@@ -150,7 +150,7 @@ def _input(event: AnalysisEvent, *, decision_basis: str = "detection") -> EventI
         content_scanned=True,
         decision_basis=decision_basis,
         content_unavailable_reason=None,
-        limit_exceeded=False,
+        limit_exceeded=None,
         created_at=event.created_at,
     )
 
@@ -218,6 +218,8 @@ def test_event_metadata_models_keep_safe_schema_contract() -> None:
         "raw_match",
         "context_excerpt",
     }.isdisjoint(input_columns)
+    assert EventInput.__table__.c.limit_exceeded.nullable is True
+    assert str(EventInput.__table__.c.limit_exceeded.type) == "VARCHAR(80)"
 
 
 def test_list_events_returns_metadata_only_latest_first() -> None:
@@ -310,7 +312,7 @@ def test_get_event_reports_content_unavailable_inputs_as_metadata_only() -> None
     unavailable.content_included = False
     unavailable.content_scanned = False
     unavailable.content_unavailable_reason = "size_limit"
-    unavailable.limit_exceeded = True
+    unavailable.limit_exceeded = "MAX_ANALYZE_REQUEST_BYTES"
     fake_session = _FakeSession(rows=[(event, event_user)], inputs=[unavailable])
 
     response = _client(fake_session).get(f"/dashboard/events/{event.id}")
@@ -329,7 +331,7 @@ def test_get_event_reports_content_unavailable_inputs_as_metadata_only() -> None
             "content_scanned": False,
             "decision_basis": "content_unavailable",
             "content_unavailable_reason": "size_limit",
-            "limit_exceeded": True,
+            "limit_exceeded": "MAX_ANALYZE_REQUEST_BYTES",
         }
     ]
     assert "raw_prompt" not in encoded

@@ -147,7 +147,7 @@ def event_input_row(event_id: uuid.UUID, prompt: str, matches: list[RuleMatch]) 
         content_scanned=True,
         decision_basis="detection" if matches else "no_detection",
         content_unavailable_reason=None,
-        limit_exceeded=False,
+        limit_exceeded=None,
     )
 
 

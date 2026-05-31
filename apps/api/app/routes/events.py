@@ -87,7 +87,7 @@ class EventInputResponse(BaseModel):
     content_scanned: bool
     decision_basis: str
     content_unavailable_reason: str | None
-    limit_exceeded: bool
+    limit_exceeded: str | None
 
 
 def apply_event_filters(

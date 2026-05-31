@@ -41,13 +41,22 @@ def upgrade() -> None:
         sa.Column("content_scanned", sa.Boolean(), nullable=False),
         sa.Column("decision_basis", sa.String(length=40), nullable=False),
         sa.Column("content_unavailable_reason", sa.String(length=120), nullable=True),
-        sa.Column("limit_exceeded", sa.Boolean(), nullable=False),
+        sa.Column("limit_exceeded", sa.String(length=80), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.CheckConstraint("input_index >= 0", name="ck_event_inputs_input_index_non_negative"),
         sa.CheckConstraint("size_bytes >= 0", name="ck_event_inputs_size_bytes_non_negative"),
         sa.CheckConstraint(
             "decision_basis in ('detection', 'no_detection', 'metadata_only', 'content_unavailable')",
             name="ck_event_inputs_decision_basis",
+        ),
+        sa.CheckConstraint(
+            "limit_exceeded is null or limit_exceeded in ("
+            "'MAX_ANALYZE_REQUEST_BYTES', "
+            "'MAX_COMPOSER_TEXT_BYTES', "
+            "'MAX_FILE_TEXT_SCAN_BYTES', "
+            "'MAX_CONVERTED_PASTE_TEXT_BYTES'"
+            ")",
+            name="ck_event_inputs_limit_exceeded",
         ),
         sa.ForeignKeyConstraint(["event_id"], ["analysis_events.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
