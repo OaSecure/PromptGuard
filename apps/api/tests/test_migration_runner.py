@@ -33,7 +33,9 @@ class _FakeSession:
         self.flush_count += 1
 
 
-def test_seed_default_admin_password_matches_documented_development_default() -> None:
+def test_seed_default_admin_password_matches_documented_development_default(monkeypatch) -> None:
+    monkeypatch.delenv("PROMPTGUARD_INITIAL_ADMIN_PASSWORD", raising=False)
+
     assert Settings().initial_admin_password == "1234"
 
 
