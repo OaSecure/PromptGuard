@@ -66,6 +66,7 @@ type FilterRule = {
   enabled: boolean;
   version: number;
   editableFields: string[];
+  configJson?: Record<string, unknown> | null;
 };
 
 const app = document.querySelector<HTMLDivElement>("#app");
@@ -77,6 +78,8 @@ if (!app) {
 const appRoot = app;
 let authenticated = false;
 let currentFilterPage = 1;
+let filterRulesLoadedFromApi = false;
+let filterRuleSource: "api" | "fallback" = "fallback";
 const filterRowsPerPage = 5;
 const apiBaseUrl = (import.meta.env.VITE_PROMPTGUARD_API_BASE_URL ?? "http://localhost:8000").replace(/\/$/, "");
 const dashboardTokenKey = "promptguard_access_token";
@@ -169,7 +172,7 @@ const events: RiskEvent[] = [
   }
 ];
 
-const filterRules: FilterRule[] = [
+let filterRules: FilterRule[] = [
   {
     id: "rule-email",
     source: "built_in",
@@ -375,6 +378,152 @@ async function fetchServerStatus(): Promise<{ payload: ServerStatus; source: "ap
     return { payload, source: "api" };
   } catch {
     return { payload: fallbackServerStatus(), source: "fallback" };
+  }
+}
+
+function toTitleAction(action: string): RuleAction {
+  if (action === "ALLOW" || action === "Allow") return "Allow";
+  if (action === "WARN" || action === "Warn") return "Warn";
+  if (action === "BLOCK" || action === "Block") return "Block";
+  return "Mask";
+}
+
+function editableFieldNames(value: unknown): string[] {
+  if (Array.isArray(value)) return value.filter((item): item is string => typeof item === "string");
+  if (value && typeof value === "object") {
+    return Object.entries(value as Record<string, unknown>)
+      .filter(([, enabled]) => Boolean(enabled))
+      .map(([field]) => field);
+  }
+  return [];
+}
+
+async function fetchFilterRules(): Promise<{ source: "api" | "fallback"; rules: FilterRule[] }> {
+  const token = window.localStorage.getItem(dashboardTokenKey);
+  if (!token) {
+    return { source: "fallback", rules: filterRules };
+  }
+
+  try {
+    const response = await fetch(`${apiBaseUrl}/filters`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!response.ok) {
+      return { source: "fallback", rules: filterRules };
+    }
+    const payload = (await response.json()) as Array<Record<string, unknown>>;
+    return {
+      source: "api",
+      rules: payload.map((rule) => ({
+        id: String(rule.id),
+        source: rule.source === "custom" ? "custom" : "built_in",
+        kind: String(rule.kind) as RuleKind,
+        category: String(rule.category ?? ""),
+        label: String(rule.label ?? ""),
+        description: String(rule.description ?? ""),
+        detectorKey: typeof rule.detector_key === "string" ? rule.detector_key : undefined,
+        keyword: typeof rule.keyword === "string" ? rule.keyword : undefined,
+        pattern: typeof rule.pattern === "string" ? rule.pattern : undefined,
+        placeholder: typeof rule.placeholder === "string" ? rule.placeholder : undefined,
+        severity: String(rule.severity ?? "medium") as RuleSeverity,
+        action: toTitleAction(String(rule.action ?? "MASK")),
+        enabled: Boolean(rule.enabled),
+        version: Number(rule.version ?? 1),
+        editableFields: editableFieldNames(rule.editable_fields),
+        configJson: (rule.config_json as Record<string, unknown> | null | undefined) ?? null
+      }))
+    };
+  } catch {
+    return { source: "fallback", rules: filterRules };
+  }
+}
+
+async function postFilterDryRun(sampleText: string): Promise<Record<string, unknown> | null> {
+  const token = window.localStorage.getItem(dashboardTokenKey);
+  if (!token) return null;
+  try {
+    const response = await fetch(`${apiBaseUrl}/filters/dry-run`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ sample_text: sampleText })
+    });
+    if (!response.ok) return null;
+    return (await response.json()) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+async function patchFilterEnabled(rule: FilterRule, enabled: boolean): Promise<boolean> {
+  const token = window.localStorage.getItem(dashboardTokenKey);
+  if (!token) return false;
+  try {
+    const response = await fetch(`${apiBaseUrl}/filters/${rule.id}/${enabled ? "enable" : "disable"}`, {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+function toApiAction(action: string): string {
+  if (action === "Allow") return "ALLOW";
+  if (action === "Warn") return "WARN";
+  if (action === "Block") return "BLOCK";
+  return "MASK";
+}
+
+function parseKeywordGroups(value: string): Record<string, string[]> {
+  const groups: Record<string, string[]> = {};
+  for (const part of value.split("|")) {
+    const [name, terms] = part.split(":");
+    if (!name || !terms) continue;
+    groups[name.trim()] = terms.split(",").map((term) => term.trim()).filter(Boolean);
+  }
+  return groups;
+}
+
+async function createFilterRule(form: HTMLFormElement): Promise<boolean> {
+  const token = window.localStorage.getItem(dashboardTokenKey);
+  if (!token) return false;
+  const data = new FormData(form);
+  const kind = String(data.get("kind") ?? "keyword");
+  const payload: Record<string, unknown> = {
+    kind,
+    category: String(data.get("category") ?? "Custom"),
+    label: String(data.get("label") ?? "Custom Rule"),
+    description: String(data.get("description") ?? ""),
+    keyword: String(data.get("keyword") ?? "") || undefined,
+    pattern: String(data.get("pattern") ?? "") || undefined,
+    placeholder: String(data.get("placeholder") ?? "") || undefined,
+    severity: String(data.get("severity") ?? "medium"),
+    action: toApiAction(String(data.get("action") ?? "Mask")),
+    enabled: data.get("enabled") === "enabled"
+  };
+  if (kind === "context_rule") {
+    payload.config_json = {
+      keyword_groups: parseKeywordGroups(String(data.get("keyword_groups") ?? "")),
+      min_condition_count: Number(data.get("min_condition_count") ?? 1),
+      sensitivity: String(data.get("sensitivity") ?? "medium")
+    };
+  }
+  try {
+    const response = await fetch(`${apiBaseUrl}/filters`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    });
+    return response.ok;
+  } catch {
+    return false;
   }
 }
 
@@ -807,6 +956,7 @@ function renderUsers(): void {
 function createField(labelText: string, control: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement): HTMLLabelElement {
   const label = document.createElement("label");
   label.textContent = labelText;
+  control.name = labelText.replaceAll(" ", "_");
   label.append(control);
   return label;
 }
@@ -918,8 +1068,17 @@ function renderFilterForm(): HTMLElement {
   reset.type = "button";
   reset.className = "nav-button";
   const save = appendText(actions, "button", "규칙 저장") as HTMLButtonElement;
-  save.type = "button";
+  save.type = "submit";
   save.className = "logout-button";
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const created = await createFilterRule(form);
+    if (created) {
+      filterRulesLoadedFromApi = false;
+      form.reset();
+      renderFilters();
+    }
+  });
 
   form.append(tabs, row1, row2, description, row3, row4, row5, contextBox, privacyNotice, actions);
   card.append(header, form);
@@ -946,20 +1105,29 @@ function renderDryRun(): HTMLElement {
   appendText(result, "h3", "dry-run 결과");
   appendText(result, "p", "아직 실행된 dry-run 결과가 없습니다.").className = "empty-state";
 
-  run.addEventListener("click", () => {
+  run.addEventListener("click", async () => {
     const text = sample.value;
-    const matched = ["계약", "NDA", "위약금", "할인율", "token", "API Key"].filter((keyword) => text.includes(keyword));
+    const apiResult = await postFilterDryRun(text);
     result.replaceChildren();
     appendText(result, "h3", "dry-run 결과");
-    const rows: Array<[string, string, string?]> = [
-      ["matched", matched.length > 0 ? "true" : "false", matched.length > 0 ? "danger-text" : "safe-text"],
-      ["expected_action", matched.length > 0 ? "Warn" : "Allow"],
-      ["risk_level", matched.length > 0 ? "high" : "low"],
-      ["kind", "context_rule"],
-      ["match_count", String(matched.length)],
-      ["reason_code", matched.length > 0 ? "BUSINESS_CONTEXT_KEYWORDS" : "NO_MATCH"],
-      ["sample_persisted", "false", "safe-text"]
-    ];
+    const detections = Array.isArray(apiResult?.detections) ? apiResult.detections : [];
+    const rows: Array<[string, string, string?]> = apiResult
+      ? [
+          ["matched", String(Boolean(apiResult.matched)), Boolean(apiResult.matched) ? "danger-text" : "safe-text"],
+          ["expected_action", String(apiResult.expected_action ?? "ALLOW")],
+          ["risk_level", String(apiResult.risk_level ?? "low")],
+          ["risk_score", String(apiResult.risk_score ?? 0)],
+          ["match_count", String(detections.length)],
+          ["filter_version", String(apiResult.filter_rule_set_version ?? "unknown")],
+          ["sample_persisted", "false", "safe-text"]
+        ]
+      : [
+          ["matched", "unknown", "safe-text"],
+          ["expected_action", "API token required"],
+          ["risk_level", "unknown"],
+          ["match_count", "0"],
+          ["sample_persisted", "false", "safe-text"]
+        ];
     for (const [label, value, className] of rows) {
       const row = document.createElement("div");
       row.className = "result-row";
@@ -985,6 +1153,7 @@ function renderRuleRow(rule: FilterRule): HTMLTableRowElement {
   const labelCell = document.createElement("td");
   appendText(labelCell, "strong", rule.label);
   appendText(labelCell, "small", rule.description);
+  appendText(labelCell, "small", `editable: ${rule.editableFields.join(", ") || "none"}`);
   row.append(labelCell);
 
   const severityCell = document.createElement("td");
@@ -1003,6 +1172,13 @@ function renderRuleRow(rule: FilterRule): HTMLTableRowElement {
   const toggle = appendText(actions, "button", rule.enabled ? "비활성화" : "활성화") as HTMLButtonElement;
   toggle.type = "button";
   toggle.className = "text-action";
+  toggle.addEventListener("click", async () => {
+    const updated = await patchFilterEnabled(rule, !rule.enabled);
+    if (updated) {
+      filterRulesLoadedFromApi = false;
+      renderFilters();
+    }
+  });
   row.append(actions);
   return row;
 }
@@ -1089,7 +1265,7 @@ function renderFilters(): void {
   const summary = document.createElement("section");
   summary.className = "filter-summary";
   appendText(summary, "strong", "v0.10 통합 Filter Rule 화면");
-  appendText(summary, "p", "source/kind/category 목록, built-in 수정 제한, custom keyword/regex/context_rule form, 저장 없는 dry-run panel을 포함합니다.");
+  appendText(summary, "p", `source/kind/category 목록, built-in 수정 제한, custom keyword/regex/context_rule form, 저장 없는 dry-run panel을 포함합니다. source=${filterRuleSource}`);
 
   const grid = document.createElement("section");
   grid.className = "filter-grid";
@@ -1098,6 +1274,16 @@ function renderFilters(): void {
   main.append(summary, grid, renderRuleTable());
   fragment.append(main);
   appRoot.replaceChildren(fragment);
+
+  if (!filterRulesLoadedFromApi) {
+    void fetchFilterRules().then(({ source, rules }) => {
+      if (routeFromHash() !== "filters") return;
+      filterRuleSource = source;
+      filterRules = rules;
+      filterRulesLoadedFromApi = true;
+      renderFilters();
+    });
+  }
 }
 
 function renderDependencyCard(label: string, dependency?: DependencyStatus): HTMLElement {

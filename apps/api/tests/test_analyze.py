@@ -8,13 +8,15 @@ from fastapi.testclient import TestClient
 from app.main import app as main_app
 from app.core.tokens import create_access_token
 from app.models.events import AnalysisEvent, EventDetection
+from app.models.filters import FilterRule
 from app.routes import analyze as analyze_route
 from app.routes.auth import get_db_session
 
 
 class _FakeSession:
-    def __init__(self, user):
+    def __init__(self, user, rules=None):
         self.user = user
+        self.rules = rules
         self.added = []
         self.commits = 0
 
@@ -22,6 +24,11 @@ class _FakeSession:
         if self.user is not None and self.user.id == user_id:
             return self.user
         return None
+
+    async def execute(self, _statement):
+        if self.rules is None:
+            raise RuntimeError("filter rules not configured")
+        return _FakeResult(self.rules)
 
     def add(self, item):
         self.added.append(item)
@@ -34,15 +41,45 @@ def _user(status: str = "ACTIVE"):
     return SimpleNamespace(id=uuid4(), role="USER", status=status, last_event_at=None)
 
 
+class _FakeResult:
+    def __init__(self, items):
+        self.items = items
+
+    def scalars(self):
+        return self
+
+    def all(self):
+        return self.items
+
+
 def _bearer_header(user_id):
     token, _ = create_access_token(user_id)
     return {"Authorization": f"Bearer {token}"}
 
 
-def _client(user=None) -> tuple[TestClient, _FakeSession]:
+def _filter_rule(**overrides):
+    values = {
+        "id": uuid4(),
+        "source": "custom",
+        "kind": "keyword",
+        "category": "Custom",
+        "label": "Internal Project",
+        "keyword": "Project Hermes",
+        "placeholder": "INTERNAL_PROJECT",
+        "severity": "high",
+        "action": "MASK",
+        "enabled": True,
+        "editable_fields": {"enabled": True},
+        "version": 1,
+    }
+    values.update(overrides)
+    return FilterRule(**values)
+
+
+def _client(user=None, rules=None) -> tuple[TestClient, _FakeSession]:
     app = FastAPI()
     app.include_router(analyze_route.router)
-    fake_session = _FakeSession(user)
+    fake_session = _FakeSession(user, rules)
 
     async def override_session():
         yield fake_session
@@ -161,6 +198,61 @@ def test_analyze_masks_rrn_and_card_as_high_risk() -> None:
     assert body["masked_prompt"] == "rrn [RRN_1] card [CARD_1]"
     assert {item["type"] for item in body["detections"]} == {"RRN", "CARD"}
     assert {item.type for item in detection_rows} == {"RRN", "CARD"}
+
+
+def test_analyze_respects_disabled_built_in_filter_rule() -> None:
+    user = _user()
+    client, fake_session = _client(
+        user,
+        rules=[
+            _filter_rule(
+                source="built_in",
+                kind="detector",
+                category="PII",
+                detector_key="EMAIL",
+                severity="medium",
+                action="MASK",
+                enabled=False,
+            )
+        ],
+    )
+
+    response = client.post(
+        "/prompts/analyze",
+        headers=_bearer_header(user.id),
+        json={"prompt": "Contact admin@example.com"},
+    )
+
+    body = response.json()
+    detection_rows = [item for item in fake_session.added if isinstance(item, EventDetection)]
+    assert response.status_code == 200
+    assert body["action"] == "ALLOW"
+    assert body["detections"] == []
+    assert detection_rows == []
+
+
+def test_analyze_records_custom_keyword_filter_metadata_without_raw_value() -> None:
+    user = _user()
+    client, fake_session = _client(user, rules=[_filter_rule()])
+
+    response = client.post(
+        "/prompts/analyze",
+        headers=_bearer_header(user.id),
+        json={"prompt": "Project Hermes should stay internal"},
+    )
+
+    body = response.json()
+    encoded = json.dumps(body)
+    detection_rows = [item for item in fake_session.added if isinstance(item, EventDetection)]
+    events = [item for item in fake_session.added if isinstance(item, AnalysisEvent)]
+    assert response.status_code == 200
+    assert body["action"] == "MASK"
+    assert body["risk_level"] == "high"
+    assert body["detections"][0]["type"] == "INTERNAL_PROJECT"
+    assert "Project Hermes" not in encoded
+    assert detection_rows[0].source == "custom_keyword"
+    assert "Project Hermes" not in json.dumps(detection_rows[0].safe_evidence)
+    assert events[0].filter_rule_set_version.startswith("filter-rules:")
 
 
 def test_analyze_validates_request_boundaries() -> None:
