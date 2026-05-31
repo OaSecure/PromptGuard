@@ -56,7 +56,6 @@ class DashboardUserResponse(BaseModel):
     role: str
     status: str
     created_at: datetime | None = None
-    updated_at: datetime | None = None
     last_login_at: datetime | None = None
     last_event_at: datetime | None = None
     event_count: int = 0
@@ -77,7 +76,6 @@ def _safe_user_response(user: User) -> DashboardUserResponse:
         role=user.role,
         status=user.status,
         created_at=getattr(user, "created_at", None),
-        updated_at=getattr(user, "updated_at", None),
         last_login_at=user.last_login_at,
         last_event_at=user.last_event_at,
     )

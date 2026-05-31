@@ -110,6 +110,7 @@ def _assert_safe_user_payload(body):
         "id",
         "user_id",
         "email",
+        "updated_at",
         "password",
         "password_hash",
         "password_hash_algorithm",
