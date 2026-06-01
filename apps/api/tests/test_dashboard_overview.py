@@ -117,16 +117,50 @@ def test_dashboard_overview_returns_empty_summary(monkeypatch) -> None:
     body = response.json()
 
     assert response.status_code == 200
-    assert body["total_events"] == 0
+    expected_fields = {
+        "period_start",
+        "period_end",
+        "event_count",
+        "blocked_count",
+        "masked_count",
+        "warned_count",
+        "allowed_count",
+        "active_user_count",
+        "content_unavailable_event_count",
+        "last_event_at",
+        "action_counts",
+        "risk_level_counts",
+        "detector_category_counts",
+        "period_buckets",
+    }
+    removed_fields = {"total_events", "active_users", "period_event_counts", "recent_events"}
+    assert expected_fields.issubset(body)
+    assert not removed_fields.intersection(body)
+    assert body["period_start"] == "2026-05-01T00:00:00Z"
+    assert body["period_end"].startswith("2026-05-30T23:59:59")
+    assert body["event_count"] == 0
     assert body["blocked_count"] == 0
     assert body["masked_count"] == 0
     assert body["warned_count"] == 0
     assert body["allowed_count"] == 0
-    assert body["active_users"] == 0
-    assert body["action_counts"] == {"ALLOW": 0, "WARN": 0, "MASK": 0, "BLOCK": 0}
-    assert body["risk_level_counts"] == {"low": 0, "medium": 0, "high": 0, "critical": 0}
-    assert len(body["period_event_counts"]) == 30
-    assert body["recent_events"] == []
+    assert body["active_user_count"] == 0
+    assert body["content_unavailable_event_count"] == 0
+    assert body["last_event_at"] is None
+    assert body["action_counts"] == [
+        {"action": "allow", "count": 0},
+        {"action": "warn", "count": 0},
+        {"action": "mask", "count": 0},
+        {"action": "block", "count": 0},
+    ]
+    assert body["risk_level_counts"] == [
+        {"risk_level": "low", "count": 0},
+        {"risk_level": "medium", "count": 0},
+        {"risk_level": "high", "count": 0},
+        {"risk_level": "critical", "count": 0},
+    ]
+    assert body["detector_category_counts"] == []
+    assert len(body["period_buckets"]) == 30
+    assert {"bucket_start", "bucket_end", "event_count"}.issubset(body["period_buckets"][0])
 
 
 def test_dashboard_overview_aggregates_30_day_summary(monkeypatch) -> None:
@@ -169,19 +203,30 @@ def test_dashboard_overview_aggregates_30_day_summary(monkeypatch) -> None:
     body = response.json()
 
     assert response.status_code == 200
-    assert body["total_events"] == 3
+    assert body["event_count"] == 3
     assert body["blocked_count"] == 1
     assert body["masked_count"] == 1
     assert body["warned_count"] == 1
     assert body["allowed_count"] == 0
-    assert body["active_users"] == 2
-    assert body["action_counts"] == {"ALLOW": 0, "WARN": 1, "MASK": 1, "BLOCK": 1}
-    assert body["risk_level_counts"] == {"low": 0, "medium": 1, "high": 1, "critical": 1}
-    assert body["period_event_counts"][-1]["date"] == "2026-05-30"
-    assert body["period_event_counts"][-1]["event_count"] == 2
-    assert body["recent_events"][0]["action"] == "BLOCK"
-    assert body["recent_events"][0]["detection_count"] == 1
-    assert len(body["recent_events"]) == 3
+    assert body["active_user_count"] == 2
+    assert body["content_unavailable_event_count"] == 0
+    assert body["last_event_at"] is not None
+    assert body["action_counts"] == [
+        {"action": "allow", "count": 0},
+        {"action": "warn", "count": 1},
+        {"action": "mask", "count": 1},
+        {"action": "block", "count": 1},
+    ]
+    assert body["risk_level_counts"] == [
+        {"risk_level": "low", "count": 0},
+        {"risk_level": "medium", "count": 1},
+        {"risk_level": "high", "count": 1},
+        {"risk_level": "critical", "count": 1},
+    ]
+    assert body["detector_category_counts"] == [{"category": "PII", "count": 3}]
+    assert body["period_buckets"][-1]["bucket_start"] == "2026-05-30T00:00:00Z"
+    assert body["period_buckets"][-1]["bucket_end"].startswith("2026-05-30T23:59:59")
+    assert body["period_buckets"][-1]["event_count"] == 2
     assert "analysis_events.created_at" in fake_session.statements[0]
 
 
@@ -198,17 +243,25 @@ def test_dashboard_overview_response_excludes_private_values(monkeypatch) -> Non
 
     assert response.status_code == 200
     assert "abcdef1234567890abcdef1234567890" not in encoded
+    assert "raw prompt" not in encoded
+    assert "input text" not in encoded
     assert "raw_prompt" not in encoded
     assert "prompt_text" not in encoded
+    assert "file content" not in encoded
     assert "file_content" not in encoded
     assert "raw_file_text" not in encoded
+    assert "detected raw value" not in encoded
     assert "detected_raw_value" not in encoded
+    assert "full masked_prompt" not in encoded
     assert "masked_prompt" not in encoded
     assert "original_filename" not in encoded
     assert "password" not in encoded
     assert "password_hash" not in encoded
     assert "token" not in encoded
     assert "secret" not in encoded
+    assert "session id" not in encoded
+    assert "DB URL" not in encoded
+    assert "stack trace" not in encoded
 
 
 def test_dashboard_overview_route_is_registered_on_main_app() -> None:

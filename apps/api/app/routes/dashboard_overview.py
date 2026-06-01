@@ -15,37 +15,58 @@ from app.routes.stats import ACTIONS, RISK_LEVELS, date_window, event_date, utc_
 router = APIRouter(prefix="/dashboard", tags=["dashboard-overview"])
 
 
-class OverviewPeriodEventCount(BaseModel):
-    date: str
-    event_count: int
-    action_counts: dict[str, int]
-    risk_level_counts: dict[str, int]
-
-
-class OverviewRecentEventSummary(BaseModel):
-    created_at: datetime
-    service: str | None
+class OverviewActionCount(BaseModel):
     action: str
+    count: int
+
+
+class OverviewRiskLevelCount(BaseModel):
     risk_level: str
-    risk_score: int
-    detection_count: int
+    count: int
+
+
+class OverviewDetectorCategoryCount(BaseModel):
+    category: str
+    count: int
+
+
+class OverviewPeriodBucket(BaseModel):
+    bucket_start: datetime
+    bucket_end: datetime
+    event_count: int
 
 
 class DashboardOverviewResponse(BaseModel):
-    total_events: int
+    period_start: datetime
+    period_end: datetime
+    event_count: int
     blocked_count: int
     masked_count: int
     warned_count: int
     allowed_count: int
-    active_users: int
-    risk_level_counts: dict[str, int]
-    action_counts: dict[str, int]
-    period_event_counts: list[OverviewPeriodEventCount]
-    recent_events: list[OverviewRecentEventSummary]
+    active_user_count: int
+    content_unavailable_event_count: int
+    last_event_at: datetime | None
+    action_counts: list[OverviewActionCount]
+    risk_level_counts: list[OverviewRiskLevelCount]
+    detector_category_counts: list[OverviewDetectorCategoryCount]
+    period_buckets: list[OverviewPeriodBucket]
 
 
-def _counts_for(values: Counter[str], keys: tuple[str, ...]) -> dict[str, int]:
-    return {key: values[key] for key in keys}
+def _action_counts(values: Counter[str]) -> list[OverviewActionCount]:
+    return [OverviewActionCount(action=action.lower(), count=values[action]) for action in ACTIONS]
+
+
+def _risk_level_counts(values: Counter[str]) -> list[OverviewRiskLevelCount]:
+    return [OverviewRiskLevelCount(risk_level=risk_level, count=values[risk_level]) for risk_level in RISK_LEVELS]
+
+
+def _detector_category_counts(values: Counter[str]) -> list[OverviewDetectorCategoryCount]:
+    return [
+        OverviewDetectorCategoryCount(category=category, count=count)
+        for category, count in sorted(values.items())
+        if count > 0
+    ]
 
 
 def dashboard_overview_response(
@@ -54,57 +75,52 @@ def dashboard_overview_response(
     detections: list[EventDetection],
     days: int,
     as_of: date | None = None,
-    recent_limit: int = 5,
 ) -> DashboardOverviewResponse:
     days_in_window = date_window(days, as_of=as_of)
+    period_start = datetime.combine(days_in_window[0], time.min, tzinfo=timezone.utc)
+    period_end = datetime.combine(days_in_window[-1], time.max, tzinfo=timezone.utc)
     allowed_dates = set(days_in_window)
     events_in_window = [event for event in events if event_date(event) in allowed_dates]
+    event_ids = {event.id for event in events_in_window}
 
     actions = Counter(event.action for event in events_in_window)
     risk_levels = Counter(event.risk_level for event in events_in_window)
-    detection_counts = Counter()
+    detector_categories: Counter[str] = Counter()
     for detection in detections:
-        detection_counts[detection.event_id] += detection.count
+        if detection.event_id in event_ids:
+            detector_categories[detection.category] += detection.count
 
     events_by_date: dict[date, list[AnalysisEvent]] = defaultdict(list)
     for event in events_in_window:
         events_by_date[event_date(event)].append(event)
 
-    period_event_counts = []
+    period_buckets = []
     for bucket_date in days_in_window:
         bucket_events = events_by_date.get(bucket_date, [])
-        period_event_counts.append(
-            OverviewPeriodEventCount(
-                date=bucket_date.isoformat(),
+        period_buckets.append(
+            OverviewPeriodBucket(
+                bucket_start=datetime.combine(bucket_date, time.min, tzinfo=timezone.utc),
+                bucket_end=datetime.combine(bucket_date, time.max, tzinfo=timezone.utc),
                 event_count=len(bucket_events),
-                action_counts=_counts_for(Counter(event.action for event in bucket_events), ACTIONS),
-                risk_level_counts=_counts_for(Counter(event.risk_level for event in bucket_events), RISK_LEVELS),
             )
         )
 
-    recent_events = [
-        OverviewRecentEventSummary(
-            created_at=event.created_at,
-            service=event.service,
-            action=event.action,
-            risk_level=event.risk_level,
-            risk_score=event.risk_score,
-            detection_count=detection_counts[event.id],
-        )
-        for event in sorted(events_in_window, key=lambda item: item.created_at, reverse=True)[:recent_limit]
-    ]
-
     return DashboardOverviewResponse(
-        total_events=len(events_in_window),
+        period_start=period_start,
+        period_end=period_end,
+        event_count=len(events_in_window),
         blocked_count=actions["BLOCK"],
         masked_count=actions["MASK"],
         warned_count=actions["WARN"],
         allowed_count=actions["ALLOW"],
-        active_users=len({event.user_id for event in events_in_window}),
-        risk_level_counts=_counts_for(risk_levels, RISK_LEVELS),
-        action_counts=_counts_for(actions, ACTIONS),
-        period_event_counts=period_event_counts,
-        recent_events=recent_events,
+        active_user_count=len({event.user_id for event in events_in_window}),
+        # event_inputs persistence is not available yet, so this remains a 0 fallback.
+        content_unavailable_event_count=0,
+        last_event_at=max((event.created_at for event in events_in_window), default=None),
+        action_counts=_action_counts(actions),
+        risk_level_counts=_risk_level_counts(risk_levels),
+        detector_category_counts=_detector_category_counts(detector_categories),
+        period_buckets=period_buckets,
     )
 
 
