@@ -90,13 +90,17 @@
 - 22장은 MVP 이후 범위를 구현할 때의 검증 기준을 정의한다.
 - 23장은 실제 WBS/MVP 작업표를 정의한다.
 
-### 1.1 1.0.2 update note
+### 1.1 문서 목적
 
-- 이 1.0.2 문서는 `promptguard_dev_docs_1_0_0.md`를 source of truth로 두고, 현재 `main` 구현 상태에 맞춰 23.1 MVP WBS의 현재 상태와 근거/비고를 더 구체화한 문서다.
-- MVP product contract는 변경하지 않는다. 미완성 코드, static/mock page, stub route, schema 일부, fixture, build artifact가 있다는 이유로 요구사항을 낮추지 않는다.
+- 이 문서는 PromptGuard MVP의 product/API/DB/UI/WBS 기준과 현재 구현 상태별 필요한 조치를 정리한 최신 작업 기준 문서다.
+- 미완성 코드, static/mock page, stub route, schema 일부, fixture, build artifact가 있다는 이유로 MVP 요구사항을 낮추지 않는다.
 - Dashboard Session API는 MVP scope에 남아 있다. 현재 bearer 기반 ADMIN 보호가 일부 있더라도, dashboard session cookie + CSRF 계약을 대체하지 않는다.
-- #53 API contract 문서는 source of truth로 사용하지 않는다.
-- 23.1의 `부분`, `교체 필요`, `미구현` 행은 `현재 main에서 된 것`, `아직 MVP 완료가 아닌 이유`, `다음 작업`을 plain language로 설명한다.
+
+### 1.2 판정 기준
+
+- 23.1의 `부분`, `교체 필요`, `미구현` 행은 현재 구현된 것, 아직 MVP 완료가 아닌 이유, 다음 작업을 plain language로 설명한다.
+- static/mock page, placeholder UI, schema 일부, route stub, fixture, build artifact는 단독으로 MVP 완료 근거가 아니다.
+- 현재 구현 상태가 MVP 계약과 다르면 요구사항을 낮추지 않고, 필요한 교체·보강 작업을 WBS에 명확히 남긴다.
 
 ## 2. MVP 확정 결정과 용어
 
@@ -2362,7 +2366,7 @@ Dashboard security headers:
 |  | 김현성 | MVP 수용·검증 | Extension checks | selector, send hook, action UX, auth refresh, API client fixture를 검증한다. | extension checks script, fixture, manual real-service smoke | 부분 | 수정 | `python apps/extension/tests/run_extension_checks.py all` 또는 대응 명령이 통과하고 silent allow가 발생하지 않는다. | extension README에는 typecheck, test, build, prompt/file preflight checks가 정리되어 있고 DOM preflight 구현 설명도 있다. 즉 extension 단독 검증은 일부 있다. 아직 완료가 아닌 이유는 서버 Analyze가 최종 `inputs[]` 계약이 아니어서 extension과 real API 사이의 end-to-end Allow/Warn/Mask/Block smoke가 불가능하거나 불완전하기 때문이다. 다음 작업은 서버 계약 교체 후 real API smoke를 실행하는 것이다. |
 |  | 전체 | MVP 수용·검증 | Basic privacy smoke | 입력 본문, 파일 내용, 전체 `masked_prompt`, 탐지값 원문, 원본 파일명, dry-run sample이 저장·표시되지 않는지 확인한다. | privacy smoke test 또는 checklist | 부분 | 수정 | DB, dashboard API/DOM, error response에서 금지값이 확인되지 않는다. full privacy regression은 MVP 이후 범위다. | 설계와 README에는 raw prompt, file content, detected raw value, original filename, full masked prompt를 저장하지 않는다는 기준이 있다. 하지만 현재 event detail에는 prompt hash 계열 식별자가 남아 있고, DB/API/DOM/error response에 금지값이 남지 않는지 자동 검사하는 smoke가 확인되지 않는다. 다음 작업은 금지값 fixture를 넣고 DB, dashboard API, dashboard DOM, error response를 검사하는 basic privacy smoke를 추가하는 것이다. |
 |  | 전체 | MVP 수용·검증 | 최종 smoke 시나리오 | 15.5의 최종 smoke 시나리오를 실행한다. | final smoke checklist, 결과 기록 | 미구현 | 신규 | fresh install부터 extension analyze, Allow/Warn/Mask/Block, dashboard metadata 확인까지 끊기지 않고 통과한다. | fresh install부터 기본 admin login, dashboard session, 사용자 생성, extension real analyze, Allow/Warn/Mask/Block, event metadata 확인까지 이어지는 MVP 전체 흐름은 아직 연결되지 않았다. 특히 dashboard session, `inputs[]` Analyze, event input metadata, `/dashboard/status`, `/dashboard/overview`가 빠져 있다. 다음 작업은 각 핵심 계약을 구현한 뒤 15.5 최종 smoke 시나리오를 실제 실행하는 것이다. |
-|  | 전체 | MVP 수용·검증 | 문서 정합성 확인 | README/install/admin/privacy/release 문서를 이 문서의 MVP 계약과 맞춘다. | README/install/admin/privacy/release docs | 부분 | 수정 | 주요 문서가 `/dashboard/*`, `inputs[]`, `login_id`, Filter Rule `origin/kind`, MVP 범위 기준과 충돌하지 않는다. | README는 현재 extension MVP 중심으로 작성되어 있고, 개발문서 1.0.0은 전체 MVP 계약을 정의한다. 현재 main 구현과 문서 계약 사이의 차이가 크므로, 1.0.2에서는 계약을 바꾸지 말고 WBS `현재 상태`와 `근거/비고`에 현재 구현 수준과 남은 작업을 분리해서 적어야 한다. 다음 작업은 1.0.2 문서가 current main 상태를 보수적으로 반영하는지 diff review하는 것이다. |
+|  | 전체 | MVP 수용·검증 | 문서 정합성 확인 | README/install/admin/privacy/release 문서를 이 문서의 MVP 계약과 맞춘다. | README/install/admin/privacy/release docs | 부분 | 수정 | 주요 문서가 `/dashboard/*`, `inputs[]`, `login_id`, Filter Rule `origin/kind`, MVP 범위 기준과 충돌하지 않는다. | README는 현재 extension MVP 중심으로 작성되어 있고, 현재 main 구현과 이 문서의 MVP 계약 사이에는 차이가 크다. 계약을 바꾸지 말고 WBS `현재 상태`와 `근거/비고`에 현재 구현 수준과 남은 작업을 분리해서 적어야 한다. 다음 작업은 이 문서가 current main 상태를 보수적으로 반영하는지 diff review하는 것이다. |
 
 
 ### 23.2 Non-MVP WBS + 산출물 + 배분
