@@ -86,7 +86,8 @@ def _user(role: str = "ADMIN", status_value: str = "ACTIVE") -> SimpleNamespace:
 def _client(
     fake_session: _FakeSession,
     *,
-    allow_admin: bool = True,
+    allow_session: bool = True,
+    allow_mutation: bool = True,
     current_admin: SimpleNamespace | None = None,
 ) -> TestClient:
     app = FastAPI()
@@ -95,13 +96,19 @@ def _client(
     async def override_session():
         yield fake_session
 
-    async def override_admin():
-        if not allow_admin:
+    async def override_dashboard_session():
+        if not allow_session:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="admin access required")
         return current_admin or _user(role="ADMIN")
 
+    async def override_dashboard_mutation():
+        if not allow_mutation:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="csrf token required")
+        return current_admin or _user(role="ADMIN")
+
     app.dependency_overrides[admin_users.get_db_session] = override_session
-    app.dependency_overrides[admin_users.require_admin] = override_admin
+    app.dependency_overrides[admin_users.require_dashboard_admin_session] = override_dashboard_session
+    app.dependency_overrides[admin_users.require_dashboard_admin_mutation] = override_dashboard_mutation
     return TestClient(app)
 
 
@@ -128,7 +135,7 @@ def _assert_safe_user_payload(body):
 
 
 def test_create_dashboard_user_is_admin_only() -> None:
-    client = _client(_FakeSession(), allow_admin=False)
+    client = _client(_FakeSession(), allow_mutation=False)
 
     response = client.post(
         "/dashboard/users",
@@ -141,6 +148,21 @@ def test_create_dashboard_user_is_admin_only() -> None:
     )
 
     assert response.status_code == 403
+
+
+def test_dashboard_users_rejects_bearer_only_without_dashboard_session() -> None:
+    app = FastAPI()
+    app.include_router(admin_users.router)
+
+    async def override_session():
+        yield _FakeSession()
+
+    app.dependency_overrides[admin_users.get_db_session] = override_session
+    client = TestClient(app)
+
+    response = client.get("/dashboard/users", headers={"Authorization": "Bearer extension-admin-token"})
+
+    assert response.status_code == 401
 
 
 def test_create_dashboard_user_hashes_password_and_returns_safe_metadata() -> None:
@@ -261,17 +283,31 @@ def test_admin_cannot_demote_or_disable_self() -> None:
     assert fake_session.commits == 0
 
 
-def test_dashboard_users_router_uses_admin_guard() -> None:
-    guarded_paths = {
+def test_dashboard_users_router_uses_dashboard_session_and_csrf_guards() -> None:
+    read_paths = {"/dashboard/users"}
+    mutation_paths = {
         "/dashboard/users",
         "/dashboard/users/{login_id}/role",
         "/dashboard/users/{login_id}/status",
     }
 
     for route in admin_users.router.routes:
-        if getattr(route, "path", None) in guarded_paths:
+        path = getattr(route, "path", None)
+        methods = getattr(route, "methods", set())
+        if path in read_paths and "GET" in methods:
             dependency_calls = {dependency.call for dependency in route.dependant.dependencies}
-            assert admin_users.require_admin in dependency_calls
+            assert admin_users.require_dashboard_admin_session in dependency_calls
+        if path in mutation_paths and methods.intersection({"POST", "PATCH"}):
+            dependency_calls = {dependency.call for dependency in route.dependant.dependencies}
+            assert admin_users.require_dashboard_admin_mutation in dependency_calls
+
+
+def test_dashboard_user_mutation_requires_csrf_guard() -> None:
+    client = _client(_FakeSession(), allow_mutation=False)
+
+    response = client.patch("/dashboard/users/target/role", json={"role": "ADMIN"})
+
+    assert response.status_code == 403
 
 
 def test_legacy_admin_users_path_is_not_registered() -> None:

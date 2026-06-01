@@ -104,20 +104,34 @@ def _built_in_rule(**overrides):
     )
 
 
-def _client(fake_session: _FakeSession, *, role: str = "ADMIN") -> TestClient:
+def _client(
+    fake_session: _FakeSession,
+    *,
+    role: str = "ADMIN",
+    allow_session: bool = True,
+    allow_mutation: bool = True,
+) -> TestClient:
     app = FastAPI()
     app.include_router(dashboard_filters.router)
 
     async def override_session():
         yield fake_session
 
-    async def override_admin():
+    async def override_dashboard_session():
+        if not allow_session or role != "ADMIN":
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="admin access required")
+        return _admin(role=role)
+
+    async def override_dashboard_mutation():
+        if not allow_mutation:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="csrf token required")
         if role != "ADMIN":
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="admin access required")
         return _admin(role=role)
 
     app.dependency_overrides[dashboard_filters.get_db_session] = override_session
-    app.dependency_overrides[dashboard_filters.require_admin] = override_admin
+    app.dependency_overrides[dashboard_filters.require_dashboard_admin_session] = override_dashboard_session
+    app.dependency_overrides[dashboard_filters.require_dashboard_admin_mutation] = override_dashboard_mutation
     return TestClient(app)
 
 
@@ -134,8 +148,38 @@ def test_dashboard_filters_without_credentials_returns_401() -> None:
     assert response.status_code == 401
 
 
+def test_dashboard_filters_rejects_bearer_only_without_dashboard_session() -> None:
+    app = FastAPI()
+    app.include_router(dashboard_filters.router)
+
+    async def override_session():
+        yield _FakeSession()
+
+    app.dependency_overrides[dashboard_filters.get_db_session] = override_session
+    response = TestClient(app).get("/dashboard/filters", headers={"Authorization": "Bearer extension-admin-token"})
+
+    assert response.status_code == 401
+
+
 def test_dashboard_filters_user_access_is_forbidden() -> None:
     response = _client(_FakeSession(), role="USER").get("/dashboard/filters")
+
+    assert response.status_code == 403
+
+
+def test_dashboard_filter_mutation_requires_csrf_guard() -> None:
+    response = _client(_FakeSession([_rule()]), allow_mutation=False).post(
+        "/dashboard/filters",
+        json={
+            "kind": "keyword",
+            "category": "Custom",
+            "label": "Internal Strategy",
+            "placeholder": "CUSTOM_KEYWORD",
+            "severity": "medium",
+            "action": "MASK",
+            "config_json": {"keywords": ["internal strategy"], "exclusion_keywords": []},
+        },
+    )
 
     assert response.status_code == 403
 
@@ -323,3 +367,26 @@ def test_dashboard_filter_dry_run_supports_draft_rule_without_persisting() -> No
     assert response.json()["matched"] is True
     assert response.json()["sample_persisted"] is False
     assert not any(isinstance(item, FilterRule) for item in fake_session.added)
+
+
+def test_dashboard_filters_router_uses_dashboard_session_and_csrf_guards() -> None:
+    read_paths = {
+        "/dashboard/filters",
+        "/dashboard/filters/{rule_id}",
+    }
+    mutation_paths = {
+        "/dashboard/filters",
+        "/dashboard/filters/{rule_id}",
+        "/dashboard/filters/{rule_id}/enable",
+        "/dashboard/filters/{rule_id}/disable",
+        "/dashboard/filters/dry-run",
+    }
+
+    for route in dashboard_filters.router.routes:
+        path = getattr(route, "path", None)
+        methods = getattr(route, "methods", set())
+        dependency_calls = {dependency.call for dependency in route.dependant.dependencies}
+        if path in read_paths and "GET" in methods:
+            assert dashboard_filters.require_dashboard_admin_session in dependency_calls
+        if path in mutation_paths and methods.intersection({"POST", "PATCH", "DELETE"}):
+            assert dashboard_filters.require_dashboard_admin_mutation in dependency_calls
