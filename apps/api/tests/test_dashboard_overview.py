@@ -1,0 +1,219 @@
+import json
+import uuid
+from datetime import date, datetime, timezone
+from types import SimpleNamespace
+
+from fastapi import FastAPI, HTTPException, status
+from fastapi.testclient import TestClient
+
+from app.models.events import AnalysisEvent, EventDetection
+from app.routes import dashboard_overview
+
+
+class _ScalarResult:
+    def __init__(self, items):
+        self.items = items
+
+    def all(self):
+        return self.items
+
+
+class _ExecuteResult:
+    def __init__(self, items):
+        self.items = items
+
+    def scalars(self):
+        return _ScalarResult(self.items)
+
+
+class _FakeSession:
+    def __init__(self, *, events=None, detections=None):
+        self.events = list(events or [])
+        self.detections = list(detections or [])
+        self.statements = []
+
+    async def execute(self, statement):
+        statement_text = str(statement)
+        self.statements.append(statement_text)
+        if "FROM analysis_events" in statement_text:
+            return _ExecuteResult(self.events)
+        if "FROM event_detections" in statement_text:
+            return _ExecuteResult(self.detections)
+        return _ExecuteResult([])
+
+
+def _event(
+    *,
+    user_id: uuid.UUID | None = None,
+    action: str,
+    risk_level: str,
+    risk_score: int,
+    created_at: datetime,
+    service: str | None = "ChatGPT",
+) -> AnalysisEvent:
+    return AnalysisEvent(
+        id=uuid.uuid4(),
+        user_id=user_id or uuid.uuid4(),
+        prompt_hash="abcdef1234567890abcdef1234567890",
+        prompt_hash_key_id="dev-key-1",
+        action=action,
+        risk_score=risk_score,
+        risk_level=risk_level,
+        filter_rule_set_version="built-in:2026-05-30",
+        service=service,
+        service_domain="chat.openai.com",
+        platform="web",
+        created_at=created_at,
+    )
+
+
+def _detection(event: AnalysisEvent, *, count: int = 1) -> EventDetection:
+    return EventDetection(
+        id=uuid.uuid4(),
+        event_id=event.id,
+        category="PII",
+        type="EMAIL",
+        source="built_in_detector",
+        severity="medium",
+        confidence=100,
+        count=count,
+        reason_code="PII_EMAIL_DETECTED",
+        match_count=count,
+        safe_evidence={"value_lengths": [16] * count},
+    )
+
+
+def _client(fake_session: _FakeSession, *, role: str | None = "ADMIN") -> TestClient:
+    app = FastAPI()
+    app.include_router(dashboard_overview.router)
+
+    async def override_session():
+        yield fake_session
+
+    async def override_admin():
+        if role is None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid dashboard session")
+        if role != "ADMIN":
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="admin access required")
+        return SimpleNamespace(id=uuid.uuid4(), role=role, status="ACTIVE")
+
+    app.dependency_overrides[dashboard_overview.get_db_session] = override_session
+    app.dependency_overrides[dashboard_overview.require_dashboard_admin_session] = override_admin
+    return TestClient(app)
+
+
+def test_dashboard_overview_requires_dashboard_admin_session() -> None:
+    fake_session = _FakeSession()
+
+    assert _client(fake_session, role=None).get("/dashboard/overview").status_code == 401
+    assert _client(fake_session, role="USER").get("/dashboard/overview").status_code == 403
+    assert _client(fake_session, role="ADMIN").get("/dashboard/overview").status_code == 200
+
+
+def test_dashboard_overview_returns_empty_summary(monkeypatch) -> None:
+    monkeypatch.setattr(dashboard_overview, "utc_today", lambda: date(2026, 5, 30))
+
+    response = _client(_FakeSession()).get("/dashboard/overview")
+    body = response.json()
+
+    assert response.status_code == 200
+    assert body["total_events"] == 0
+    assert body["blocked_count"] == 0
+    assert body["masked_count"] == 0
+    assert body["warned_count"] == 0
+    assert body["allowed_count"] == 0
+    assert body["active_users"] == 0
+    assert body["action_counts"] == {"ALLOW": 0, "WARN": 0, "MASK": 0, "BLOCK": 0}
+    assert body["risk_level_counts"] == {"low": 0, "medium": 0, "high": 0, "critical": 0}
+    assert len(body["period_event_counts"]) == 30
+    assert body["recent_events"] == []
+
+
+def test_dashboard_overview_aggregates_30_day_summary(monkeypatch) -> None:
+    monkeypatch.setattr(dashboard_overview, "utc_today", lambda: date(2026, 5, 30))
+    user_a = uuid.uuid4()
+    user_b = uuid.uuid4()
+    masked = _event(
+        user_id=user_a,
+        action="MASK",
+        risk_level="medium",
+        risk_score=55,
+        created_at=datetime(2026, 5, 30, 10, 0, tzinfo=timezone.utc),
+    )
+    blocked = _event(
+        user_id=user_a,
+        action="BLOCK",
+        risk_level="critical",
+        risk_score=95,
+        created_at=datetime(2026, 5, 30, 11, 0, tzinfo=timezone.utc),
+    )
+    warned = _event(
+        user_id=user_b,
+        action="WARN",
+        risk_level="high",
+        risk_score=75,
+        created_at=datetime(2026, 5, 29, 9, 0, tzinfo=timezone.utc),
+    )
+    outside = _event(
+        action="ALLOW",
+        risk_level="low",
+        risk_score=5,
+        created_at=datetime(2026, 4, 1, 9, 0, tzinfo=timezone.utc),
+    )
+    fake_session = _FakeSession(
+        events=[masked, blocked, warned, outside],
+        detections=[_detection(masked, count=2), _detection(blocked, count=1), _detection(outside, count=1)],
+    )
+
+    response = _client(fake_session).get("/dashboard/overview")
+    body = response.json()
+
+    assert response.status_code == 200
+    assert body["total_events"] == 3
+    assert body["blocked_count"] == 1
+    assert body["masked_count"] == 1
+    assert body["warned_count"] == 1
+    assert body["allowed_count"] == 0
+    assert body["active_users"] == 2
+    assert body["action_counts"] == {"ALLOW": 0, "WARN": 1, "MASK": 1, "BLOCK": 1}
+    assert body["risk_level_counts"] == {"low": 0, "medium": 1, "high": 1, "critical": 1}
+    assert body["period_event_counts"][-1]["date"] == "2026-05-30"
+    assert body["period_event_counts"][-1]["event_count"] == 2
+    assert body["recent_events"][0]["action"] == "BLOCK"
+    assert body["recent_events"][0]["detection_count"] == 1
+    assert len(body["recent_events"]) == 3
+    assert "analysis_events.created_at" in fake_session.statements[0]
+
+
+def test_dashboard_overview_response_excludes_private_values(monkeypatch) -> None:
+    monkeypatch.setattr(dashboard_overview, "utc_today", lambda: date(2026, 5, 30))
+    event = _event(
+        action="MASK",
+        risk_level="medium",
+        risk_score=50,
+        created_at=datetime(2026, 5, 30, 10, 0, tzinfo=timezone.utc),
+    )
+    response = _client(_FakeSession(events=[event], detections=[_detection(event)])).get("/dashboard/overview")
+    encoded = json.dumps(response.json(), ensure_ascii=False)
+
+    assert response.status_code == 200
+    assert "abcdef1234567890abcdef1234567890" not in encoded
+    assert "raw_prompt" not in encoded
+    assert "prompt_text" not in encoded
+    assert "file_content" not in encoded
+    assert "raw_file_text" not in encoded
+    assert "detected_raw_value" not in encoded
+    assert "masked_prompt" not in encoded
+    assert "original_filename" not in encoded
+    assert "password" not in encoded
+    assert "password_hash" not in encoded
+    assert "token" not in encoded
+    assert "secret" not in encoded
+
+
+def test_dashboard_overview_route_is_registered_on_main_app() -> None:
+    from app.main import app
+
+    paths = {getattr(route, "path", None) for route in app.routes}
+
+    assert "/dashboard/overview" in paths
