@@ -63,3 +63,32 @@ def hash_refresh_token(raw_token: str) -> str:
         raw_token.encode("utf-8"),
         hashlib.sha256,
     ).hexdigest()
+
+
+def create_dashboard_session_token() -> tuple[str, str, datetime]:
+    settings = get_settings()
+    raw_token = secrets.token_urlsafe(48)
+    token_hash = hash_dashboard_session_token(raw_token)
+    expires_at = utc_now() + timedelta(hours=settings.dashboard_session_expires_hours)
+    return raw_token, token_hash, expires_at
+
+
+def hash_dashboard_session_token(raw_token: str) -> str:
+    return hmac.new(
+        get_settings().dashboard_session_secret.encode("utf-8"),
+        raw_token.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def create_dashboard_csrf_token() -> tuple[str, str]:
+    raw_token = secrets.token_urlsafe(32)
+    return raw_token, hash_dashboard_csrf_token(raw_token)
+
+
+def hash_dashboard_csrf_token(raw_token: str) -> str:
+    return hmac.new(
+        get_settings().dashboard_session_secret.encode("utf-8"),
+        f"csrf:{raw_token}".encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
