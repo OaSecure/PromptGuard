@@ -34,6 +34,9 @@ class OverviewPeriodBucket(BaseModel):
     bucket_start: datetime
     bucket_end: datetime
     event_count: int
+    blocked_count: int
+    masked_count: int
+    warned_count: int
 
 
 class DashboardOverviewResponse(BaseModel):
@@ -97,11 +100,15 @@ def dashboard_overview_response(
     period_buckets = []
     for bucket_date in days_in_window:
         bucket_events = events_by_date.get(bucket_date, [])
+        bucket_actions = Counter(event.action for event in bucket_events)
         period_buckets.append(
             OverviewPeriodBucket(
                 bucket_start=datetime.combine(bucket_date, time.min, tzinfo=timezone.utc),
                 bucket_end=datetime.combine(bucket_date, time.max, tzinfo=timezone.utc),
                 event_count=len(bucket_events),
+                blocked_count=bucket_actions["BLOCK"],
+                masked_count=bucket_actions["MASK"],
+                warned_count=bucket_actions["WARN"],
             )
         )
 

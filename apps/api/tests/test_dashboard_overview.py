@@ -159,8 +159,15 @@ def test_dashboard_overview_returns_empty_summary(monkeypatch) -> None:
         {"risk_level": "critical", "count": 0},
     ]
     assert body["detector_category_counts"] == []
+    assert isinstance(body["period_buckets"], list)
     assert len(body["period_buckets"]) == 30
-    assert {"bucket_start", "bucket_end", "event_count"}.issubset(body["period_buckets"][0])
+    assert {"bucket_start", "bucket_end", "event_count", "blocked_count", "masked_count", "warned_count"}.issubset(
+        body["period_buckets"][0]
+    )
+    assert body["period_buckets"][0]["event_count"] == 0
+    assert body["period_buckets"][0]["blocked_count"] == 0
+    assert body["period_buckets"][0]["masked_count"] == 0
+    assert body["period_buckets"][0]["warned_count"] == 0
 
 
 def test_dashboard_overview_aggregates_30_day_summary(monkeypatch) -> None:
@@ -227,6 +234,13 @@ def test_dashboard_overview_aggregates_30_day_summary(monkeypatch) -> None:
     assert body["period_buckets"][-1]["bucket_start"] == "2026-05-30T00:00:00Z"
     assert body["period_buckets"][-1]["bucket_end"].startswith("2026-05-30T23:59:59")
     assert body["period_buckets"][-1]["event_count"] == 2
+    assert body["period_buckets"][-1]["blocked_count"] == 1
+    assert body["period_buckets"][-1]["masked_count"] == 1
+    assert body["period_buckets"][-1]["warned_count"] == 0
+    assert body["period_buckets"][-2]["event_count"] == 1
+    assert body["period_buckets"][-2]["blocked_count"] == 0
+    assert body["period_buckets"][-2]["masked_count"] == 0
+    assert body["period_buckets"][-2]["warned_count"] == 1
     assert "analysis_events.created_at" in fake_session.statements[0]
 
 
