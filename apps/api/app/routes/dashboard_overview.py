@@ -1,3 +1,4 @@
+import uuid
 from collections import Counter, defaultdict
 from datetime import date, datetime, time, timezone
 
@@ -75,6 +76,7 @@ def _detector_category_counts(values: Counter[str]) -> list[OverviewDetectorCate
 def dashboard_overview_response(
     *,
     events: list[AnalysisEvent],
+    login_ids_by_event_id: dict[uuid.UUID, str],
     detections: list[EventDetection],
     days: int,
     as_of: date | None = None,
@@ -120,7 +122,13 @@ def dashboard_overview_response(
         masked_count=actions["MASK"],
         warned_count=actions["WARN"],
         allowed_count=actions["ALLOW"],
-        active_user_count=len({event.user_id for event in events_in_window}),
+        active_user_count=len(
+            {
+                login_ids_by_event_id[event.id]
+                for event in events_in_window
+                if event.id in login_ids_by_event_id
+            }
+        ),
         # event_inputs persistence is not available yet, so this remains a 0 fallback.
         content_unavailable_event_count=0,
         last_event_at=max((event.created_at for event in events_in_window), default=None),
@@ -141,8 +149,14 @@ async def dashboard_overview(
 
     as_of = utc_today()
     window_start = datetime.combine(date_window(days, as_of=as_of)[0], time.min, tzinfo=timezone.utc)
-    events_result = await session.execute(select(AnalysisEvent).where(AnalysisEvent.created_at >= window_start))
-    events = list(events_result.scalars().all())
+    events_result = await session.execute(
+        select(AnalysisEvent, User.login_id)
+        .join(User, AnalysisEvent.user_id == User.id)
+        .where(AnalysisEvent.created_at >= window_start)
+    )
+    event_rows = list(events_result.all())
+    events = [event for event, _login_id in event_rows]
+    login_ids_by_event_id = {event.id: login_id for event, login_id in event_rows}
 
     event_ids = {event.id for event in events}
     detections: list[EventDetection] = []
@@ -150,4 +164,10 @@ async def dashboard_overview(
         detections_result = await session.execute(select(EventDetection).where(EventDetection.event_id.in_(event_ids)))
         detections = list(detections_result.scalars().all())
 
-    return dashboard_overview_response(events=events, detections=detections, days=days, as_of=as_of)
+    return dashboard_overview_response(
+        events=events,
+        login_ids_by_event_id=login_ids_by_event_id,
+        detections=detections,
+        days=days,
+        as_of=as_of,
+    )

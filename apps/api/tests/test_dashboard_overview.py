@@ -26,15 +26,33 @@ class _ExecuteResult:
         return _ScalarResult(self.items)
 
 
+class _RowsResult:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def all(self):
+        return self.rows
+
+
 class _FakeSession:
-    def __init__(self, *, events=None, detections=None):
+    def __init__(self, *, events=None, detections=None, users=None):
         self.events = list(events or [])
         self.detections = list(detections or [])
+        self.users = list(users or [])
         self.statements = []
 
     async def execute(self, statement):
         statement_text = str(statement)
         self.statements.append(statement_text)
+        if "FROM analysis_events JOIN users" in statement_text:
+            login_ids_by_user_id = {user.id: user.login_id for user in self.users}
+            return _RowsResult(
+                [
+                    (event, login_ids_by_user_id[event.user_id])
+                    for event in self.events
+                    if event.user_id in login_ids_by_user_id
+                ]
+            )
         if "FROM analysis_events" in statement_text:
             return _ExecuteResult(self.events)
         if "FROM event_detections" in statement_text:
@@ -65,6 +83,10 @@ def _event(
         platform="web",
         created_at=created_at,
     )
+
+
+def _user(*, user_id: uuid.UUID, login_id: str) -> SimpleNamespace:
+    return SimpleNamespace(id=user_id, login_id=login_id)
 
 
 def _detection(event: AnalysisEvent, *, count: int = 1) -> EventDetection:
@@ -173,6 +195,7 @@ def test_dashboard_overview_returns_empty_summary(monkeypatch) -> None:
 def test_dashboard_overview_aggregates_30_day_summary(monkeypatch) -> None:
     monkeypatch.setattr(dashboard_overview, "utc_today", lambda: date(2026, 5, 30))
     user_a = uuid.uuid4()
+    user_a_alias = uuid.uuid4()
     user_b = uuid.uuid4()
     masked = _event(
         user_id=user_a,
@@ -182,7 +205,7 @@ def test_dashboard_overview_aggregates_30_day_summary(monkeypatch) -> None:
         created_at=datetime(2026, 5, 30, 10, 0, tzinfo=timezone.utc),
     )
     blocked = _event(
-        user_id=user_a,
+        user_id=user_a_alias,
         action="BLOCK",
         risk_level="critical",
         risk_score=95,
@@ -204,6 +227,12 @@ def test_dashboard_overview_aggregates_30_day_summary(monkeypatch) -> None:
     fake_session = _FakeSession(
         events=[masked, blocked, warned, outside],
         detections=[_detection(masked, count=2), _detection(blocked, count=1), _detection(outside, count=1)],
+        users=[
+            _user(user_id=user_a, login_id="member01"),
+            _user(user_id=user_a_alias, login_id="member01"),
+            _user(user_id=user_b, login_id="member02"),
+            _user(user_id=outside.user_id, login_id="outside"),
+        ],
     )
 
     response = _client(fake_session).get("/dashboard/overview")
@@ -215,6 +244,7 @@ def test_dashboard_overview_aggregates_30_day_summary(monkeypatch) -> None:
     assert body["masked_count"] == 1
     assert body["warned_count"] == 1
     assert body["allowed_count"] == 0
+    assert len({masked.user_id, blocked.user_id, warned.user_id}) == 3
     assert body["active_user_count"] == 2
     assert body["content_unavailable_event_count"] == 0
     assert body["last_event_at"] is not None
