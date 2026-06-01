@@ -1,6 +1,6 @@
-"use strict";
+import { dashboardRequest } from "./dashboardApi.js";
+import { refreshDashboardCsrf } from "./session.js";
 const root = document.querySelector("#filters-app");
-const apiBaseUrl = document.documentElement.dataset.promptguardApiBaseUrl ?? "http://localhost:8000";
 let rules = [];
 let selectedRuleId = null;
 let formState = blankForm();
@@ -129,22 +129,11 @@ function payloadFromForm(state) {
     return payload;
 }
 async function apiRequest(path, options = {}) {
-    const headers = new Headers(options.headers);
-    headers.set("Accept", "application/json");
-    if (options.body)
-        headers.set("Content-Type", "application/json");
-    const response = await fetch(`${apiBaseUrl}${path}`, {
+    const csrfToken = options.method && options.method !== "GET" ? await refreshDashboardCsrf() : null;
+    return dashboardRequest(path, {
         ...options,
-        headers,
-        credentials: "include",
+        csrfToken,
     });
-    if (!response.ok) {
-        throw new Error("요청을 완료하지 못했습니다.");
-    }
-    if (response.status === 204) {
-        return undefined;
-    }
-    return (await response.json());
 }
 async function loadRules() {
     pageState = "loading";
@@ -172,7 +161,7 @@ async function saveRule() {
     if (formState.mode === "create") {
         await apiRequest("/dashboard/filters", {
             method: "POST",
-            body: JSON.stringify(payload),
+            body: payload,
         });
     }
     else if (formState.id) {
@@ -185,7 +174,7 @@ async function saveRule() {
             : payload;
         await apiRequest(`/dashboard/filters/${formState.id}`, {
             method: "PATCH",
-            body: JSON.stringify(updatePayload),
+            body: updatePayload,
         });
     }
     dryRunResult = null;
@@ -215,7 +204,7 @@ async function runDryRun() {
     }
     dryRunResult = await apiRequest("/dashboard/filters/dry-run", {
         method: "POST",
-        body: JSON.stringify(payload),
+        body: payload,
     });
     render();
 }

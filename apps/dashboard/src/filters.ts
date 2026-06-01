@@ -1,3 +1,6 @@
+import { dashboardRequest } from "./dashboardApi.js";
+import { refreshDashboardCsrf } from "./session.js";
+
 type RuleOrigin = "built_in" | "custom";
 type RuleKind = "detector" | "keyword" | "regex" | "context_rule";
 type RuleSeverity = "low" | "medium" | "high" | "critical";
@@ -54,7 +57,6 @@ type DryRunResult = {
 };
 
 const root = document.querySelector<HTMLDivElement>("#filters-app");
-const apiBaseUrl = document.documentElement.dataset.promptguardApiBaseUrl ?? "http://localhost:8000";
 
 let rules: FilterRule[] = [];
 let selectedRuleId: string | null = null;
@@ -189,22 +191,15 @@ function payloadFromForm(state: FilterFormState): Record<string, unknown> {
   return payload;
 }
 
-async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const headers = new Headers(options.headers);
-  headers.set("Accept", "application/json");
-  if (options.body) headers.set("Content-Type", "application/json");
-  const response = await fetch(`${apiBaseUrl}${path}`, {
+async function apiRequest<T>(
+  path: string,
+  options: { method?: "GET" | "POST" | "PATCH" | "DELETE"; body?: unknown } = {},
+): Promise<T> {
+  const csrfToken = options.method && options.method !== "GET" ? await refreshDashboardCsrf() : null;
+  return dashboardRequest<T>(path, {
     ...options,
-    headers,
-    credentials: "include",
+    csrfToken,
   });
-  if (!response.ok) {
-    throw new Error("요청을 완료하지 못했습니다.");
-  }
-  if (response.status === 204) {
-    return undefined as T;
-  }
-  return (await response.json()) as T;
 }
 
 async function loadRules(): Promise<void> {
@@ -233,7 +228,7 @@ async function saveRule(): Promise<void> {
   if (formState.mode === "create") {
     await apiRequest<FilterRule>("/dashboard/filters", {
       method: "POST",
-      body: JSON.stringify(payload),
+      body: payload,
     });
   } else if (formState.id) {
     const updatePayload = formState.origin === "built_in"
@@ -245,7 +240,7 @@ async function saveRule(): Promise<void> {
       : payload;
     await apiRequest<FilterRule>(`/dashboard/filters/${formState.id}`, {
       method: "PATCH",
-      body: JSON.stringify(updatePayload),
+      body: updatePayload,
     });
   }
   dryRunResult = null;
@@ -276,7 +271,7 @@ async function runDryRun(): Promise<void> {
   }
   dryRunResult = await apiRequest<DryRunResult>("/dashboard/filters/dry-run", {
     method: "POST",
-    body: JSON.stringify(payload),
+    body: payload,
   });
   render();
 }
