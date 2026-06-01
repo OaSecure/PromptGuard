@@ -157,6 +157,7 @@ class AuditLog(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     __table_args__ = (
+        Index("ix_audit_logs_created_at", "created_at"),
         Index("ix_audit_logs_actor_created_at", "actor_login_id", "created_at"),
         Index("ix_audit_logs_action_created_at", "action", "created_at"),
     )

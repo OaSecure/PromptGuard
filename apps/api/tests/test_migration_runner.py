@@ -199,6 +199,8 @@ def test_idempotency_and_audit_tables_are_minimal_metadata_only() -> None:
     assert "ix_idempotency_keys_expires_at" in _index_names(IdempotencyKey.__table__)
 
     assert {"actor_login_id", "action", "target_type", "target_id", "safe_metadata", "created_at"} <= audit_columns
+    assert "ix_audit_logs_created_at" in _index_names(AuditLog.__table__)
+    assert "ix_audit_logs_actor_created_at" in _index_names(AuditLog.__table__)
     for forbidden in {"request_body", "password", "token", "secret", "raw_payload"}:
         assert forbidden not in audit_columns
 

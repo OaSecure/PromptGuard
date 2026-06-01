@@ -96,6 +96,7 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.PrimaryKeyConstraint("id"),
     )
+    op.create_index("ix_audit_logs_created_at", "audit_logs", ["created_at"])
     op.create_index("ix_audit_logs_actor_created_at", "audit_logs", ["actor_login_id", "created_at"])
     op.create_index("ix_audit_logs_action_created_at", "audit_logs", ["action", "created_at"])
 
@@ -103,6 +104,7 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_index("ix_audit_logs_action_created_at", table_name="audit_logs")
     op.drop_index("ix_audit_logs_actor_created_at", table_name="audit_logs")
+    op.drop_index("ix_audit_logs_created_at", table_name="audit_logs")
     op.drop_table("audit_logs")
 
     op.drop_index("ix_idempotency_keys_expires_at", table_name="idempotency_keys")
