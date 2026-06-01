@@ -2,7 +2,7 @@ import uuid
 from datetime import timedelta
 from types import SimpleNamespace
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
 from app.core.password import hash_password
@@ -265,6 +265,36 @@ def test_dashboard_logout_requires_csrf_revokes_session_and_clears_cookies() -> 
     set_cookie = response.headers.get("set-cookie", "").lower()
     assert "promptguard_dashboard_session=\"\"" in set_cookie
     assert "promptguard_dashboard_csrf=\"\"" in set_cookie
+
+
+def test_dashboard_mutation_dependency_requires_valid_session_and_csrf() -> None:
+    user = _user()
+    raw_session = "session-for-mutation"
+    csrf_token = "csrf-for-mutation"
+    row = _session_row(raw_session=raw_session, csrf_token=csrf_token, user=user)
+    fake_session = _FakeSession(dashboard_session_row=(row, user))
+    app = FastAPI()
+
+    async def override_session():
+        yield fake_session
+
+    @app.post("/protected-mutation")
+    async def protected_mutation(_user=Depends(dashboard_session.require_dashboard_admin_mutation)):
+        return {"ok": True}
+
+    app.dependency_overrides[dashboard_session.get_db_session] = override_session
+    client = TestClient(app)
+    client.cookies.set("promptguard_dashboard_session", raw_session)
+
+    missing_response = client.post("/protected-mutation")
+    mismatch_response = client.post("/protected-mutation", headers={"X-CSRF-Token": f"{csrf_token}-bad"})
+    response = client.post("/protected-mutation", headers={"X-CSRF-Token": csrf_token})
+
+    assert missing_response.status_code == 403
+    assert mismatch_response.status_code == 403
+    assert response.status_code == 200
+    assert response.json() == {"ok": True}
+    assert row.last_seen_at is not None
 
 
 def test_dashboard_session_routes_are_registered_on_main_app() -> None:

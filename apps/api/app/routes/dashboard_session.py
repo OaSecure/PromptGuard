@@ -141,6 +141,19 @@ async def require_dashboard_admin_session(
     return user
 
 
+async def require_dashboard_admin_mutation(
+    request: Request,
+    x_csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+    session: AsyncSession = Depends(get_db_session),
+) -> User:
+    session_cookie = request.cookies.get(get_settings().dashboard_session_cookie_name)
+    session_row, user = await _load_dashboard_session(session_cookie=session_cookie, session=session)
+    _require_session_csrf(header_token=x_csrf_token, session_row=session_row)
+    session_row.last_seen_at = utc_now()
+    await session.commit()
+    return user
+
+
 async def _load_dashboard_session(
     *,
     session_cookie: str | None,

@@ -12,7 +12,7 @@ from app.core.tokens import utc_now
 from app.db.session import get_db_session
 from app.models.auth import User
 from app.models.filters import FilterRule
-from app.routes.auth import require_admin
+from app.routes.dashboard_session import require_dashboard_admin_mutation, require_dashboard_admin_session
 from app.routes.filters import (
     CUSTOM_EDITABLE_FIELDS,
     FilterRuleCreateRequest,
@@ -185,7 +185,7 @@ def _reject_forbidden_built_in_update(rule: FilterRule, updates: dict[str, Any])
 
 @router.get("", response_model=list[DashboardFilterRuleResponse])
 async def list_dashboard_filters(
-    current_admin: User = Depends(require_admin),
+    current_admin: User = Depends(require_dashboard_admin_session),
     session: AsyncSession = Depends(get_db_session),
 ) -> list[DashboardFilterRuleResponse]:
     del current_admin
@@ -198,7 +198,7 @@ async def list_dashboard_filters(
 @router.get("/{rule_id}", response_model=DashboardFilterRuleResponse)
 async def get_dashboard_filter(
     rule_id: uuid.UUID,
-    current_admin: User = Depends(require_admin),
+    current_admin: User = Depends(require_dashboard_admin_session),
     session: AsyncSession = Depends(get_db_session),
 ) -> DashboardFilterRuleResponse:
     del current_admin
@@ -208,7 +208,7 @@ async def get_dashboard_filter(
 @router.post("", response_model=DashboardFilterRuleResponse, status_code=status.HTTP_201_CREATED)
 async def create_dashboard_filter(
     payload: FilterRuleCreateRequest,
-    current_admin: User = Depends(require_admin),
+    current_admin: User = Depends(require_dashboard_admin_mutation),
     session: AsyncSession = Depends(get_db_session),
 ) -> DashboardFilterRuleResponse:
     rule = _dashboard_rule_from_create(payload, current_admin)
@@ -223,7 +223,7 @@ async def create_dashboard_filter(
 async def update_dashboard_filter(
     rule_id: uuid.UUID,
     payload: FilterRulePatchRequest,
-    current_admin: User = Depends(require_admin),
+    current_admin: User = Depends(require_dashboard_admin_mutation),
     session: AsyncSession = Depends(get_db_session),
 ) -> DashboardFilterRuleResponse:
     rule = await _get_rule(session, rule_id)
@@ -259,7 +259,7 @@ async def update_dashboard_filter(
 @router.patch("/{rule_id}/enable", response_model=DashboardFilterRuleResponse)
 async def enable_dashboard_filter(
     rule_id: uuid.UUID,
-    current_admin: User = Depends(require_admin),
+    current_admin: User = Depends(require_dashboard_admin_mutation),
     session: AsyncSession = Depends(get_db_session),
 ) -> DashboardFilterRuleResponse:
     return await _set_dashboard_enabled(rule_id, True, current_admin, session)
@@ -268,7 +268,7 @@ async def enable_dashboard_filter(
 @router.patch("/{rule_id}/disable", response_model=DashboardFilterRuleResponse)
 async def disable_dashboard_filter(
     rule_id: uuid.UUID,
-    current_admin: User = Depends(require_admin),
+    current_admin: User = Depends(require_dashboard_admin_mutation),
     session: AsyncSession = Depends(get_db_session),
 ) -> DashboardFilterRuleResponse:
     return await _set_dashboard_enabled(rule_id, False, current_admin, session)
@@ -289,7 +289,7 @@ async def _set_dashboard_enabled(rule_id: uuid.UUID, enabled: bool, current_admi
 @router.delete("/{rule_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def archive_dashboard_filter(
     rule_id: uuid.UUID,
-    current_admin: User = Depends(require_admin),
+    current_admin: User = Depends(require_dashboard_admin_mutation),
     session: AsyncSession = Depends(get_db_session),
 ) -> None:
     rule = await _get_rule(session, rule_id)
@@ -339,7 +339,7 @@ def _dry_run_response(rule: FilterRule, matches: list[RuleMatch]) -> DashboardDr
 @router.post("/dry-run", response_model=DashboardDryRunResponse)
 async def dry_run_dashboard_filter(
     payload: DashboardDryRunRequest,
-    current_admin: User = Depends(require_admin),
+    current_admin: User = Depends(require_dashboard_admin_mutation),
     session: AsyncSession = Depends(get_db_session),
 ) -> DashboardDryRunResponse:
     del current_admin

@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.password import hash_password
 from app.db.session import get_db_session
 from app.models.auth import User
-from app.routes.auth import require_admin
+from app.routes.dashboard_session import require_dashboard_admin_mutation, require_dashboard_admin_session
 
 router = APIRouter(prefix="/dashboard/users", tags=["dashboard-users"])
 
@@ -100,7 +100,7 @@ async def _get_target_user(session: AsyncSession, login_id: str) -> User:
 @router.post("", response_model=DashboardUserResponse, status_code=status.HTTP_201_CREATED)
 async def create_dashboard_user(
     payload: DashboardUserCreateRequest,
-    current_admin: User = Depends(require_admin),
+    current_admin: User = Depends(require_dashboard_admin_mutation),
     session: AsyncSession = Depends(get_db_session),
 ) -> DashboardUserResponse:
     del current_admin
@@ -136,7 +136,7 @@ async def create_dashboard_user(
 
 @router.get("", response_model=list[DashboardUserResponse])
 async def list_dashboard_users(
-    current_admin: User = Depends(require_admin),
+    current_admin: User = Depends(require_dashboard_admin_session),
     session: AsyncSession = Depends(get_db_session),
 ) -> list[DashboardUserResponse]:
     del current_admin
@@ -149,7 +149,7 @@ async def list_dashboard_users(
 async def update_dashboard_user_role(
     login_id: str,
     payload: AdminRolePatchRequest,
-    current_admin: User = Depends(require_admin),
+    current_admin: User = Depends(require_dashboard_admin_mutation),
     session: AsyncSession = Depends(get_db_session),
 ) -> DashboardUserResponse:
     user = await _get_target_user(session, login_id)
@@ -165,7 +165,7 @@ async def update_dashboard_user_role(
 async def update_dashboard_user_status(
     login_id: str,
     payload: AdminStatusPatchRequest,
-    current_admin: User = Depends(require_admin),
+    current_admin: User = Depends(require_dashboard_admin_mutation),
     session: AsyncSession = Depends(get_db_session),
 ) -> DashboardUserResponse:
     user = await _get_target_user(session, login_id)
