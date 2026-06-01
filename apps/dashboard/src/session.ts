@@ -1,5 +1,7 @@
 import { dashboardRequest } from "./dashboardApi.js";
 
+const DEFAULT_DASHBOARD_CSRF_COOKIE_NAME = "promptguard_dashboard_csrf";
+
 export type DashboardUser = {
   id: string;
   login_id: string;
@@ -23,6 +25,16 @@ type DashboardLoginResponse = {
 
 let csrfToken: string | null = null;
 
+function csrfTokenFromCookie(): string | null {
+  const cookieName =
+    document.documentElement.dataset.promptguardDashboardCsrfCookieName?.trim() ||
+    DEFAULT_DASHBOARD_CSRF_COOKIE_NAME;
+  const cookies = document.cookie.split(";").map((cookie) => cookie.trim());
+  const prefix = `${cookieName}=`;
+  const value = cookies.find((cookie) => cookie.startsWith(prefix));
+  return value ? decodeURIComponent(value.slice(prefix.length)) : null;
+}
+
 export async function refreshDashboardCsrf(): Promise<string> {
   const response = await dashboardRequest<DashboardCsrfResponse>("/dashboard/session/csrf");
   csrfToken = response.csrf_token;
@@ -45,4 +57,13 @@ export async function loginDashboardSession(loginId: string, password: string): 
 
 export async function getDashboardSessionMe(): Promise<DashboardUser> {
   return dashboardRequest<DashboardUser>("/dashboard/session/me");
+}
+
+export async function logoutDashboardSession(): Promise<void> {
+  const token = csrfToken ?? csrfTokenFromCookie() ?? (await refreshDashboardCsrf());
+  await dashboardRequest<void>("/dashboard/session/logout", {
+    method: "POST",
+    csrfToken: token,
+  });
+  csrfToken = null;
 }
