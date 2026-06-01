@@ -52,6 +52,7 @@ def upgrade() -> None:
           and refresh_tokens.login_id is null
         """
     )
+    op.alter_column("refresh_tokens", "login_id", existing_type=sa.String(length=80), nullable=False)
     op.create_index("ix_refresh_tokens_login_expires", "refresh_tokens", ["login_id", "expires_at"])
 
     op.add_column("dashboard_sessions", sa.Column("login_id", sa.String(length=80), nullable=True))
@@ -64,7 +65,7 @@ def upgrade() -> None:
           and dashboard_sessions.login_id is null
         """
     )
-    op.execute("update dashboard_sessions set login_id = 'unknown' where login_id is null")
+    op.execute("delete from dashboard_sessions where login_id is null")
     op.alter_column("dashboard_sessions", "login_id", existing_type=sa.String(length=80), nullable=False)
     op.alter_column("dashboard_sessions", "user_id", existing_type=postgresql.UUID(as_uuid=True), nullable=True)
     op.create_index("ix_dashboard_sessions_login_expires", "dashboard_sessions", ["login_id", "expires_at"])
@@ -118,6 +119,7 @@ def downgrade() -> None:
     op.drop_column("dashboard_sessions", "login_id")
 
     op.drop_index("ix_refresh_tokens_login_expires", table_name="refresh_tokens")
+    op.alter_column("refresh_tokens", "login_id", existing_type=sa.String(length=80), nullable=True)
     op.drop_column("refresh_tokens", "idle_expires_at")
     op.drop_column("refresh_tokens", "login_id")
 

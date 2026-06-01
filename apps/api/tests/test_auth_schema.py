@@ -72,7 +72,7 @@ def test_refresh_token_schema_stores_hash_metadata_only() -> None:
     }:
         assert name in columns
 
-    assert RefreshToken.__table__.c.login_id.nullable
+    assert not RefreshToken.__table__.c.login_id.nullable
     assert "uq_refresh_tokens_token_hash" in _constraint_names(RefreshToken.__table__, UniqueConstraint)
     assert "ix_refresh_tokens_login_expires" in _index_names(RefreshToken.__table__)
     for forbidden in {"refresh_token", "raw_refresh_token", "plain_token", "token_value"}:
