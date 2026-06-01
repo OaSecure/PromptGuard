@@ -38,6 +38,7 @@ class User(TimestampMixin, Base):
     last_event_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     refresh_tokens: Mapped[list["RefreshToken"]] = relationship(back_populates="user")
+    dashboard_sessions: Mapped[list["DashboardSession"]] = relationship(back_populates="user")
 
     __table_args__ = (
         CheckConstraint("role in ('ADMIN', 'USER')", name="ck_users_role"),
@@ -117,4 +118,26 @@ class RefreshToken(Base):
         UniqueConstraint("token_hash", name="uq_refresh_tokens_token_hash"),
         Index("ix_refresh_tokens_user_id", "user_id"),
         Index("ix_refresh_tokens_expires_at", "expires_at"),
+    )
+
+
+class DashboardSession(Base):
+    __tablename__ = "dashboard_sessions"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"))
+    session_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    csrf_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    user: Mapped[User] = relationship(back_populates="dashboard_sessions")
+
+    __table_args__ = (
+        UniqueConstraint("session_hash", name="uq_dashboard_sessions_session_hash"),
+        Index("ix_dashboard_sessions_user_id", "user_id"),
+        Index("ix_dashboard_sessions_expires_at", "expires_at"),
+        Index("ix_dashboard_sessions_revoked_at", "revoked_at"),
     )
