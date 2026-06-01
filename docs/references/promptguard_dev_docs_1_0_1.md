@@ -1,6 +1,6 @@
-# PromptGuard 개발 문서 세트 1.0.1 - 팀 통합본
+# PromptGuard 개발 문서 세트 1.0.2 - 팀 통합본
 
-## 목차
+## 목
 
 1. 문서 기준과 범위 원칙
 2. MVP 확정 결정과 용어
@@ -90,17 +90,17 @@
 - 22장은 MVP 이후 범위를 구현할 때의 검증 기준을 정의한다.
 - 23장은 실제 WBS/MVP 작업표를 정의한다.
 
-### 1.1 1.0.1 update note
+### 1.1 1.0.2 update note
 
-- 이 1.0.1 문서는 현재 `main` 구현 상태를 기준으로 1.0.0 개발 문서의 구현 상태, 필요한 조치, WBS 상태를 갱신한 문서다.
+- 이 1.0.2 문서는 현재 `main` 구현 상태를 기준으로 1.0.0 개발 문서의 구현 상태, 필요한 조치, WBS 상태를 갱신한 문서다.
 - PR review/merge/close/reject round는 완료되었고, 열린 PR 상태를 전제로 한 구현 상태 문구는 현재 `main` 기준으로 갱신한다.
 - MVP contracts remain unchanged. 이 문서는 미완성 코드를 기준으로 제품 요구사항을 약화하지 않는다.
 - `promptguard_dev_docs_1_0_0.md`가 제품 계약의 source of truth이며, 별도 PR에서 제안된 #53 API contract 문서는 source of truth로 사용하지 않는다.
 - Dashboard Session API는 MVP scope이며 아직 pending 상태다. 이 항목은 후속 범위로 이동하지 않는다.
 
-### 1.2 1.0.1 현재 구현 상태 요약
+### 1.2 1.0.2 현재 구현 상태 요약
 
-| 영역 | 1.0.1 상태 | 현재 main 기준 근거 | 필요한 조치 |
+| 영역 | 1.0.2 상태 | 현재 main 기준 근거 | 필요한 조치 |
 | --- | --- | --- | --- |
 | Auth / Extension bearer-token flow | 부분 | `/auth/login`, `/auth/me`, `/auth/refresh`, `/auth/logout`가 있고, bearer dependency가 `DISABLED` 사용자를 차단하며 refresh token hash/rotation 흐름이 있다. | extension bearer-token 흐름은 부분 완료로 유지한다. dashboard session, logout ownership, idle timeout/env 계약은 별도 검증한다. |
 | Dashboard Session API | 미구현 | `/dashboard/session/csrf`, `/dashboard/session/login`, `/dashboard/session/logout`, `/dashboard/session/me`, HttpOnly ADMIN session cookie, CSRF 검증 route가 없다. 현재 dashboard/admin API는 bearer 기반 `require_admin`을 사용한다. | dashboard session route, session hash storage, HttpOnly cookie, CSRF validation을 구현하고 dashboard API auth boundary를 전환한다. |
