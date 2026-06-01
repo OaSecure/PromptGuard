@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -96,8 +96,10 @@ async def issue_token_pair(session: AsyncSession, user: User) -> TokenResponse:
     session.add(
         RefreshToken(
             user_id=user.id,
+            login_id=user.login_id,
             token_hash=refresh_token_hash,
             expires_at=refresh_token_expires_at,
+            idle_expires_at=utc_now() + timedelta(days=14),
         )
     )
     return TokenResponse(
@@ -186,6 +188,8 @@ async def refresh(
         now = utc_now()
         if refresh_token.revoked_at is not None or refresh_token.expires_at <= now or user.status != "ACTIVE":
             raise invalid_credentials()
+        if refresh_token.idle_expires_at is not None and refresh_token.idle_expires_at <= now:
+            raise invalid_credentials()
 
         new_token_id = uuid.uuid4()
         access_token, access_token_expires_at = create_access_token(user.id)
@@ -195,8 +199,10 @@ async def refresh(
             RefreshToken(
                 id=new_token_id,
                 user_id=user.id,
+                login_id=user.login_id,
                 token_hash=new_refresh_token_hash,
                 expires_at=new_refresh_token_expires_at,
+                idle_expires_at=now + timedelta(days=14),
             )
         )
         await session.flush()

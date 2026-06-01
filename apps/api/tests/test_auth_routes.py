@@ -98,6 +98,8 @@ def test_login_route_accepts_login_id_contract() -> None:
     assert response.status_code == 200
     assert response.json()["token_type"] == "bearer"
     assert fake_session.added
+    assert fake_session.added[0].login_id == "admin"
+    assert fake_session.added[0].idle_expires_at is not None
     assert any("login_id_normalized" in statement for statement in fake_session.statements)
     assert fake_session.user.last_login_at is not None
     assert isinstance(fake_session.user.last_login_at, datetime)
