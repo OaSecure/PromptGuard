@@ -1095,3 +1095,135 @@ input {
 .form-row.three {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
+
+.status-dashboard {
+  display: grid;
+  gap: 24px;
+}
+
+.status-summary-card,
+.status-meta-card,
+.dependency-card {
+  background: #ffffff;
+  border: 1px solid rgba(216, 236, 251, 0.85);
+  border-radius: 22px;
+  box-shadow: 0 16px 35px rgba(47, 128, 237, 0.1);
+}
+
+.status-summary-card {
+  align-items: center;
+  display: flex;
+  gap: 20px;
+  justify-content: space-between;
+  min-height: 190px;
+  padding: 28px;
+}
+
+.status-summary-card h2 {
+  color: #10284a;
+  font-size: 34px;
+  font-weight: 900;
+  margin-bottom: 8px;
+}
+
+.status-summary-copy {
+  color: #5b78a0;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.6;
+}
+
+.status-meta-grid {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.status-meta-card {
+  display: grid;
+  gap: 8px;
+  padding: 22px;
+}
+
+.status-meta-card span {
+  color: #5b78a0;
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.status-meta-card strong {
+  color: #10284a;
+  font-size: 22px;
+  font-weight: 900;
+}
+
+.dependency-grid {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.dependency-card {
+  min-height: 132px;
+  padding: 22px;
+}
+
+.dependency-card-header {
+  align-items: flex-start;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+}
+
+.dependency-card-header strong {
+  color: #10284a;
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.health-badge {
+  border-radius: 999px;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 900;
+  padding: 8px 11px;
+  white-space: nowrap;
+}
+
+.health-badge.healthy {
+  background: #eafaf0;
+  color: #219653;
+}
+
+.health-badge.degraded {
+  background: #fff7e6;
+  color: #f2994a;
+}
+
+.health-badge.unhealthy {
+  background: #fff0f0;
+  color: #eb5757;
+}
+
+.health-badge.unknown {
+  background: #eef1f5;
+  color: #667085;
+}
+
+@media (max-width: 900px) {
+  .dependency-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .status-summary-card {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .dependency-grid {
+    grid-template-columns: 1fr;
+  }
+}
