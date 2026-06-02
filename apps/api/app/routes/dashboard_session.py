@@ -221,6 +221,7 @@ async def login(
     session.add(
         DashboardSession(
             user_id=user.id,
+            login_id=user.login_id,
             session_hash=session_hash,
             csrf_hash=hash_dashboard_csrf_token(csrf_token),
             expires_at=expires_at,

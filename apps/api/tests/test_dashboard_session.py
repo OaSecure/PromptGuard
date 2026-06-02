@@ -127,6 +127,7 @@ def test_admin_login_creates_hash_only_httponly_session() -> None:
     assert body["csrf_token"] == csrf_token
     assert raw_session_cookie
     assert raw_session_cookie not in created_session.session_hash
+    assert created_session.login_id == "admin"
     assert created_session.session_hash == hash_dashboard_session_token(raw_session_cookie)
     assert created_session.csrf_hash == hash_dashboard_csrf_token(csrf_token)
     assert "httponly" in response.headers["set-cookie"].lower()

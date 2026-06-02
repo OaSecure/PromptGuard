@@ -1,4 +1,4 @@
-from app.models.auth import DashboardSession, Invite, RefreshToken, RegistrationSettings, User
+from app.models.auth import DashboardSession, RefreshToken, User
 from app.models.events import AnalysisEvent, EventDetection
 from app.models.filters import FilterRule, FilterRuleVersion
 
@@ -7,9 +7,7 @@ __all__ = [
     "EventDetection",
     "FilterRule",
     "FilterRuleVersion",
-    "Invite",
     "RefreshToken",
     "DashboardSession",
-    "RegistrationSettings",
     "User",
 ]
