@@ -4,7 +4,9 @@ import uuid
 from datetime import datetime
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
+from fastapi.responses import JSONResponse
+from fastapi.routing import APIRoute
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,6 +29,7 @@ from app.services.filter_rules import (
 
 router = APIRouter(prefix="/prompts", tags=["prompts"])
 
+MAX_ANALYZE_REQUEST_BYTES = 2_097_152
 MAX_COMPOSER_TEXT_BYTES = 262_144
 MAX_CONVERTED_PASTE_TEXT_BYTES = 1_048_576
 MAX_FILE_TEXT_SCAN_BYTES = 1_048_576
@@ -37,8 +40,15 @@ SAFE_CLIENT_REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 SAFE_FILTER_REVISION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$")
 
 ACTION_ALLOW = "ALLOW"
+ACTION_WARN = "WARN"
 ACTION_MASK = "MASK"
 ACTION_BLOCK = "BLOCK"
+PUBLIC_ACTIONS = {
+    ACTION_ALLOW: "Allow",
+    ACTION_WARN: "Warn",
+    ACTION_MASK: "Mask",
+    ACTION_BLOCK: "Block",
+}
 
 TEXT_SOURCES = ("composer", "converted_paste", "file")
 CONTENT_UNAVAILABLE_REASONS = ("oversized", "unsupported", "metadata_only", "unavailable")
@@ -54,6 +64,25 @@ TEXT_SOURCE_LIMITS = {
     "file": MAX_FILE_TEXT_SCAN_BYTES,
 }
 FORBIDDEN_METADATA_KEYS = {"name", "filename", "file_name", "original_filename", "path", "url"}
+
+
+class AnalyzeRoute(APIRoute):
+    def get_route_handler(self):
+        original_route_handler = super().get_route_handler()
+
+        async def custom_route_handler(request: Request):
+            body = await request.body()
+            if len(body) > MAX_ANALYZE_REQUEST_BYTES:
+                return JSONResponse(
+                    status_code=413,
+                    content={"detail": "Analyze request body is too large"},
+                )
+            return await original_route_handler(request)
+
+        return custom_route_handler
+
+
+router.route_class = AnalyzeRoute
 
 
 class AnalyzeRequest(BaseModel):
@@ -155,9 +184,23 @@ def validate_safe_attachment_metadata(metadata: dict[str, Any]) -> None:
     if len(encoded) > 2_048:
         raise ValueError("attachment metadata is too large")
 
-    for key in metadata:
-        if key in FORBIDDEN_METADATA_KEYS:
+    for key in unsafe_metadata_keys(metadata):
+        if key.casefold() in FORBIDDEN_METADATA_KEYS:
             raise ValueError("attachment metadata must not include original filename, path, or URL")
+
+
+def unsafe_metadata_keys(value: Any) -> list[str]:
+    if isinstance(value, dict):
+        keys = list(value.keys())
+        for nested_value in value.values():
+            keys.extend(unsafe_metadata_keys(nested_value))
+        return [key for key in keys if isinstance(key, str)]
+    if isinstance(value, list):
+        keys: list[str] = []
+        for item in value:
+            keys.extend(unsafe_metadata_keys(item))
+        return keys
+    return []
 
 
 class AnalyzeDetection(BaseModel):
@@ -170,7 +213,7 @@ class AnalyzeDetection(BaseModel):
     rule_id: str | None = None
     detector_id: str | None = None
     severity: Literal["low", "medium", "high", "critical"]
-    action: Literal["ALLOW", "WARN", "MASK", "BLOCK"]
+    action: Literal["Allow", "Warn", "Mask", "Block"]
     placeholder: str | None = None
     confidence: int
     reason_code: str
@@ -201,7 +244,7 @@ class ContentUnavailableInput(BaseModel):
 class AnalyzeResponse(BaseModel):
     event_id: uuid.UUID
     request_id: str
-    action: Literal["ALLOW", "WARN", "MASK", "BLOCK"]
+    action: Literal["Allow", "Warn", "Mask", "Block"]
     checked_at: datetime
     risk_score: int
     risk_level: Literal["low", "medium", "high", "critical"]
@@ -237,10 +280,10 @@ def response_detections(matched_inputs: list[tuple[int, AnalyzeInput, list[RuleM
                     kind=input_item.kind,
                     category=match.category,
                     type=match.type,
-                    source=match.source,
-                    detector_id=match.type if match.source == "built_in" else None,
-                    severity=match.severity,
-                    action=match.action,
+            source=match.source,
+            detector_id=match.type if match.source == "built_in" else None,
+            severity=match.severity,
+            action=public_action(match.action),
                     placeholder=match.type,
                     confidence=match.confidence,
                     reason_code=match.reason_code,
@@ -276,11 +319,23 @@ def user_message_for_action(action: str, has_unavailable_input: bool) -> str:
         return "One or more inputs could not be scanned safely, so the send attempt was blocked."
     if action == ACTION_MASK:
         return "Sensitive data was detected and replaced with placeholders."
-    if action == "WARN":
+    if action == ACTION_WARN:
         return "Sensitive or governed content was detected. Review before sending."
-    if action == "BLOCK":
+    if action == ACTION_BLOCK:
         return "Sensitive or governed content was detected and should not be sent."
     return "No sensitive data was detected."
+
+
+def public_action(action: str) -> Literal["Allow", "Warn", "Mask", "Block"]:
+    return PUBLIC_ACTIONS.get(action, "Block")  # type: ignore[return-value]
+
+
+def allow_original_send(action: str) -> bool:
+    return action in {ACTION_ALLOW, ACTION_WARN}
+
+
+def requires_user_confirmation(action: str) -> bool:
+    return action == ACTION_WARN
 
 
 def included_text_inputs(payload: AnalyzeRequest) -> list[tuple[int, AnalyzeInput]]:
@@ -428,13 +483,13 @@ async def analyze_prompt(
     return AnalyzeResponse(
         event_id=event_id,
         request_id=request_id,
-        action=action,
+        action=public_action(action),
         checked_at=checked_at,
         risk_score=risk_score,
         risk_level=risk_level,
         user_message=user_message_for_action(action, has_unavailable_input),
-        allow_original_send=action == ACTION_ALLOW,
-        requires_user_confirmation=False,
+        allow_original_send=allow_original_send(action),
+        requires_user_confirmation=requires_user_confirmation(action),
         detections=response_detections(matched_inputs),
         input_results=input_results_for_payload(payload, detection_input_indexes),
         content_unavailable_inputs=content_unavailable_summaries(payload),

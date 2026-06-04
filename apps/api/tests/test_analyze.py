@@ -199,7 +199,7 @@ def test_analyze_accepts_inputs_bundle_and_returns_mvp_response_shape() -> None:
 
     body = response.json()
     assert response.status_code == 200
-    assert body["action"] == "ALLOW"
+    assert body["action"] == "Allow"
     assert body["risk_score"] == 0
     assert body["risk_level"] == "low"
     assert body["allow_original_send"] is True
@@ -241,7 +241,7 @@ def test_analyze_masks_email_and_phone_and_persists_safe_metadata() -> None:
     detection_rows = [item for item in fake_session.added if isinstance(item, EventDetection)]
 
     assert response.status_code == 200
-    assert body["action"] == "MASK"
+    assert body["action"] == "Mask"
     assert body["risk_score"] == 55
     assert body["risk_level"] == "medium"
     assert body["allow_original_send"] is False
@@ -279,7 +279,7 @@ def test_analyze_masks_rrn_and_card_as_high_risk() -> None:
     detection_rows = [item for item in fake_session.added if isinstance(item, EventDetection)]
 
     assert response.status_code == 200
-    assert body["action"] == "MASK"
+    assert body["action"] == "Mask"
     assert body["risk_score"] == 80
     assert body["risk_level"] == "high"
     assert body["masked_prompt"] == "rrn [RRN_1] card [CARD_1]"
@@ -310,7 +310,7 @@ def test_analyze_accepts_content_unavailable_metadata_without_text_body() -> Non
     events = [item for item in fake_session.added if isinstance(item, AnalysisEvent)]
     encoded = json.dumps(body, ensure_ascii=False)
     assert response.status_code == 200
-    assert body["action"] == "BLOCK"
+    assert body["action"] == "Block"
     assert body["allow_original_send"] is False
     assert body["risk_level"] == "critical"
     assert body["input_results"][1] == {
@@ -365,6 +365,34 @@ def test_analyze_rejects_original_filename_in_attachment_metadata() -> None:
     assert "secret-contract.png" not in json.dumps(response.json(), ensure_ascii=False)
 
 
+def test_analyze_rejects_nested_filename_in_attachment_metadata() -> None:
+    user = _user()
+    client, _ = _client(user)
+    attachment_input = {
+        "input_id": "in_2",
+        "kind": "attachment_metadata",
+        "source": "attachment_chip",
+        "size_bytes": 300_000,
+        "content_included": False,
+        "metadata": {
+            "attachment": {
+                "name": "nested-secret-contract.png",
+                "extension": "png",
+                "mime": "image/png",
+            }
+        },
+    }
+
+    response = client.post(
+        "/prompts/analyze",
+        headers=_bearer_header(user.id),
+        json=_analyze_payload(attachment_input),
+    )
+
+    assert response.status_code == 422
+    assert "nested-secret-contract.png" not in json.dumps(response.json(), ensure_ascii=False)
+
+
 def test_analyze_respects_disabled_built_in_filter_rule() -> None:
     user = _user()
     client, fake_session = _client(
@@ -391,7 +419,7 @@ def test_analyze_respects_disabled_built_in_filter_rule() -> None:
     body = response.json()
     detection_rows = [item for item in fake_session.added if isinstance(item, EventDetection)]
     assert response.status_code == 200
-    assert body["action"] == "ALLOW"
+    assert body["action"] == "Allow"
     assert body["detections"] == []
     assert detection_rows == []
 
@@ -411,13 +439,31 @@ def test_analyze_records_custom_keyword_filter_metadata_without_raw_value() -> N
     detection_rows = [item for item in fake_session.added if isinstance(item, EventDetection)]
     events = [item for item in fake_session.added if isinstance(item, AnalysisEvent)]
     assert response.status_code == 200
-    assert body["action"] == "MASK"
+    assert body["action"] == "Mask"
     assert body["risk_level"] == "high"
     assert body["detections"][0]["type"] == "INTERNAL_PROJECT"
     assert "Project Hermes" not in encoded
     assert detection_rows[0].source == "custom_keyword"
     assert "Project Hermes" not in json.dumps(detection_rows[0].safe_evidence)
     assert events[0].filter_rule_set_version == "cfg_2026_06_04"
+
+
+def test_analyze_warn_action_requires_confirmation() -> None:
+    user = _user()
+    client, _ = _client(user, rules=[_filter_rule(action="WARN")])
+
+    response = client.post(
+        "/prompts/analyze",
+        headers=_bearer_header(user.id),
+        json=_analyze_payload(_text_input("in_1", "Project Hermes should stay internal")),
+    )
+
+    body = response.json()
+    assert response.status_code == 200
+    assert body["action"] == "Warn"
+    assert body["allow_original_send"] is True
+    assert body["requires_user_confirmation"] is True
+    assert body["detections"][0]["action"] == "Warn"
 
 
 def test_analyze_validates_request_boundaries() -> None:
@@ -446,6 +492,35 @@ def test_analyze_validates_request_boundaries() -> None:
     assert bad_filter_revision.status_code == 422
     assert bad_client_request_id.status_code == 422
     assert wrong_size_bytes.status_code == 422
+
+
+def test_analyze_rejects_oversized_request_body_before_parsing() -> None:
+    user = _user()
+    client, _ = _client(user)
+    oversized_content = "x" * (analyze_route.MAX_ANALYZE_REQUEST_BYTES + 1)
+
+    response = client.post(
+        "/prompts/analyze",
+        headers=_bearer_header(user.id),
+        json={
+            "client_request_id": "req_oversized",
+            "filter_config_revision": "cfg_2026_06_04",
+            "context": _context(),
+            "inputs": [
+                {
+                    "input_id": "in_1",
+                    "kind": "text",
+                    "source": "composer",
+                    "content": oversized_content,
+                    "size_bytes": len(oversized_content),
+                    "content_included": True,
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 413
+    assert "xxx" not in json.dumps(response.json())
 
 
 def test_analyze_response_does_not_echo_raw_prompt_or_context_values() -> None:
