@@ -224,7 +224,7 @@ def test_analyze_accepts_inputs_bundle_and_returns_mvp_response_shape() -> None:
     assert user.last_event_at is not None
 
 
-def test_analyze_masks_email_and_phone_and_persists_safe_metadata() -> None:
+def test_analyze_masks_email_and_phone_and_keeps_legacy_event_bridge_raw_free() -> None:
     user = _user()
     client, fake_session = _client(user)
     prompt = "Contact admin@example.com or 010-1234-5678."
@@ -242,6 +242,7 @@ def test_analyze_masks_email_and_phone_and_persists_safe_metadata() -> None:
 
     assert response.status_code == 200
     assert body["action"] == "Mask"
+    assert all(item["action"] == "Mask" for item in body["detections"])
     assert body["risk_score"] == 55
     assert body["risk_level"] == "medium"
     assert body["allow_original_send"] is False
@@ -253,6 +254,7 @@ def test_analyze_masks_email_and_phone_and_persists_safe_metadata() -> None:
     assert "admin@example.com" not in encoded_body
     assert "010-1234-5678" not in encoded_body
     assert len(events) == 1
+    # Legacy event bridge remains uppercase until the event_inputs persistence PR.
     assert events[0].action == "MASK"
     assert events[0].risk_score == 55
     assert events[0].prompt_hash != prompt
@@ -262,6 +264,7 @@ def test_analyze_masks_email_and_phone_and_persists_safe_metadata() -> None:
     assert len(detection_rows) == 2
     assert {item.type for item in detection_rows} == {"EMAIL", "PHONE"}
     assert all("raw" not in json.dumps(item.safe_evidence) for item in detection_rows)
+    assert all(prompt not in json.dumps(item.safe_evidence) for item in detection_rows)
     assert fake_session.commits == 1
 
 

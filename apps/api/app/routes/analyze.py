@@ -280,10 +280,10 @@ def response_detections(matched_inputs: list[tuple[int, AnalyzeInput, list[RuleM
                     kind=input_item.kind,
                     category=match.category,
                     type=match.type,
-            source=match.source,
-            detector_id=match.type if match.source == "built_in" else None,
-            severity=match.severity,
-            action=public_action(match.action),
+                    source=match.source,
+                    detector_id=match.type if match.source == "built_in" else None,
+                    severity=match.severity,
+                    action=public_action(match.action),
                     placeholder=match.type,
                     confidence=match.confidence,
                     reason_code=match.reason_code,
@@ -460,6 +460,9 @@ async def analyze_prompt(
     prompt_hash = compute_prompt_hash(workspace_id=str(current_user.id), prompt=hash_basis)
     detection_input_indexes = {index for index, _item, item_matches in matched_inputs if item_matches}
 
+    # Compatibility bridge until the MVP event_inputs/idempotency schema lands.
+    # Keep raw input bodies out of the legacy event tables, but do not treat this
+    # as the final v1.0.2 event metadata persistence contract.
     event = AnalysisEvent(
         id=event_id,
         user_id=current_user.id,
