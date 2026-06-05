@@ -38,6 +38,10 @@ SAFE_CONTEXT_DOMAIN_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,253}[A-Za-z
 SAFE_INPUT_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$")
 SAFE_CLIENT_REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 SAFE_FILTER_REVISION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$")
+SECRET_LIKE_ID_RE = re.compile(
+    r"(?:gh[pousr]_|sk-[A-Za-z0-9]|xox[baprs]-|AKIA[0-9A-Z]|postgres://|mysql://|bearer|private[_-]?key)",
+    re.IGNORECASE,
+)
 
 ACTION_ALLOW = "ALLOW"
 ACTION_WARN = "WARN"
@@ -93,6 +97,13 @@ class AnalyzeRequest(BaseModel):
     context: "AnalyzeContext"
     inputs: list["AnalyzeInput"] = Field(min_length=1, max_length=20)
 
+    @field_validator("client_request_id", "filter_config_revision")
+    @classmethod
+    def id_fields_must_not_look_like_secrets(cls, value: str) -> str:
+        if SECRET_LIKE_ID_RE.search(value):
+            raise ValueError("id field must not contain secret-like values")
+        return value
+
     @field_validator("inputs")
     @classmethod
     def input_ids_must_be_unique(cls, value: list["AnalyzeInput"]) -> list["AnalyzeInput"]:
@@ -130,6 +141,13 @@ class AnalyzeInput(BaseModel):
         "MAX_CONVERTED_PASTE_TEXT_BYTES",
         "MAX_FILE_TEXT_SCAN_BYTES",
     ] | None = None
+
+    @field_validator("input_id")
+    @classmethod
+    def input_id_must_not_look_like_secret(cls, value: str) -> str:
+        if SECRET_LIKE_ID_RE.search(value):
+            raise ValueError("input_id must not contain secret-like values")
+        return value
 
     @model_validator(mode="after")
     def validate_input_contract(self) -> "AnalyzeInput":
@@ -280,8 +298,9 @@ def response_detections(matched_inputs: list[tuple[int, AnalyzeInput, list[RuleM
                     kind=input_item.kind,
                     category=match.category,
                     type=match.type,
-                    source=match.source,
-                    detector_id=match.type if match.source == "built_in" else None,
+                    source=input_item.source,
+                    rule_id=match.rule_id,
+                    detector_id=match.detector_id,
                     severity=match.severity,
                     action=public_action(match.action),
                     placeholder=match.type,

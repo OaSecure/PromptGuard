@@ -250,6 +250,12 @@ def test_analyze_masks_email_and_phone_and_keeps_legacy_event_bridge_raw_free() 
     assert body["masked_prompt"] == "Contact [EMAIL_1] or [PHONE_1]."
     assert {item["type"] for item in body["detections"]} == {"EMAIL", "PHONE"}
     assert {item["input_id"] for item in body["detections"]} == {"in_1"}
+    assert {item["source"] for item in body["detections"]} == {"composer"}
+    detections_by_type = {item["type"]: item for item in body["detections"]}
+    assert detections_by_type["EMAIL"]["rule_id"] == "00000000-0000-4000-8000-000000000101"
+    assert detections_by_type["EMAIL"]["detector_id"] == "EMAIL"
+    assert detections_by_type["PHONE"]["rule_id"] == "00000000-0000-4000-8000-000000000102"
+    assert detections_by_type["PHONE"]["detector_id"] == "PHONE"
     assert body["input_results"][0]["decision_basis"] == "detection"
     assert "admin@example.com" not in encoded_body
     assert "010-1234-5678" not in encoded_body
@@ -429,7 +435,8 @@ def test_analyze_respects_disabled_built_in_filter_rule() -> None:
 
 def test_analyze_records_custom_keyword_filter_metadata_without_raw_value() -> None:
     user = _user()
-    client, fake_session = _client(user, rules=[_filter_rule()])
+    rule = _filter_rule()
+    client, fake_session = _client(user, rules=[rule])
 
     response = client.post(
         "/prompts/analyze",
@@ -445,6 +452,9 @@ def test_analyze_records_custom_keyword_filter_metadata_without_raw_value() -> N
     assert body["action"] == "Mask"
     assert body["risk_level"] == "high"
     assert body["detections"][0]["type"] == "INTERNAL_PROJECT"
+    assert body["detections"][0]["source"] == "composer"
+    assert body["detections"][0]["rule_id"] == str(rule.id)
+    assert body["detections"][0]["detector_id"] is None
     assert "Project Hermes" not in encoded
     assert detection_rows[0].source == "custom_keyword"
     assert "Project Hermes" not in json.dumps(detection_rows[0].safe_evidence)
@@ -485,6 +495,21 @@ def test_analyze_validates_request_boundaries() -> None:
         headers=headers,
         json=_analyze_payload(client_request_id="not a safe id"),
     )
+    secret_client_request_id = client.post(
+        "/prompts/analyze",
+        headers=headers,
+        json=_analyze_payload(client_request_id="req_ghp_seededsecret1234567890abcdef"),
+    )
+    secret_filter_revision = client.post(
+        "/prompts/analyze",
+        headers=headers,
+        json=_analyze_payload(filter_config_revision="cfg_sk-seededsecret1234567890abcdef"),
+    )
+    secret_input_id = client.post(
+        "/prompts/analyze",
+        headers=headers,
+        json=_analyze_payload(_text_input("in_AKIAIOSFODNN7EXAMPLE", "hello")),
+    )
     wrong_size_bytes = client.post(
         "/prompts/analyze",
         headers=headers,
@@ -494,7 +519,21 @@ def test_analyze_validates_request_boundaries() -> None:
     assert empty_inputs.status_code == 422
     assert bad_filter_revision.status_code == 422
     assert bad_client_request_id.status_code == 422
+    assert secret_client_request_id.status_code == 422
+    assert secret_filter_revision.status_code == 422
+    assert secret_input_id.status_code == 422
     assert wrong_size_bytes.status_code == 422
+    encoded_errors = json.dumps(
+        [
+            secret_client_request_id.json(),
+            secret_filter_revision.json(),
+            secret_input_id.json(),
+        ],
+        ensure_ascii=False,
+    )
+    assert "ghp_seededsecret1234567890abcdef" not in encoded_errors
+    assert "sk-seededsecret1234567890abcdef" not in encoded_errors
+    assert "AKIAIOSFODNN7EXAMPLE" not in encoded_errors
 
 
 def test_analyze_rejects_oversized_request_body_before_parsing() -> None:
