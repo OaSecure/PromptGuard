@@ -195,7 +195,7 @@ def _custom_keyword_match(prompt: str, rule: FilterRule) -> RuleMatch | None:
         return None
     return RuleMatch(
         rule_id=str(rule.id),
-        detector_id=None,
+        detector_id=rule.placeholder or "CUSTOM_KEYWORD",
         category=rule.category,
         type=rule.placeholder or "CUSTOM_KEYWORD",
         source="custom_keyword",
@@ -229,7 +229,7 @@ def _custom_regex_match(prompt: str, rule: FilterRule) -> RuleMatch | None:
         return None
     return RuleMatch(
         rule_id=str(rule.id),
-        detector_id=None,
+        detector_id=rule.placeholder or "CUSTOM_REGEX",
         category=rule.category,
         type=rule.placeholder or "CUSTOM_REGEX",
         source="custom_regex",
@@ -258,7 +258,7 @@ def _context_rule_match(prompt: str, rule: FilterRule) -> RuleMatch | None:
         return None
     return RuleMatch(
         rule_id=str(rule.id),
-        detector_id=None,
+        detector_id=rule.placeholder or "CONTEXT_RULE",
         category=rule.category,
         type=rule.placeholder or "CONTEXT_RULE",
         source="custom_context_rule",

@@ -454,7 +454,7 @@ def test_analyze_records_custom_keyword_filter_metadata_without_raw_value() -> N
     assert body["detections"][0]["type"] == "INTERNAL_PROJECT"
     assert body["detections"][0]["source"] == "composer"
     assert body["detections"][0]["rule_id"] == str(rule.id)
-    assert body["detections"][0]["detector_id"] is None
+    assert body["detections"][0]["detector_id"] == "INTERNAL_PROJECT"
     assert "Project Hermes" not in encoded
     assert detection_rows[0].source == "custom_keyword"
     assert "Project Hermes" not in json.dumps(detection_rows[0].safe_evidence)
