@@ -353,8 +353,12 @@ def allow_original_send(action: str) -> bool:
     return action in {ACTION_ALLOW, ACTION_WARN}
 
 
-def requires_user_confirmation(action: str) -> bool:
-    return action == ACTION_WARN
+def requires_user_confirmation(action: str, matches: list[RuleMatch]) -> bool:
+    if action == ACTION_BLOCK:
+        return False
+    if action == ACTION_WARN:
+        return True
+    return action == ACTION_MASK and any(match.action == ACTION_WARN for match in matches)
 
 
 def included_text_inputs(payload: AnalyzeRequest) -> list[tuple[int, AnalyzeInput]]:
@@ -381,7 +385,7 @@ def first_composer_input(text_inputs: list[tuple[int, AnalyzeInput]]) -> tuple[i
     for index, item in text_inputs:
         if item.source == "composer":
             return index, item
-    return text_inputs[0] if text_inputs else None
+    return None
 
 
 def unavailable_inputs(payload: AnalyzeRequest) -> list[tuple[int, AnalyzeInput]]:
@@ -444,6 +448,17 @@ def final_action_for_payload(action: str, payload: AnalyzeRequest) -> str:
     return action
 
 
+def final_action_for_analyze_result(action: str, payload: AnalyzeRequest, matched_inputs: list[tuple[int, AnalyzeInput, list[RuleMatch]]]) -> str:
+    action = final_action_for_payload(action, payload)
+    has_non_composer_mask = any(
+        item.source != "composer" and any(match.action == ACTION_MASK for match in item_matches)
+        for _index, item, item_matches in matched_inputs
+    )
+    if action == ACTION_MASK and has_non_composer_mask:
+        return ACTION_BLOCK
+    return action
+
+
 def score_for_final_action(score: int, action: str) -> int:
     if action == ACTION_BLOCK:
         return max(score, 95)
@@ -468,10 +483,16 @@ async def analyze_prompt(
     risk_score = score_for_matches(matches)
     action = action_for_matches(matches)
     has_unavailable_input = bool(unavailable_inputs(payload))
-    action = final_action_for_payload(action, payload)
+    action = final_action_for_analyze_result(action, payload, matched_inputs)
     risk_score = score_for_final_action(risk_score, action)
     risk_level = risk_level_for_score(risk_score)
-    masking_detections = detections_for_masking(matches)
+    masking_matches = []
+    if detection_target is not None:
+        masking_matches = next(
+            (item_matches for index, _item, item_matches in matched_inputs if index == detection_target[0]),
+            [],
+        )
+    masking_detections = detections_for_masking(masking_matches)
     composer_text = detection_target[1].content if detection_target is not None else None
     masked = apply_placeholders(composer_text, masking_detections) if action == ACTION_MASK and masking_detections and composer_text else None
     active_filter_rule_set_version = payload.filter_config_revision or filter_rule_set_version(rules)
@@ -511,7 +532,7 @@ async def analyze_prompt(
         risk_level=risk_level,
         user_message=user_message_for_action(action, has_unavailable_input),
         allow_original_send=allow_original_send(action),
-        requires_user_confirmation=requires_user_confirmation(action),
+        requires_user_confirmation=requires_user_confirmation(action, matches),
         detections=response_detections(matched_inputs),
         input_results=input_results_for_payload(payload, detection_input_indexes),
         content_unavailable_inputs=content_unavailable_summaries(payload),
