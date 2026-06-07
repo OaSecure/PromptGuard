@@ -7,9 +7,10 @@ from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
+from sqlalchemy import Index
 
 from app.core.tokens import create_access_token
-from app.models.events import AnalysisEvent, EventDetection
+from app.models.events import AnalysisEvent, EventDetection, EventInput
 from app.models.filters import FilterRule
 from app.routes import analyze as analyze_route
 from app.routes.auth import get_db_session
@@ -51,7 +52,7 @@ class _FakeResult:
 
 
 def _user(status: str = "ACTIVE"):
-    return SimpleNamespace(id=uuid4(), role="USER", status=status, last_event_at=None)
+    return SimpleNamespace(id=uuid4(), login_id="user_123", role="USER", status=status, last_event_at=None)
 
 
 def _bearer_header(user_id):
@@ -154,6 +155,31 @@ def test_analyze_requires_credentials() -> None:
     assert response.status_code == 401
 
 
+def test_event_metadata_models_do_not_define_raw_input_storage() -> None:
+    forbidden_columns = {
+        "content",
+        "prompt",
+        "raw_prompt",
+        "file_content",
+        "original_filename",
+        "masked_prompt",
+        "detected_raw_value",
+    }
+
+    assert forbidden_columns.isdisjoint(EventInput.__table__.columns.keys())
+    assert forbidden_columns.isdisjoint(EventDetection.__table__.columns.keys())
+    assert forbidden_columns.isdisjoint(AnalysisEvent.__table__.columns.keys())
+
+
+def test_event_metadata_schema_avoids_required_internal_identifiers() -> None:
+    index_names = {index.name for index in EventDetection.__table__.indexes if isinstance(index, Index)}
+
+    assert AnalysisEvent.__table__.c.prompt_hash.nullable
+    assert AnalysisEvent.__table__.c.prompt_hash_key_id.nullable
+    assert AnalysisEvent.__table__.c.filter_rule_set_version.nullable
+    assert "ix_event_detections_filter_rule_id" in index_names
+
+
 def test_analyze_rejects_disabled_user() -> None:
     user = _user(status="DISABLED")
     client, _ = _client(user)
@@ -238,6 +264,7 @@ def test_analyze_masks_email_and_phone_and_keeps_legacy_event_bridge_raw_free() 
     body = response.json()
     encoded_body = json.dumps(body, ensure_ascii=False)
     events = [item for item in fake_session.added if isinstance(item, AnalysisEvent)]
+    input_rows = [item for item in fake_session.added if isinstance(item, EventInput)]
     detection_rows = [item for item in fake_session.added if isinstance(item, EventDetection)]
 
     assert response.status_code == 200
@@ -260,15 +287,31 @@ def test_analyze_masks_email_and_phone_and_keeps_legacy_event_bridge_raw_free() 
     assert "admin@example.com" not in encoded_body
     assert "010-1234-5678" not in encoded_body
     assert len(events) == 1
-    # Legacy event bridge remains uppercase until the event_inputs persistence PR.
     assert events[0].action == "MASK"
     assert events[0].risk_score == 55
-    assert events[0].prompt_hash != prompt
+    assert events[0].login_id == "user_123"
+    assert events[0].client_request_id == "req_123"
+    assert events[0].prompt_hash is None
+    assert events[0].prompt_hash_key_id is None
+    assert events[0].filter_rule_set_version is None
+    assert events[0].filter_config_revision == "cfg_2026_06_04"
     assert events[0].service == "chatgpt"
     assert events[0].service_domain == "chatgpt.com"
     assert events[0].platform == "chrome"
+    assert len(input_rows) == 1
+    assert input_rows[0].input_id == "in_1"
+    assert input_rows[0].input_index == 0
+    assert input_rows[0].kind == "text"
+    assert input_rows[0].source == "composer"
+    assert input_rows[0].content_included is True
+    assert input_rows[0].content_scanned is True
+    assert input_rows[0].decision_basis == "detection"
     assert len(detection_rows) == 2
     assert {item.type for item in detection_rows} == {"EMAIL", "PHONE"}
+    assert {item.input_id for item in detection_rows} == {"in_1"}
+    assert {item.input_source for item in detection_rows} == {"composer"}
+    assert {item.action for item in detection_rows} == {"MASK"}
+    assert {item.detector_id for item in detection_rows} == {"EMAIL", "PHONE"}
     assert all("raw" not in json.dumps(item.safe_evidence) for item in detection_rows)
     assert all(prompt not in json.dumps(item.safe_evidence) for item in detection_rows)
     assert fake_session.commits == 1
@@ -317,6 +360,7 @@ def test_analyze_accepts_content_unavailable_metadata_without_text_body() -> Non
 
     body = response.json()
     events = [item for item in fake_session.added if isinstance(item, AnalysisEvent)]
+    input_rows = [item for item in fake_session.added if isinstance(item, EventInput)]
     encoded = json.dumps(body, ensure_ascii=False)
     assert response.status_code == 200
     assert body["action"] == "Block"
@@ -346,6 +390,14 @@ def test_analyze_accepts_content_unavailable_metadata_without_text_body() -> Non
     assert "2_500_000" not in encoded
     assert len(events) == 1
     assert events[0].action == "BLOCK"
+    assert len(input_rows) == 2
+    assert input_rows[1].input_id == "in_2"
+    assert input_rows[1].source == "converted_paste"
+    assert input_rows[1].content_included is False
+    assert input_rows[1].content_scanned is False
+    assert input_rows[1].decision_basis == "content_unavailable"
+    assert input_rows[1].content_unavailable_reason == "oversized"
+    assert input_rows[1].limit_exceeded == "MAX_ANALYZE_REQUEST_BYTES"
 
 
 def test_analyze_rejects_original_filename_in_attachment_metadata() -> None:
@@ -457,8 +509,12 @@ def test_analyze_records_custom_keyword_filter_metadata_without_raw_value() -> N
     assert body["detections"][0]["detector_id"] == "INTERNAL_PROJECT"
     assert "Project Hermes" not in encoded
     assert detection_rows[0].source == "custom_keyword"
+    assert detection_rows[0].input_id == "in_1"
+    assert detection_rows[0].filter_rule_id == str(rule.id)
+    assert detection_rows[0].detector_id == "INTERNAL_PROJECT"
+    assert detection_rows[0].action == "MASK"
     assert "Project Hermes" not in json.dumps(detection_rows[0].safe_evidence)
-    assert events[0].filter_rule_set_version == "cfg_2026_06_04"
+    assert events[0].filter_config_revision == "cfg_2026_06_04"
 
 
 def test_analyze_warn_action_requires_confirmation() -> None:
@@ -527,6 +583,8 @@ def test_analyze_returns_business_context_matches_without_raw_spans() -> None:
     ]
     assert body["detections"][0]["source"] == "composer"
     assert detection_rows[0].source == "custom_context_rule"
+    assert detection_rows[0].matched_keywords == ["NDA", "penalty"]
+    assert detection_rows[0].evidence_counts == {"match_count": 2, "matched_condition_count": 2}
     assert "confidential" not in encoded
     assert "amount" not in encoded
 
@@ -547,6 +605,7 @@ def test_analyze_reports_detections_for_each_scannable_input() -> None:
 
     body = response.json()
     detection_rows = [item for item in fake_session.added if isinstance(item, EventDetection)]
+    input_rows = [item for item in fake_session.added if isinstance(item, EventInput)]
     assert response.status_code == 200
     assert body["action"] == "Block"
     assert body["allow_original_send"] is False
@@ -554,7 +613,17 @@ def test_analyze_reports_detections_for_each_scannable_input() -> None:
     assert {item["input_id"] for item in body["detections"]} == {"composer_1", "paste_1", "file_1"}
     assert {item["source"] for item in body["detections"]} == {"composer", "converted_paste", "file"}
     assert {item["decision_basis"] for item in body["input_results"]} == {"detection"}
+    assert {(item.input_id, item.input_index, item.source, item.decision_basis) for item in input_rows} == {
+        ("composer_1", 0, "composer", "detection"),
+        ("paste_1", 1, "converted_paste", "detection"),
+        ("file_1", 2, "file", "detection"),
+    }
     assert len(detection_rows) == 3
+    assert {(item.input_id, item.input_index, item.input_source) for item in detection_rows} == {
+        ("composer_1", 0, "composer"),
+        ("paste_1", 1, "converted_paste"),
+        ("file_1", 2, "file"),
+    }
 
 
 def test_analyze_blocks_file_only_mask_detection_without_masked_prompt() -> None:
@@ -785,7 +854,7 @@ def test_analyze_response_does_not_echo_raw_prompt_or_context_values() -> None:
     assert "detected_raw_value" not in encoded_body
     events = [item for item in fake_session.added if isinstance(item, AnalysisEvent)]
     assert len(events) == 1
-    assert events[0].prompt_hash != raw_prompt
+    assert events[0].prompt_hash is None
 
 
 def test_main_app_registers_analyze_inputs_schema_in_openapi() -> None:
