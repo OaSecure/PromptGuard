@@ -24,8 +24,9 @@ class _ScalarResult:
 
 
 class _FakeSession:
-    def __init__(self, users=None):
+    def __init__(self, users=None, events=None):
         self.users = list(users or [])
+        self.events = list(events or [])
         self.added = []
         self.commits = 0
         self.rollbacks = 0
@@ -35,6 +36,20 @@ class _FakeSession:
     async def execute(self, statement):
         statement_text = str(statement)
         self.statements.append(statement_text)
+        if "analysis_events" in statement_text:
+            params = statement.compile().params
+            cutoff = next((value for value in params.values() if isinstance(value, datetime)), None)
+            if cutoff is None:
+                return _ScalarResult(self.events)
+            return _ScalarResult([event for event in self.events if event.created_at >= cutoff])
+        if "users.role =" in statement_text and "users.status =" in statement_text:
+            return _ScalarResult([user for user in self.users if user.role == "ADMIN" and user.status == "ACTIVE"])
+        if "WHERE" in statement_text and "users.login_id_normalized" in statement_text:
+            params = statement.compile().params
+            login_id_normalized = next((value for key, value in params.items() if key.startswith("login_id_normalized")), None)
+            return _ScalarResult(
+                [user for user in self.users if login_id_normalized is None or user.login_id_normalized == login_id_normalized]
+            )
         if "WHERE" not in statement_text:
             return _ScalarResult(sorted(self.users, key=lambda user: (user.created_at, user.login_id), reverse=True))
         return _ScalarResult(self.users[:1])
@@ -61,12 +76,13 @@ class _FakeSession:
         self.refreshed.append(item)
 
 
-def _user(role: str = "ADMIN", status_value: str = "ACTIVE") -> SimpleNamespace:
+def _user(role: str = "ADMIN", status_value: str = "ACTIVE", login_id: str | None = None) -> SimpleNamespace:
+    login_id = login_id or f"{role.lower()}-{uuid.uuid4().hex[:6]}"
     return SimpleNamespace(
         id=uuid.uuid4(),
-        login_id=f"{role.lower()}-{uuid.uuid4().hex[:6]}",
-        login_id_normalized="admin",
-        username="admin",
+        login_id=login_id,
+        login_id_normalized=login_id.casefold(),
+        username=login_id,
         email="admin@example.com",
         email_normalized="admin@example.com",
         department="Security",
@@ -80,6 +96,15 @@ def _user(role: str = "ADMIN", status_value: str = "ACTIVE") -> SimpleNamespace:
         updated_at=datetime(2026, 5, 29, tzinfo=timezone.utc),
         last_login_at=None,
         last_event_at=None,
+    )
+
+
+def _event(user: SimpleNamespace, action: str, created_at: datetime) -> SimpleNamespace:
+    return SimpleNamespace(
+        id=uuid.uuid4(),
+        user_id=user.id,
+        action=action,
+        created_at=created_at,
     )
 
 
@@ -132,6 +157,23 @@ def _assert_safe_user_payload(body):
     assert body["blocked_count"] == 0
     assert body["masked_count"] == 0
     assert body["warned_count"] == 0
+
+
+def _assert_no_sensitive_user_payload(body):
+    forbidden_keys = {
+        "id",
+        "user_id",
+        "email",
+        "updated_at",
+        "password",
+        "password_hash",
+        "password_hash_algorithm",
+        "password_hash_params",
+        "token",
+        "session",
+        "session_id",
+    }
+    assert forbidden_keys.isdisjoint(body)
 
 
 def test_create_dashboard_user_is_admin_only() -> None:
@@ -241,6 +283,40 @@ def test_list_and_detail_return_safe_metadata() -> None:
     _assert_safe_user_payload(list_response.json()[0])
 
 
+def test_dashboard_users_aggregates_event_counts() -> None:
+    alpha = _user(role="USER", login_id="alpha")
+    beta = _user(role="USER", login_id="beta")
+    fake_session = _FakeSession(
+        [alpha, beta],
+        events=[
+            _event(alpha, "BLOCK", datetime(2026, 5, 29, 9, 0, tzinfo=timezone.utc)),
+            _event(alpha, "MASK", datetime(2026, 5, 29, 10, 0, tzinfo=timezone.utc)),
+            _event(alpha, "WARN", datetime(2026, 5, 29, 11, 0, tzinfo=timezone.utc)),
+            _event(alpha, "ALLOW", datetime(2026, 5, 29, 12, 0, tzinfo=timezone.utc)),
+            _event(alpha, "BLOCK", datetime(2026, 4, 1, 12, 0, tzinfo=timezone.utc)),
+            _event(beta, "MASK", datetime(2026, 5, 29, 13, 0, tzinfo=timezone.utc)),
+        ],
+    )
+    client = _client(fake_session)
+
+    response = client.get("/dashboard/users")
+
+    assert response.status_code == 200
+    rows = {row["login_id"]: row for row in response.json()}
+    assert rows["alpha"]["event_count"] == 4
+    assert rows["alpha"]["blocked_count"] == 1
+    assert rows["alpha"]["masked_count"] == 1
+    assert rows["alpha"]["warned_count"] == 1
+    assert rows["alpha"]["last_event_at"] == "2026-05-29T12:00:00Z"
+    assert rows["beta"]["event_count"] == 1
+    assert rows["beta"]["blocked_count"] == 0
+    assert rows["beta"]["masked_count"] == 1
+    assert rows["beta"]["warned_count"] == 0
+    assert rows["beta"]["last_event_at"] == "2026-05-29T13:00:00Z"
+    for row in rows.values():
+        _assert_no_sensitive_user_payload(row)
+
+
 def test_role_patch_returns_404_for_missing_login_id() -> None:
     client = _client(_FakeSession())
 
@@ -250,9 +326,10 @@ def test_role_patch_returns_404_for_missing_login_id() -> None:
 
 
 def test_role_and_status_patch_validate_values_and_update_existing_user() -> None:
+    current_admin = _user(role="ADMIN", login_id="current-admin")
     user = _user(role="USER")
-    fake_session = _FakeSession([user])
-    client = _client(fake_session)
+    fake_session = _FakeSession([current_admin, user])
+    client = _client(fake_session, current_admin=current_admin)
 
     role_response = client.patch(f"/dashboard/users/{user.login_id}/role", json={"role": "ADMIN"})
     status_response = client.patch(f"/dashboard/users/{user.login_id}/status", json={"status": "DISABLED"})
@@ -268,7 +345,7 @@ def test_role_and_status_patch_validate_values_and_update_existing_user() -> Non
     assert fake_session.commits == 2
 
 
-def test_admin_cannot_demote_or_disable_self() -> None:
+def test_cannot_remove_last_active_admin() -> None:
     current_admin = _user(role="ADMIN")
     fake_session = _FakeSession([current_admin])
     client = _client(fake_session, current_admin=current_admin)
@@ -281,6 +358,20 @@ def test_admin_cannot_demote_or_disable_self() -> None:
     assert current_admin.role == "ADMIN"
     assert current_admin.status == "ACTIVE"
     assert fake_session.commits == 0
+
+
+def test_can_update_admin_when_another_active_admin_remains() -> None:
+    current_admin = _user(role="ADMIN", login_id="current-admin")
+    target_admin = _user(role="ADMIN", login_id="target-admin")
+    fake_session = _FakeSession([current_admin, target_admin])
+    client = _client(fake_session, current_admin=current_admin)
+
+    role_response = client.patch(f"/dashboard/users/{target_admin.login_id}/role", json={"role": "USER"})
+    target_admin.role = "ADMIN"
+    status_response = client.patch(f"/dashboard/users/{target_admin.login_id}/status", json={"status": "DISABLED"})
+
+    assert role_response.status_code == 200
+    assert status_response.status_code == 200
 
 
 def test_dashboard_users_router_uses_dashboard_session_and_csrf_guards() -> None:
