@@ -1,6 +1,7 @@
 import { DashboardApiError, dashboardRequest } from "./dashboardApi.js";
 import { getDashboardCsrfToken, logoutDashboardSession, refreshDashboardCsrf } from "./session.js";
 import { deriveUsersScreenState, loadingUsersScreenState, normalizeCreateUserPayload, normalizeRolePayload, normalizeStatusPayload, projectUserTableRows, safeUsersMutationErrorMessage, } from "./usersPageModel.js";
+import { buildCreateUserRequest, buildUpdateUserRoleRequest, buildUpdateUserStatusRequest, shouldRedirectUsersScreen, } from "./usersRequestModel.js";
 const usersTableBody = requireElement("users-table-body");
 const usersMessage = requireElement("users-message");
 const createUserForm = requireElement("create-user-form");
@@ -29,7 +30,7 @@ function setCreateUserPending(nextPending) {
 }
 function showMutationError(error) {
     setMessage(safeUsersMutationErrorMessage(error instanceof DashboardApiError ? error.status : 0), "error");
-    if (error instanceof DashboardApiError && (error.status === 401 || error.status === 403)) {
+    if (error instanceof DashboardApiError && shouldRedirectUsersScreen(error.status)) {
         window.setTimeout(redirectToLogin, 700);
     }
 }
@@ -121,29 +122,20 @@ async function fetchUsers() {
 }
 async function updateUserRole(loginId, payload) {
     const csrfToken = getDashboardCsrfToken() ?? (await refreshDashboardCsrf());
-    await dashboardRequest(`/dashboard/users/${encodeURIComponent(loginId)}/role`, {
-        method: "PATCH",
-        csrfToken,
-        body: payload,
-    });
+    const request = buildUpdateUserRoleRequest(loginId, payload, csrfToken);
+    await dashboardRequest(request.path, request.options);
     await loadUsers();
 }
 async function updateUserStatus(loginId, payload) {
     const csrfToken = getDashboardCsrfToken() ?? (await refreshDashboardCsrf());
-    await dashboardRequest(`/dashboard/users/${encodeURIComponent(loginId)}/status`, {
-        method: "PATCH",
-        csrfToken,
-        body: payload,
-    });
+    const request = buildUpdateUserStatusRequest(loginId, payload, csrfToken);
+    await dashboardRequest(request.path, request.options);
     await loadUsers();
 }
 async function createUser(payload) {
     const csrfToken = getDashboardCsrfToken() ?? (await refreshDashboardCsrf());
-    await dashboardRequest("/dashboard/users", {
-        method: "POST",
-        csrfToken,
-        body: payload,
-    });
+    const request = buildCreateUserRequest(payload, csrfToken);
+    await dashboardRequest(request.path, request.options);
 }
 async function loadUsers() {
     const loadingState = loadingUsersScreenState();
@@ -157,7 +149,7 @@ async function loadUsers() {
     catch (error) {
         const screenState = deriveUsersScreenState([], true);
         setMessage(screenState.message, screenState.kind);
-        if (error instanceof DashboardApiError && (error.status === 401 || error.status === 403)) {
+        if (error instanceof DashboardApiError && shouldRedirectUsersScreen(error.status)) {
             window.setTimeout(redirectToLogin, 700);
         }
     }

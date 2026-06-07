@@ -52,6 +52,7 @@ const TABLE_COLUMNS = [
   "department",
   "role",
   "status",
+  "last_login_at",
   "last_event_at",
   "created_at",
   "event_count",
@@ -93,6 +94,8 @@ function columnText(user: DashboardUserRow, column: TableColumn): string {
       return user.role;
     case "status":
       return user.status;
+    case "last_login_at":
+      return formatDateTime(user.last_login_at);
     case "last_event_at":
       return formatDateTime(user.last_event_at);
     case "created_at":

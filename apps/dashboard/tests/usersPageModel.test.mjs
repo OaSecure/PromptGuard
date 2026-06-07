@@ -37,6 +37,7 @@ test("projectUserTableRows maps safe dashboard user fields only", () => {
       "department",
       "role",
       "status",
+      "last_login_at",
       "last_event_at",
       "created_at",
       "event_count",
@@ -47,8 +48,9 @@ test("projectUserTableRows maps safe dashboard user fields only", () => {
   );
   assert.equal(rows[0].cells[0].text, "alice");
   assert.equal(rows[0].cells[3].text, "ADMIN");
-  assert.equal(rows[0].cells[7].text, "12");
-  assert.equal(rows[0].cells.some((cell) => cell.key === "last_login_at"), false);
+  assert.equal(rows[0].cells[5].text, "-");
+  assert.equal(rows[0].cells[8].text, "12");
+  assert.equal(rows[0].cells.some((cell) => cell.key === "last_login_at"), true);
 });
 
 test("normalizeCreateUserPayload trims safe fields and omits empty department", () => {

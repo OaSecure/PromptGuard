@@ -3,8 +3,6 @@ import { getDashboardCsrfToken, logoutDashboardSession, refreshDashboardCsrf } f
 import {
   type CreateUserPayload,
   type DashboardUserRow,
-  type UpdateRolePayload,
-  type UpdateStatusPayload,
   deriveUsersScreenState,
   loadingUsersScreenState,
   normalizeCreateUserPayload,
@@ -13,6 +11,12 @@ import {
   projectUserTableRows,
   safeUsersMutationErrorMessage,
 } from "./usersPageModel.js";
+import {
+  buildCreateUserRequest,
+  buildUpdateUserRoleRequest,
+  buildUpdateUserStatusRequest,
+  shouldRedirectUsersScreen,
+} from "./usersRequestModel.js";
 
 const usersTableBody = requireElement<HTMLTableSectionElement>("users-table-body");
 const usersMessage = requireElement<HTMLElement>("users-message");
@@ -51,7 +55,7 @@ function showMutationError(error: unknown): void {
     safeUsersMutationErrorMessage(error instanceof DashboardApiError ? error.status : 0),
     "error",
   );
-  if (error instanceof DashboardApiError && (error.status === 401 || error.status === 403)) {
+  if (error instanceof DashboardApiError && shouldRedirectUsersScreen(error.status)) {
     window.setTimeout(redirectToLogin, 700);
   }
 }
@@ -156,33 +160,24 @@ async function fetchUsers(): Promise<DashboardUserRow[]> {
   return dashboardRequest<DashboardUserRow[]>("/dashboard/users");
 }
 
-async function updateUserRole(loginId: string, payload: UpdateRolePayload): Promise<void> {
+async function updateUserRole(loginId: string, payload: { role: "USER" | "ADMIN" }): Promise<void> {
   const csrfToken = getDashboardCsrfToken() ?? (await refreshDashboardCsrf());
-  await dashboardRequest<void>(`/dashboard/users/${encodeURIComponent(loginId)}/role`, {
-    method: "PATCH",
-    csrfToken,
-    body: payload,
-  });
+  const request = buildUpdateUserRoleRequest(loginId, payload, csrfToken);
+  await dashboardRequest<void>(request.path, request.options);
   await loadUsers();
 }
 
-async function updateUserStatus(loginId: string, payload: UpdateStatusPayload): Promise<void> {
+async function updateUserStatus(loginId: string, payload: { status: "ACTIVE" | "DISABLED" }): Promise<void> {
   const csrfToken = getDashboardCsrfToken() ?? (await refreshDashboardCsrf());
-  await dashboardRequest<void>(`/dashboard/users/${encodeURIComponent(loginId)}/status`, {
-    method: "PATCH",
-    csrfToken,
-    body: payload,
-  });
+  const request = buildUpdateUserStatusRequest(loginId, payload, csrfToken);
+  await dashboardRequest<void>(request.path, request.options);
   await loadUsers();
 }
 
 async function createUser(payload: CreateUserPayload): Promise<void> {
   const csrfToken = getDashboardCsrfToken() ?? (await refreshDashboardCsrf());
-  await dashboardRequest<void>("/dashboard/users", {
-    method: "POST",
-    csrfToken,
-    body: payload,
-  });
+  const request = buildCreateUserRequest(payload, csrfToken);
+  await dashboardRequest<void>(request.path, request.options);
 }
 
 async function loadUsers(): Promise<void> {
@@ -197,7 +192,7 @@ async function loadUsers(): Promise<void> {
   } catch (error) {
     const screenState = deriveUsersScreenState([], true);
     setMessage(screenState.message, screenState.kind);
-    if (error instanceof DashboardApiError && (error.status === 401 || error.status === 403)) {
+    if (error instanceof DashboardApiError && shouldRedirectUsersScreen(error.status)) {
       window.setTimeout(redirectToLogin, 700);
     }
   }
