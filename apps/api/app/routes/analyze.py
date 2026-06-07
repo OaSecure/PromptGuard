@@ -259,6 +259,18 @@ class ContentUnavailableInput(BaseModel):
     limit_exceeded: str | None = None
 
 
+class BusinessContextMatch(BaseModel):
+    input_id: str
+    input_index: int
+    kind: str
+    source: str
+    category: str
+    reason_code: str
+    match_count: int
+    matched_keywords: list[str]
+    evidence_counts: dict[str, int]
+
+
 class AnalyzeResponse(BaseModel):
     event_id: uuid.UUID
     request_id: str
@@ -272,6 +284,7 @@ class AnalyzeResponse(BaseModel):
     detections: list[AnalyzeDetection]
     input_results: list[AnalyzeInputResult]
     content_unavailable_inputs: list[ContentUnavailableInput]
+    business_context_matches: list[BusinessContextMatch]
     client_request_id: str
     filter_config_revision: str
     masked_prompt: str | None = None
@@ -310,6 +323,31 @@ def response_detections(matched_inputs: list[tuple[int, AnalyzeInput, list[RuleM
                 )
             )
     return detections
+
+
+def business_context_matches(matched_inputs: list[tuple[int, AnalyzeInput, list[RuleMatch]]]) -> list[BusinessContextMatch]:
+    context_matches: list[BusinessContextMatch] = []
+    for input_index, input_item, matches in matched_inputs:
+        for match in matches:
+            if match.source != "custom_context_rule":
+                continue
+            matched_keywords = match.safe_evidence.get("matched_keywords", [])
+            if not isinstance(matched_keywords, list):
+                matched_keywords = []
+            context_matches.append(
+                BusinessContextMatch(
+                    input_id=input_item.input_id,
+                    input_index=input_index,
+                    kind=input_item.kind,
+                    source=input_item.source,
+                    category=match.category,
+                    reason_code=match.reason_code,
+                    match_count=match.match_count,
+                    matched_keywords=[item for item in matched_keywords if isinstance(item, str)],
+                    evidence_counts={"matched_condition_count": match.match_count},
+                )
+            )
+    return context_matches
 
 
 def event_detection_rows(event_id: uuid.UUID, matches: list[RuleMatch]) -> list[EventDetection]:
@@ -536,6 +574,7 @@ async def analyze_prompt(
         detections=response_detections(matched_inputs),
         input_results=input_results_for_payload(payload, detection_input_indexes),
         content_unavailable_inputs=content_unavailable_summaries(payload),
+        business_context_matches=business_context_matches(matched_inputs),
         client_request_id=payload.client_request_id,
         filter_config_revision=active_filter_rule_set_version,
         masked_prompt=masked.text if masked is not None else None,
