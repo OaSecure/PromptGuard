@@ -1,19 +1,21 @@
 import json
 import re
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.tokens import utc_now
 from app.masking.placeholder import apply_placeholders
 from app.models.auth import User
-from app.models.events import AnalysisEvent, EventDetection, EventInput
+from app.models.events import AnalysisEvent, EventDetection, EventInput, IdempotencyKey
 from app.models.filters import FilterRule
 from app.routes.auth import get_db_session, require_active_user
 from app.services.filter_rules import (
@@ -31,6 +33,7 @@ MAX_ANALYZE_REQUEST_BYTES = 2_097_152
 MAX_COMPOSER_TEXT_BYTES = 262_144
 MAX_CONVERTED_PASTE_TEXT_BYTES = 1_048_576
 MAX_FILE_TEXT_SCAN_BYTES = 1_048_576
+IDEMPOTENCY_TTL = timedelta(hours=24)
 SAFE_CONTEXT_LABEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$")
 SAFE_CONTEXT_DOMAIN_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,253}[A-Za-z0-9])?$")
 SAFE_INPUT_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$")
@@ -546,6 +549,35 @@ def score_for_final_action(score: int, action: str) -> int:
     return score
 
 
+async def load_idempotency_key(
+    session: AsyncSession,
+    login_id: str,
+    client_request_id: str,
+) -> IdempotencyKey | None:
+    result = await session.execute(
+        select(IdempotencyKey).where(
+            IdempotencyKey.login_id == login_id,
+            IdempotencyKey.client_request_id == client_request_id,
+        )
+    )
+    return result.scalars().first()
+
+
+def duplicate_request_error() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail={
+            "code": "DUPLICATE_REQUEST_RETRY_REQUIRED",
+            "message": "Duplicate Analyze request cannot be safely replayed. Retry with a new client_request_id.",
+        },
+    )
+
+
+def is_idempotency_conflict(error: IntegrityError) -> bool:
+    message = str(error).casefold()
+    return "idempotency_keys" in message or "pk_idempotency_keys" in message
+
+
 @router.post("/analyze", response_model=AnalyzeResponse, response_model_exclude_none=True)
 async def analyze_prompt(
     payload: AnalyzeRequest,
@@ -555,6 +587,10 @@ async def analyze_prompt(
     request_id = payload.client_request_id
     event_id = uuid.uuid4()
     checked_at = utc_now()
+    existing_idempotency_key = await load_idempotency_key(session, current_user.login_id, payload.client_request_id)
+    if existing_idempotency_key is not None:
+        raise duplicate_request_error()
+
     rules = await load_active_filter_rules(session)
     text_inputs = included_text_inputs(payload)
     matched_inputs = matched_text_inputs(text_inputs, rules)
@@ -596,9 +632,23 @@ async def analyze_prompt(
         session.add(row)
     for row in event_detection_rows(event_id, matched_inputs):
         session.add(row)
+    session.add(
+        IdempotencyKey(
+            login_id=current_user.login_id,
+            client_request_id=payload.client_request_id,
+            event_id=event_id,
+            expires_at=checked_at + IDEMPOTENCY_TTL,
+        )
+    )
 
     current_user.last_event_at = checked_at
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError as exc:
+        await session.rollback()
+        if is_idempotency_conflict(exc):
+            raise duplicate_request_error() from exc
+        raise
 
     return AnalyzeResponse(
         event_id=event_id,

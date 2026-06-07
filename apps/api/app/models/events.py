@@ -36,6 +36,10 @@ class AnalysisEvent(Base):
         back_populates="event",
         cascade="all, delete-orphan",
     )
+    idempotency_keys: Mapped[list["IdempotencyKey"]] = relationship(
+        back_populates="event",
+        cascade="all, delete-orphan",
+    )
 
     __table_args__ = (
         CheckConstraint("action in ('ALLOW', 'WARN', 'MASK', 'BLOCK')", name="ck_analysis_events_action"),
@@ -46,6 +50,27 @@ class AnalysisEvent(Base):
         Index("ix_analysis_events_user_created_at", "user_id", "created_at"),
         Index("ix_analysis_events_action_created_at", "action", "created_at"),
         Index("ix_analysis_events_created_at", "created_at"),
+    )
+
+
+class IdempotencyKey(Base):
+    __tablename__ = "idempotency_keys"
+
+    login_id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    client_request_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    event_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("analysis_events.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    event: Mapped[AnalysisEvent] = relationship(back_populates="idempotency_keys")
+
+    __table_args__ = (
+        Index("ix_idempotency_keys_event_id", "event_id"),
+        Index("ix_idempotency_keys_expires_at", "expires_at"),
     )
 
 

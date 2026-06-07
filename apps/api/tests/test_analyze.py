@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -8,9 +9,10 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
 from sqlalchemy import Index
+from sqlalchemy.exc import IntegrityError
 
 from app.core.tokens import create_access_token
-from app.models.events import AnalysisEvent, EventDetection, EventInput
+from app.models.events import AnalysisEvent, EventDetection, EventInput, IdempotencyKey
 from app.models.filters import FilterRule
 from app.routes import analyze as analyze_route
 from app.routes.auth import get_db_session
@@ -22,13 +24,17 @@ class _FakeSession:
         self.rules = rules
         self.added = []
         self.commits = 0
+        self.rollbacks = 0
+        self.commit_error = None
 
     async def get(self, model, user_id):
         if self.user is not None and self.user.id == user_id:
             return self.user
         return None
 
-    async def execute(self, _statement):
+    async def execute(self, statement):
+        if "FROM idempotency_keys" in str(statement):
+            return _FakeResult([])
         if self.rules is None:
             raise RuntimeError("filter rules not configured")
         return _FakeResult(self.rules)
@@ -38,6 +44,11 @@ class _FakeSession:
 
     async def commit(self):
         self.commits += 1
+        if self.commit_error is not None:
+            raise self.commit_error
+
+    async def rollback(self):
+        self.rollbacks += 1
 
 
 class _FakeResult:
@@ -50,9 +61,16 @@ class _FakeResult:
     def all(self):
         return self.items
 
+    def first(self):
+        return self.items[0] if self.items else None
+
 
 def _user(status: str = "ACTIVE"):
     return SimpleNamespace(id=uuid4(), login_id="user_123", role="USER", status=status, last_event_at=None)
+
+
+def _user_with_login_id(login_id: str):
+    return SimpleNamespace(id=uuid4(), login_id=login_id, role="USER", status="ACTIVE", last_event_at=None)
 
 
 def _bearer_header(user_id):
@@ -169,6 +187,28 @@ def test_event_metadata_models_do_not_define_raw_input_storage() -> None:
     assert forbidden_columns.isdisjoint(EventInput.__table__.columns.keys())
     assert forbidden_columns.isdisjoint(EventDetection.__table__.columns.keys())
     assert forbidden_columns.isdisjoint(AnalysisEvent.__table__.columns.keys())
+    assert forbidden_columns.isdisjoint(IdempotencyKey.__table__.columns.keys())
+
+
+def test_analyze_idempotency_schema_is_metadata_only() -> None:
+    columns = set(IdempotencyKey.__table__.columns.keys())
+    primary_key_columns = {column.name for column in IdempotencyKey.__table__.primary_key.columns}
+    forbidden_columns = {
+        "content",
+        "prompt",
+        "raw_prompt",
+        "file_content",
+        "original_filename",
+        "masked_prompt",
+        "detected_raw_value",
+        "request_fingerprint",
+        "prompt_hash",
+        "prompt_hash_key_id",
+    }
+
+    assert {"login_id", "client_request_id", "event_id", "created_at", "expires_at"}.issubset(columns)
+    assert primary_key_columns == {"login_id", "client_request_id"}
+    assert forbidden_columns.isdisjoint(columns)
 
 
 def test_event_metadata_schema_avoids_required_internal_identifiers() -> None:
@@ -248,6 +288,122 @@ def test_analyze_accepts_inputs_bundle_and_returns_mvp_response_shape() -> None:
     assert body["filter_config_revision"] == "cfg_2026_06_04"
     assert fake_session.commits == 1
     assert user.last_event_at is not None
+
+
+def test_analyze_rejects_duplicate_client_request_without_second_event(monkeypatch) -> None:
+    user = _user()
+    client, fake_session = _client(user)
+    raw_prompt = "SECRET-DUPLICATE-PROMPT-DO-NOT-ECHO"
+
+    async def fake_load_idempotency_key(session, login_id, client_request_id):
+        return next(
+            (
+                item
+                for item in session.added
+                if isinstance(item, IdempotencyKey)
+                and item.login_id == login_id
+                and item.client_request_id == client_request_id
+            ),
+            None,
+        )
+
+    monkeypatch.setattr(analyze_route, "load_idempotency_key", fake_load_idempotency_key)
+
+    first_response = client.post(
+        "/prompts/analyze",
+        headers=_bearer_header(user.id),
+        json=_analyze_payload(_text_input("in_1", raw_prompt)),
+    )
+    duplicate_response = client.post(
+        "/prompts/analyze",
+        headers=_bearer_header(user.id),
+        json=_analyze_payload(_text_input("in_1", raw_prompt)),
+    )
+
+    events = [item for item in fake_session.added if isinstance(item, AnalysisEvent)]
+    idempotency_keys = [item for item in fake_session.added if isinstance(item, IdempotencyKey)]
+    duplicate_body = duplicate_response.json()
+    encoded_duplicate = json.dumps(duplicate_body, ensure_ascii=False)
+    assert first_response.status_code == 200
+    assert duplicate_response.status_code == 409
+    assert duplicate_body["detail"]["code"] == "DUPLICATE_REQUEST_RETRY_REQUIRED"
+    assert raw_prompt not in encoded_duplicate
+    assert "masked_prompt" not in encoded_duplicate
+    assert len(events) == 1
+    assert len(idempotency_keys) == 1
+    assert idempotency_keys[0].login_id == user.login_id
+    assert idempotency_keys[0].client_request_id == "req_123"
+    assert idempotency_keys[0].event_id == events[0].id
+    assert idempotency_keys[0].expires_at > datetime.now(timezone.utc)
+    assert fake_session.commits == 1
+
+
+def test_analyze_allows_same_client_request_id_for_different_login_ids(monkeypatch) -> None:
+    user_a = _user_with_login_id("user_123")
+    user_b = _user_with_login_id("user_456")
+    client_a, session_a = _client(user_a)
+    client_b, session_b = _client(user_b)
+
+    async def fake_load_idempotency_key(session, login_id, client_request_id):
+        return next(
+            (
+                item
+                for candidate_session in (session_a, session_b)
+                for item in candidate_session.added
+                if isinstance(item, IdempotencyKey)
+                and item.login_id == login_id
+                and item.client_request_id == client_request_id
+            ),
+            None,
+        )
+
+    monkeypatch.setattr(analyze_route, "load_idempotency_key", fake_load_idempotency_key)
+
+    response_a = client_a.post(
+        "/prompts/analyze",
+        headers=_bearer_header(user_a.id),
+        json=_analyze_payload(client_request_id="req_shared"),
+    )
+    response_b = client_b.post(
+        "/prompts/analyze",
+        headers=_bearer_header(user_b.id),
+        json=_analyze_payload(client_request_id="req_shared"),
+    )
+
+    events = [item for item in session_a.added + session_b.added if isinstance(item, AnalysisEvent)]
+    idempotency_keys = [item for item in session_a.added + session_b.added if isinstance(item, IdempotencyKey)]
+    assert response_a.status_code == 200
+    assert response_b.status_code == 200
+    assert len(events) == 2
+    assert {(item.login_id, item.client_request_id) for item in idempotency_keys} == {
+        ("user_123", "req_shared"),
+        ("user_456", "req_shared"),
+    }
+
+
+def test_analyze_returns_duplicate_error_for_concurrent_idempotency_insert_conflict() -> None:
+    user = _user()
+    client, fake_session = _client(user)
+    fake_session.commit_error = IntegrityError(
+        statement="INSERT INTO idempotency_keys",
+        params=None,
+        orig=Exception("duplicate key value violates unique constraint idempotency_keys_pkey"),
+    )
+
+    response = client.post(
+        "/prompts/analyze",
+        headers=_bearer_header(user.id),
+        json=_analyze_payload(),
+    )
+
+    events = [item for item in fake_session.added if isinstance(item, AnalysisEvent)]
+    idempotency_keys = [item for item in fake_session.added if isinstance(item, IdempotencyKey)]
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "DUPLICATE_REQUEST_RETRY_REQUIRED"
+    assert len(events) == 1
+    assert len(idempotency_keys) == 1
+    assert fake_session.commits == 1
+    assert fake_session.rollbacks == 1
 
 
 def test_analyze_masks_email_and_phone_and_keeps_legacy_event_bridge_raw_free() -> None:
