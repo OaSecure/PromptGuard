@@ -326,6 +326,7 @@ def test_get_event_returns_only_custom_context_business_matches() -> None:
     context_detection.evidence_counts = {
         "match_count": 2,
         "matched_condition_count": 2,
+        "admin@example.com": 1,
         "raw_excerpt": "secret prompt excerpt",
     }
     fake_session = _FakeSession(rows=[(event, event_user)], detections=[built_in_detection, context_detection])
@@ -339,6 +340,7 @@ def test_get_event_returns_only_custom_context_business_matches() -> None:
     assert len(body["business_context_matches"]) == 1
     assert body["business_context_matches"][0]["matched_keywords"] == ["finance", "내부정책"]
     assert body["business_context_matches"][0]["evidence_counts"] == {"match_count": 2, "matched_condition_count": 2}
+    assert "admin@example.com" not in encoded
     assert "secret prompt excerpt" not in encoded
     assert "raw_excerpt" not in encoded
 

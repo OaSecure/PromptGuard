@@ -17,6 +17,7 @@ router = APIRouter(prefix="/dashboard/events", tags=["dashboard-events"])
 
 ActionFilter = Literal["ALLOW", "WARN", "MASK", "BLOCK"]
 RiskLevelFilter = Literal["low", "medium", "high", "critical"]
+ALLOWED_EVIDENCE_COUNT_KEYS = {"match_count", "matched_condition_count", "keyword_count"}
 
 
 class EventDetectionSummary(BaseModel):
@@ -164,7 +165,7 @@ def safe_keywords(value: Any) -> list[str]:
 def safe_counts(value: Any) -> dict[str, int]:
     if not isinstance(value, dict):
         return {}
-    return {key: item for key, item in value.items() if isinstance(key, str) and isinstance(item, int)}
+    return {key: item for key, item in value.items() if key in ALLOWED_EVIDENCE_COUNT_KEYS and isinstance(item, int)}
 
 
 def is_business_context_detection(detection: EventDetection) -> bool:
