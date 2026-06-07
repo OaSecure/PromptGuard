@@ -479,6 +479,58 @@ def test_analyze_warn_action_requires_confirmation() -> None:
     assert body["detections"][0]["action"] == "Warn"
 
 
+def test_analyze_returns_business_context_matches_without_raw_spans() -> None:
+    user = _user()
+    rule = _filter_rule(
+        kind="context_rule",
+        category="Business",
+        label="NDA Context",
+        placeholder="BUSINESS_CONTEXT",
+        severity="medium",
+        action="WARN",
+        keyword=None,
+        config_json={
+            "keyword_groups": {"contract": ["NDA", "penalty"]},
+            "exclusion_keywords": [],
+            "window_size": 80,
+            "min_condition_count": 2,
+            "sensitivity": "medium",
+        },
+    )
+    client, fake_session = _client(user, rules=[rule])
+
+    response = client.post(
+        "/prompts/analyze",
+        headers=_bearer_header(user.id),
+        json=_analyze_payload(_text_input("in_1", "NDA penalty amount is confidential.")),
+    )
+
+    body = response.json()
+    encoded = json.dumps(body, ensure_ascii=False)
+    detection_rows = [item for item in fake_session.added if isinstance(item, EventDetection)]
+
+    assert response.status_code == 200
+    assert body["action"] == "Warn"
+    assert body["requires_user_confirmation"] is True
+    assert body["business_context_matches"] == [
+        {
+            "input_id": "in_1",
+            "input_index": 0,
+            "kind": "text",
+            "source": "composer",
+            "category": "Business",
+            "reason_code": "CUSTOM_CONTEXT_RULE_NDA_CONTEXT",
+            "match_count": 2,
+            "matched_keywords": ["NDA", "penalty"],
+            "evidence_counts": {"matched_condition_count": 2},
+        }
+    ]
+    assert body["detections"][0]["source"] == "composer"
+    assert detection_rows[0].source == "custom_context_rule"
+    assert "confidential" not in encoded
+    assert "amount" not in encoded
+
+
 def test_analyze_reports_detections_for_each_scannable_input() -> None:
     user = _user()
     client, fake_session = _client(user)

@@ -250,10 +250,14 @@ def _context_rule_match(prompt: str, rule: FilterRule) -> RuleMatch | None:
     if not isinstance(groups, dict):
         return None
     min_count = int(config.get("min_condition_count", 1))
-    matched_terms = 0
+    matched_keywords: list[str] = []
+    prompt_folded = prompt.casefold()
     for terms in groups.values():
         if isinstance(terms, list):
-            matched_terms += sum(1 for term in terms if isinstance(term, str) and term and term.casefold() in prompt.casefold())
+            for term in terms:
+                if isinstance(term, str) and term and term.casefold() in prompt_folded:
+                    matched_keywords.append(term)
+    matched_terms = len(matched_keywords)
     if matched_terms < min_count:
         return None
     return RuleMatch(
@@ -268,7 +272,10 @@ def _context_rule_match(prompt: str, rule: FilterRule) -> RuleMatch | None:
         count=matched_terms,
         reason_code=_reason_code(rule),
         match_count=matched_terms,
-        safe_evidence={"matched_condition_count": matched_terms},
+        safe_evidence={
+            "matched_condition_count": matched_terms,
+            "matched_keywords": sorted(set(matched_keywords), key=str.casefold),
+        },
         detections=[],
     )
 
