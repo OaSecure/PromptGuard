@@ -16,12 +16,12 @@ class AnalysisEvent(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"))
     login_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
     client_request_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
-    prompt_hash: Mapped[str] = mapped_column(String(160), nullable=False)
-    prompt_hash_key_id: Mapped[str] = mapped_column(String(80), nullable=False)
+    prompt_hash: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    prompt_hash_key_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
     action: Mapped[str] = mapped_column(String(20), nullable=False)
     risk_score: Mapped[int] = mapped_column(Integer, nullable=False)
     risk_level: Mapped[str] = mapped_column(String(20), nullable=False)
-    filter_rule_set_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    filter_rule_set_version: Mapped[str | None] = mapped_column(String(80), nullable=True)
     filter_config_revision: Mapped[str | None] = mapped_column(String(80), nullable=True)
     service: Mapped[str | None] = mapped_column(String(120), nullable=True)
     service_domain: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -133,4 +133,5 @@ class EventDetection(Base):
         Index("ix_event_detections_event_input_index", "event_id", "input_index"),
         Index("ix_event_detections_type", "type"),
         Index("ix_event_detections_category", "category"),
+        Index("ix_event_detections_filter_rule_id", "filter_rule_id"),
     )

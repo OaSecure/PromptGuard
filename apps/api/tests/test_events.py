@@ -210,14 +210,14 @@ def test_get_event_returns_detail_without_raw_values() -> None:
     assert response.status_code == 200
     assert body["event_id"] == str(event.id)
     assert body["platform"] == "web"
-    assert body["prompt_hash_prefix"] == "abcdef123456"
-    assert body["prompt_hash_prefix"] != event.prompt_hash
+    assert "prompt_hash_prefix" not in body
     assert body["detection_summary"] == [{"category": "PII", "type": "EMAIL", "count": 1}]
     assert body["detections"][0]["safe_evidence"] == {"value_lengths": [16]}
     assert "abcdef1234567890abcdef1234567890" not in encoded
     assert "raw_prompt" not in encoded
     assert "masked_prompt" not in encoded
     assert "raw_detected_value" not in encoded
+    assert "prompt_hash_prefix" not in encoded
 
 
 def test_get_event_whitelists_safe_evidence_shape() -> None:

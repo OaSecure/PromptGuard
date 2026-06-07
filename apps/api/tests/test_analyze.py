@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
+from sqlalchemy import Index
 
 from app.core.tokens import create_access_token
 from app.models.events import AnalysisEvent, EventDetection, EventInput
@@ -170,6 +171,15 @@ def test_event_metadata_models_do_not_define_raw_input_storage() -> None:
     assert forbidden_columns.isdisjoint(AnalysisEvent.__table__.columns.keys())
 
 
+def test_event_metadata_schema_avoids_required_internal_identifiers() -> None:
+    index_names = {index.name for index in EventDetection.__table__.indexes if isinstance(index, Index)}
+
+    assert AnalysisEvent.__table__.c.prompt_hash.nullable
+    assert AnalysisEvent.__table__.c.prompt_hash_key_id.nullable
+    assert AnalysisEvent.__table__.c.filter_rule_set_version.nullable
+    assert "ix_event_detections_filter_rule_id" in index_names
+
+
 def test_analyze_rejects_disabled_user() -> None:
     user = _user(status="DISABLED")
     client, _ = _client(user)
@@ -281,7 +291,9 @@ def test_analyze_masks_email_and_phone_and_keeps_legacy_event_bridge_raw_free() 
     assert events[0].risk_score == 55
     assert events[0].login_id == "user_123"
     assert events[0].client_request_id == "req_123"
-    assert events[0].prompt_hash != prompt
+    assert events[0].prompt_hash is None
+    assert events[0].prompt_hash_key_id is None
+    assert events[0].filter_rule_set_version is None
     assert events[0].filter_config_revision == "cfg_2026_06_04"
     assert events[0].service == "chatgpt"
     assert events[0].service_domain == "chatgpt.com"
@@ -502,7 +514,7 @@ def test_analyze_records_custom_keyword_filter_metadata_without_raw_value() -> N
     assert detection_rows[0].detector_id == "INTERNAL_PROJECT"
     assert detection_rows[0].action == "MASK"
     assert "Project Hermes" not in json.dumps(detection_rows[0].safe_evidence)
-    assert events[0].filter_rule_set_version == "cfg_2026_06_04"
+    assert events[0].filter_config_revision == "cfg_2026_06_04"
 
 
 def test_analyze_warn_action_requires_confirmation() -> None:
@@ -842,7 +854,7 @@ def test_analyze_response_does_not_echo_raw_prompt_or_context_values() -> None:
     assert "detected_raw_value" not in encoded_body
     events = [item for item in fake_session.added if isinstance(item, AnalysisEvent)]
     assert len(events) == 1
-    assert events[0].prompt_hash != raw_prompt
+    assert events[0].prompt_hash is None
 
 
 def test_main_app_registers_analyze_inputs_schema_in_openapi() -> None:

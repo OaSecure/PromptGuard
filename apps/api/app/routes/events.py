@@ -63,7 +63,6 @@ class EventDetail(EventListItem):
     platform: str | None
     detection_summary: list[EventDetectionSummary]
     detections: list[EventDetectionResponse]
-    prompt_hash_prefix: str
 
 
 def apply_event_filters(
@@ -170,7 +169,6 @@ def detail_item(event: AnalysisEvent, user: User, detections: list[EventDetectio
             )
             for detection in sorted(detections, key=lambda item: (item.category, item.type, item.reason_code))
         ],
-        prompt_hash_prefix=event.prompt_hash[:12],
     )
 
 

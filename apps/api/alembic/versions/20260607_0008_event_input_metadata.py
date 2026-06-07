@@ -22,6 +22,9 @@ def upgrade() -> None:
     op.add_column("analysis_events", sa.Column("login_id", sa.String(length=80), nullable=True))
     op.add_column("analysis_events", sa.Column("client_request_id", sa.String(length=128), nullable=True))
     op.add_column("analysis_events", sa.Column("filter_config_revision", sa.String(length=80), nullable=True))
+    op.alter_column("analysis_events", "prompt_hash", existing_type=sa.String(length=160), nullable=True)
+    op.alter_column("analysis_events", "prompt_hash_key_id", existing_type=sa.String(length=80), nullable=True)
+    op.alter_column("analysis_events", "filter_rule_set_version", existing_type=sa.String(length=80), nullable=True)
     op.create_index("ix_analysis_events_login_created_at", "analysis_events", ["login_id", "created_at"])
     op.create_index("ix_analysis_events_client_request", "analysis_events", ["login_id", "client_request_id"])
 
@@ -77,11 +80,13 @@ def upgrade() -> None:
         "input_index is null or input_index >= 0",
     )
     op.create_index("ix_event_detections_event_input_index", "event_detections", ["event_id", "input_index"])
+    op.create_index("ix_event_detections_filter_rule_id", "event_detections", ["filter_rule_id"])
     op.alter_column("event_detections", "matched_keywords", server_default=None)
     op.alter_column("event_detections", "evidence_counts", server_default=None)
 
 
 def downgrade() -> None:
+    op.drop_index("ix_event_detections_filter_rule_id", table_name="event_detections")
     op.drop_index("ix_event_detections_event_input_index", table_name="event_detections")
     op.drop_constraint("ck_event_detections_input_index_non_negative", "event_detections", type_="check")
     op.drop_column("event_detections", "evidence_counts")
@@ -102,6 +107,9 @@ def downgrade() -> None:
 
     op.drop_index("ix_analysis_events_client_request", table_name="analysis_events")
     op.drop_index("ix_analysis_events_login_created_at", table_name="analysis_events")
+    op.alter_column("analysis_events", "filter_rule_set_version", existing_type=sa.String(length=80), nullable=False)
+    op.alter_column("analysis_events", "prompt_hash_key_id", existing_type=sa.String(length=80), nullable=False)
+    op.alter_column("analysis_events", "prompt_hash", existing_type=sa.String(length=160), nullable=False)
     op.drop_column("analysis_events", "filter_config_revision")
     op.drop_column("analysis_events", "client_request_id")
     op.drop_column("analysis_events", "login_id")
