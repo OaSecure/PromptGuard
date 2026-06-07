@@ -211,6 +211,8 @@ async def update_dashboard_user_role(
     session: AsyncSession = Depends(get_db_session),
 ) -> DashboardUserResponse:
     user = await _get_target_user(session, login_id)
+    if user.id == current_admin.id and payload.role != "ADMIN":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="admin cannot demote self")
     if payload.role != "ADMIN":
         await _ensure_not_removing_last_active_admin(session, user)
     user.role = payload.role
@@ -227,6 +229,8 @@ async def update_dashboard_user_status(
     session: AsyncSession = Depends(get_db_session),
 ) -> DashboardUserResponse:
     user = await _get_target_user(session, login_id)
+    if user.id == current_admin.id and payload.status != "ACTIVE":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="admin cannot disable self")
     if payload.status != "ACTIVE":
         await _ensure_not_removing_last_active_admin(session, user)
     user.status = payload.status

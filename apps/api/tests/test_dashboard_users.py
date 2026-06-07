@@ -374,6 +374,24 @@ def test_can_update_admin_when_another_active_admin_remains() -> None:
     assert status_response.status_code == 200
 
 
+def test_current_admin_cannot_demote_or_disable_self_even_when_another_admin_remains() -> None:
+    current_admin = _user(role="ADMIN", login_id="current-admin")
+    other_admin = _user(role="ADMIN", login_id="other-admin")
+    fake_session = _FakeSession([current_admin, other_admin])
+    client = _client(fake_session, current_admin=current_admin)
+
+    role_response = client.patch(f"/dashboard/users/{current_admin.login_id}/role", json={"role": "USER"})
+    status_response = client.patch(f"/dashboard/users/{current_admin.login_id}/status", json={"status": "DISABLED"})
+
+    assert role_response.status_code == 400
+    assert role_response.json()["detail"] == "admin cannot demote self"
+    assert status_response.status_code == 400
+    assert status_response.json()["detail"] == "admin cannot disable self"
+    assert current_admin.role == "ADMIN"
+    assert current_admin.status == "ACTIVE"
+    assert fake_session.commits == 0
+
+
 def test_dashboard_users_router_uses_dashboard_session_and_csrf_guards() -> None:
     read_paths = {"/dashboard/users"}
     mutation_paths = {
