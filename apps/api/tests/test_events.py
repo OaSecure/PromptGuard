@@ -267,6 +267,7 @@ def test_get_event_returns_detail_without_raw_values() -> None:
     assert "prompt_hash_prefix" not in body
     assert body["detection_summary"] == [{"category": "PII", "type": "EMAIL", "count": 1}]
     assert body["detections"][0]["input_id"] == "composer-1"
+    assert body["detections"][0]["source"] == "composer"
     assert body["detections"][0]["rule_id"] == "rule-internal-id"
     assert body["detections"][0]["detector_id"] == "detector-internal-id"
     assert body["input_results"][0]["input_id"] == "composer-1"
@@ -279,6 +280,7 @@ def test_get_event_returns_detail_without_raw_values() -> None:
     assert "prompt_hash_key_id" not in encoded
     assert "filter_rule_set_version" not in encoded
     assert "original_filename" not in encoded
+    assert "built_in_detector" not in encoded
 
 
 def test_get_event_whitelists_safe_evidence_shape() -> None:

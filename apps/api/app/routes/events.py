@@ -217,7 +217,7 @@ def detail_item(
                 input_id=detection.input_id,
                 input_index=detection.input_index,
                 kind=detection.kind,
-                source=detection.source,
+                source=detection.input_source or "unknown",
                 rule_id=detection.filter_rule_id,
                 detector_id=detection.detector_id,
                 severity=detection.severity,
