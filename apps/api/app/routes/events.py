@@ -167,6 +167,10 @@ def safe_counts(value: Any) -> dict[str, int]:
     return {key: item for key, item in value.items() if isinstance(key, str) and isinstance(item, int)}
 
 
+def is_business_context_detection(detection: EventDetection) -> bool:
+    return detection.source == "custom_context_rule"
+
+
 def list_item(
     event: AnalysisEvent,
     user: User,
@@ -243,7 +247,7 @@ def detail_item(
                 evidence_counts=safe_counts(detection.evidence_counts),
             )
             for detection in sorted(detections, key=lambda item: (item.category, item.type, item.reason_code))
-            if detection.matched_keywords or detection.evidence_counts
+            if is_business_context_detection(detection) and (detection.matched_keywords or detection.evidence_counts)
         ],
     )
 

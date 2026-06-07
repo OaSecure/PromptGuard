@@ -303,12 +303,44 @@ def test_get_event_whitelists_safe_evidence_shape() -> None:
 
     assert response.status_code == 200
     assert "safe_evidence" not in body["detections"][0]
-    assert body["business_context_matches"][0]["matched_keywords"] == ["finance", "내부정책"]
-    assert body["business_context_matches"][0]["evidence_counts"] == {"keyword_count": 2}
+    assert body["business_context_matches"] == []
     assert "admin@example.com" not in encoded
     assert "secret prompt excerpt" not in encoded
     assert "raw_value" not in encoded
     assert "prompt_excerpt" not in encoded
+
+
+def test_get_event_returns_only_custom_context_business_matches() -> None:
+    event_user = _user()
+    event = _event(event_user)
+    built_in_detection = _detection(event)
+    built_in_detection.evidence_counts = {"match_count": 1}
+    context_detection = _detection(event, detection_type="BUSINESS_CONTEXT")
+    context_detection.category = "Business Context"
+    context_detection.source = "custom_context_rule"
+    context_detection.filter_rule_id = "context-rule-1"
+    context_detection.detector_id = None
+    context_detection.reason_code = "BUSINESS_CONTEXT_MATCH"
+    context_detection.match_count = 2
+    context_detection.matched_keywords = ["finance", "내부정책"]
+    context_detection.evidence_counts = {
+        "match_count": 2,
+        "matched_condition_count": 2,
+        "raw_excerpt": "secret prompt excerpt",
+    }
+    fake_session = _FakeSession(rows=[(event, event_user)], detections=[built_in_detection, context_detection])
+    fake_session.inputs = [_input(event)]
+
+    response = _client(fake_session).get(f"/dashboard/events/{event.id}")
+    body = response.json()
+    encoded = json.dumps(body, ensure_ascii=False)
+
+    assert response.status_code == 200
+    assert len(body["business_context_matches"]) == 1
+    assert body["business_context_matches"][0]["matched_keywords"] == ["finance", "내부정책"]
+    assert body["business_context_matches"][0]["evidence_counts"] == {"match_count": 2, "matched_condition_count": 2}
+    assert "secret prompt excerpt" not in encoded
+    assert "raw_excerpt" not in encoded
 
 
 def test_get_event_returns_404_for_missing_event() -> None:
