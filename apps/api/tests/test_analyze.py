@@ -479,6 +479,208 @@ def test_analyze_warn_action_requires_confirmation() -> None:
     assert body["detections"][0]["action"] == "Warn"
 
 
+def test_analyze_returns_business_context_matches_without_raw_spans() -> None:
+    user = _user()
+    rule = _filter_rule(
+        kind="context_rule",
+        category="Business",
+        label="NDA Context",
+        placeholder="BUSINESS_CONTEXT",
+        severity="medium",
+        action="WARN",
+        keyword=None,
+        config_json={
+            "keyword_groups": {"contract": ["NDA", "penalty"]},
+            "exclusion_keywords": [],
+            "window_size": 80,
+            "min_condition_count": 2,
+            "sensitivity": "medium",
+        },
+    )
+    client, fake_session = _client(user, rules=[rule])
+
+    response = client.post(
+        "/prompts/analyze",
+        headers=_bearer_header(user.id),
+        json=_analyze_payload(_text_input("in_1", "NDA penalty amount is confidential.")),
+    )
+
+    body = response.json()
+    encoded = json.dumps(body, ensure_ascii=False)
+    detection_rows = [item for item in fake_session.added if isinstance(item, EventDetection)]
+
+    assert response.status_code == 200
+    assert body["action"] == "Warn"
+    assert body["requires_user_confirmation"] is True
+    assert body["business_context_matches"] == [
+        {
+            "input_id": "in_1",
+            "input_index": 0,
+            "kind": "text",
+            "source": "composer",
+            "category": "Business",
+            "reason_code": "CUSTOM_CONTEXT_RULE_NDA_CONTEXT",
+            "match_count": 2,
+            "matched_keywords": ["NDA", "penalty"],
+            "evidence_counts": {"matched_condition_count": 2},
+        }
+    ]
+    assert body["detections"][0]["source"] == "composer"
+    assert detection_rows[0].source == "custom_context_rule"
+    assert "confidential" not in encoded
+    assert "amount" not in encoded
+
+
+def test_analyze_reports_detections_for_each_scannable_input() -> None:
+    user = _user()
+    client, fake_session = _client(user)
+
+    response = client.post(
+        "/prompts/analyze",
+        headers=_bearer_header(user.id),
+        json=_analyze_payload(
+            _text_input("composer_1", "Contact admin@example.com"),
+            _text_input("paste_1", "Call 010-1234-5678", source="converted_paste"),
+            _text_input("file_1", "Card 4111 1111 1111 1111", source="file"),
+        ),
+    )
+
+    body = response.json()
+    detection_rows = [item for item in fake_session.added if isinstance(item, EventDetection)]
+    assert response.status_code == 200
+    assert body["action"] == "Block"
+    assert body["allow_original_send"] is False
+    assert "masked_prompt" not in body
+    assert {item["input_id"] for item in body["detections"]} == {"composer_1", "paste_1", "file_1"}
+    assert {item["source"] for item in body["detections"]} == {"composer", "converted_paste", "file"}
+    assert {item["decision_basis"] for item in body["input_results"]} == {"detection"}
+    assert len(detection_rows) == 3
+
+
+def test_analyze_blocks_file_only_mask_detection_without_masked_prompt() -> None:
+    user = _user()
+    client, fake_session = _client(user)
+    file_text = "File secret admin@example.com"
+
+    response = client.post(
+        "/prompts/analyze",
+        headers=_bearer_header(user.id),
+        json=_analyze_payload(_text_input("file_1", file_text, source="file")),
+    )
+
+    body = response.json()
+    encoded = json.dumps(body, ensure_ascii=False)
+    detection_rows = [item for item in fake_session.added if isinstance(item, EventDetection)]
+    assert response.status_code == 200
+    assert body["action"] == "Block"
+    assert body["allow_original_send"] is False
+    assert body["requires_user_confirmation"] is False
+    assert "masked_prompt" not in body
+    assert "admin@example.com" not in encoded
+    assert body["detections"][0]["input_id"] == "file_1"
+    assert body["detections"][0]["source"] == "file"
+    assert detection_rows[0].source == "built_in_detector"
+
+
+def test_analyze_blocks_unavailable_input_even_when_text_would_mask() -> None:
+    user = _user()
+    client, _ = _client(user)
+    unavailable_input = {
+        "input_id": "attachment_1",
+        "kind": "unsupported_attachment",
+        "source": "attachment_chip",
+        "size_bytes": 500_000,
+        "content_included": False,
+        "content_unavailable_reason": "unsupported",
+    }
+
+    response = client.post(
+        "/prompts/analyze",
+        headers=_bearer_header(user.id),
+        json=_analyze_payload(_text_input("in_1", "Contact admin@example.com"), unavailable_input),
+    )
+
+    body = response.json()
+    assert response.status_code == 200
+    assert body["action"] == "Block"
+    assert body["risk_level"] == "critical"
+    assert body["allow_original_send"] is False
+    assert body["requires_user_confirmation"] is False
+    assert "masked_prompt" not in body
+    assert body["content_unavailable_inputs"] == [
+        {
+            "input_id": "attachment_1",
+            "input_index": 1,
+            "kind": "unsupported_attachment",
+            "source": "attachment_chip",
+            "reason": "unsupported",
+        }
+    ]
+    assert body["input_results"][1]["decision_basis"] == "content_unavailable"
+
+
+def test_analyze_applies_block_mask_warn_action_priority() -> None:
+    user = _user()
+    client, _ = _client(
+        user,
+        rules=[
+            _filter_rule(keyword="warn marker", placeholder="WARN_MARKER", action="WARN", severity="low"),
+            _filter_rule(keyword="mask marker", placeholder="MASK_MARKER", action="MASK", severity="medium"),
+            _filter_rule(keyword="block marker", placeholder="BLOCK_MARKER", action="BLOCK", severity="critical"),
+        ],
+    )
+
+    warn_response = client.post(
+        "/prompts/analyze",
+        headers=_bearer_header(user.id),
+        json=_analyze_payload(_text_input("in_1", "warn marker")),
+    )
+    mask_response = client.post(
+        "/prompts/analyze",
+        headers=_bearer_header(user.id),
+        json=_analyze_payload(_text_input("in_1", "warn marker mask marker")),
+    )
+    block_response = client.post(
+        "/prompts/analyze",
+        headers=_bearer_header(user.id),
+        json=_analyze_payload(_text_input("in_1", "warn marker mask marker block marker")),
+    )
+
+    assert warn_response.status_code == 200
+    assert warn_response.json()["action"] == "Warn"
+    assert warn_response.json()["requires_user_confirmation"] is True
+    assert mask_response.status_code == 200
+    assert mask_response.json()["action"] == "Mask"
+    assert mask_response.json()["allow_original_send"] is False
+    assert mask_response.json()["requires_user_confirmation"] is True
+    assert block_response.status_code == 200
+    assert block_response.json()["action"] == "Block"
+    assert block_response.json()["risk_level"] == "critical"
+
+
+def test_analyze_blocks_mixed_file_mask_even_when_composer_can_be_masked() -> None:
+    user = _user()
+    client, _ = _client(user)
+
+    response = client.post(
+        "/prompts/analyze",
+        headers=_bearer_header(user.id),
+        json=_analyze_payload(
+            _text_input("composer_1", "Contact admin@example.com"),
+            _text_input("file_1", "Card 4111 1111 1111 1111", source="file"),
+        ),
+    )
+
+    body = response.json()
+    assert response.status_code == 200
+    assert body["action"] == "Block"
+    assert body["allow_original_send"] is False
+    assert body["requires_user_confirmation"] is False
+    assert "masked_prompt" not in body
+    assert body["detections"][0]["source"] == "composer"
+    assert body["detections"][1]["source"] == "file"
+
+
 def test_analyze_validates_request_boundaries() -> None:
     user = _user()
     client, _ = _client(user)
