@@ -19,6 +19,8 @@ SEVERITY_SCORE = {"low": 25, "medium": 55, "high": 80, "critical": 95}
 
 @dataclass(frozen=True)
 class RuleMatch:
+    rule_id: str
+    detector_id: str | None
     category: str
     type: str
     source: str
@@ -148,6 +150,8 @@ def _built_in_matches(prompt: str, rules: list[FilterRule]) -> list[RuleMatch]:
             continue
         matches.append(
             RuleMatch(
+                rule_id=str(rule.id),
+                detector_id=rule.detector_key,
                 category=rule.category,
                 type=rule.detector_key,
                 source="built_in_detector",
@@ -190,6 +194,8 @@ def _custom_keyword_match(prompt: str, rule: FilterRule) -> RuleMatch | None:
     if not detections:
         return None
     return RuleMatch(
+        rule_id=str(rule.id),
+        detector_id=rule.placeholder or "CUSTOM_KEYWORD",
         category=rule.category,
         type=rule.placeholder or "CUSTOM_KEYWORD",
         source="custom_keyword",
@@ -222,6 +228,8 @@ def _custom_regex_match(prompt: str, rule: FilterRule) -> RuleMatch | None:
     if not detections:
         return None
     return RuleMatch(
+        rule_id=str(rule.id),
+        detector_id=rule.placeholder or "CUSTOM_REGEX",
         category=rule.category,
         type=rule.placeholder or "CUSTOM_REGEX",
         source="custom_regex",
@@ -249,6 +257,8 @@ def _context_rule_match(prompt: str, rule: FilterRule) -> RuleMatch | None:
     if matched_terms < min_count:
         return None
     return RuleMatch(
+        rule_id=str(rule.id),
+        detector_id=rule.placeholder or "CONTEXT_RULE",
         category=rule.category,
         type=rule.placeholder or "CONTEXT_RULE",
         source="custom_context_rule",
