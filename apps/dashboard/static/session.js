@@ -9,6 +9,9 @@ function csrfTokenFromCookie() {
     const value = cookies.find((cookie) => cookie.startsWith(prefix));
     return value ? decodeURIComponent(value.slice(prefix.length)) : null;
 }
+export function getDashboardCsrfToken() {
+    return csrfToken ?? csrfTokenFromCookie();
+}
 export async function refreshDashboardCsrf() {
     const response = await dashboardRequest("/dashboard/session/csrf");
     csrfToken = response.csrf_token;
@@ -31,7 +34,7 @@ export async function getDashboardSessionMe() {
     return dashboardRequest("/dashboard/session/me");
 }
 export async function logoutDashboardSession() {
-    const token = csrfToken ?? csrfTokenFromCookie() ?? (await refreshDashboardCsrf());
+    const token = getDashboardCsrfToken() ?? (await refreshDashboardCsrf());
     await dashboardRequest("/dashboard/session/logout", {
         method: "POST",
         csrfToken: token,

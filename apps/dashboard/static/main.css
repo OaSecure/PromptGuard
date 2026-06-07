@@ -619,6 +619,73 @@ input {
   padding: 16px;
 }
 
+.users-form-card {
+  margin-bottom: 18px;
+}
+
+.users-form {
+  align-items: end;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.users-form label {
+  display: grid;
+  gap: 8px;
+}
+
+.users-form span {
+  color: #315d9a;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.users-form input,
+.users-form select,
+.users-inline-control select {
+  background: #ffffff;
+  border: 1px solid #d8ecfb;
+  border-radius: 12px;
+  color: #10284a;
+  font-size: 14px;
+  font-weight: 700;
+  min-height: 42px;
+  padding: 0 12px;
+}
+
+.users-primary-button,
+.users-inline-button {
+  align-items: center;
+  background: #2f80ed;
+  border: none;
+  border-radius: 12px;
+  color: #ffffff;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 14px;
+  font-weight: 900;
+  justify-content: center;
+  min-height: 42px;
+  padding: 0 16px;
+}
+
+.users-primary-button:disabled,
+.users-inline-button:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.users-inline-control {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.users-inline-control select {
+  min-width: 96px;
+}
+
 .detail-board-table {
   table-layout: fixed;
 }

@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "tsc -p tsconfig.json --watch",
     "typecheck": "tsc --noEmit",
-    "build": "tsc -p tsconfig.json"
+    "build": "tsc -p tsconfig.json",
+    "test:users": "npm run build && node --test tests/usersPageModel.test.mjs"
   },
   "devDependencies": {
     "typescript": "^5.8.3"
