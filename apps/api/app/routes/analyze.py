@@ -14,7 +14,7 @@ from app.core.prompt_hash import compute_prompt_hash
 from app.core.tokens import utc_now
 from app.masking.placeholder import apply_placeholders
 from app.models.auth import User
-from app.models.events import AnalysisEvent, EventDetection
+from app.models.events import AnalysisEvent, EventDetection, EventInput
 from app.models.filters import FilterRule
 from app.routes.auth import get_db_session, require_active_user
 from app.services.filter_rules import (
@@ -350,24 +350,73 @@ def business_context_matches(matched_inputs: list[tuple[int, AnalyzeInput, list[
     return context_matches
 
 
-def event_detection_rows(event_id: uuid.UUID, matches: list[RuleMatch]) -> list[EventDetection]:
-    rows: list[EventDetection] = []
-    for match in matches:
+def event_input_rows(event_id: uuid.UUID, input_results: list[AnalyzeInputResult], payload: AnalyzeRequest) -> list[EventInput]:
+    inputs_by_index = {index: item for index, item in enumerate(payload.inputs)}
+    rows: list[EventInput] = []
+    for result in input_results:
+        input_item = inputs_by_index[result.input_index]
         rows.append(
-            EventDetection(
+            EventInput(
                 id=uuid.uuid4(),
                 event_id=event_id,
-                category=match.category,
-                type=match.type,
-                source=match.source,
-                severity=match.severity,
-                confidence=match.confidence,
-                count=match.count,
-                reason_code=match.reason_code,
-                match_count=match.match_count,
-                safe_evidence=match.safe_evidence,
+                input_id=result.input_id,
+                input_index=result.input_index,
+                kind=result.kind,
+                source=result.source,
+                size_bytes=input_item.size_bytes,
+                content_included=result.content_included,
+                content_scanned=result.content_scanned,
+                decision_basis=result.decision_basis,
+                content_unavailable_reason=result.content_unavailable_reason,
+                limit_exceeded=result.limit_exceeded,
             )
         )
+    return rows
+
+
+def matched_keywords_for_evidence(safe_evidence: dict[str, Any]) -> list[str]:
+    matched_keywords = safe_evidence.get("matched_keywords", [])
+    if not isinstance(matched_keywords, list):
+        return []
+    return [item for item in matched_keywords if isinstance(item, str)]
+
+
+def evidence_counts_for_match(match: RuleMatch) -> dict[str, Any]:
+    counts: dict[str, Any] = {"match_count": match.match_count}
+    if match.source == "custom_context_rule":
+        counts["matched_condition_count"] = match.match_count
+    return counts
+
+
+def event_detection_rows(event_id: uuid.UUID, matched_inputs: list[tuple[int, AnalyzeInput, list[RuleMatch]]]) -> list[EventDetection]:
+    rows: list[EventDetection] = []
+    for input_index, input_item, matches in matched_inputs:
+        for match in matches:
+            rows.append(
+                EventDetection(
+                    id=uuid.uuid4(),
+                    event_id=event_id,
+                    input_id=input_item.input_id,
+                    input_index=input_index,
+                    kind=input_item.kind,
+                    input_source=input_item.source,
+                    filter_rule_id=match.rule_id,
+                    detector_id=match.detector_id,
+                    action=match.action,
+                    placeholder=match.type,
+                    category=match.category,
+                    type=match.type,
+                    source=match.source,
+                    severity=match.severity,
+                    confidence=match.confidence,
+                    count=match.count,
+                    reason_code=match.reason_code,
+                    match_count=match.match_count,
+                    safe_evidence=match.safe_evidence,
+                    matched_keywords=matched_keywords_for_evidence(match.safe_evidence),
+                    evidence_counts=evidence_counts_for_match(match),
+                )
+            )
     return rows
 
 
@@ -537,25 +586,28 @@ async def analyze_prompt(
     hash_basis = detection_text or "|".join(f"{item.input_id}:{item.kind}:{item.source}:{item.size_bytes}" for item in payload.inputs)
     prompt_hash = compute_prompt_hash(workspace_id=str(current_user.id), prompt=hash_basis)
     detection_input_indexes = {index for index, _item, item_matches in matched_inputs if item_matches}
+    input_results = input_results_for_payload(payload, detection_input_indexes)
 
-    # Compatibility bridge until the MVP event_inputs/idempotency schema lands.
-    # Keep raw input bodies out of the legacy event tables, but do not treat this
-    # as the final v1.0.2 event metadata persistence contract.
     event = AnalysisEvent(
         id=event_id,
         user_id=current_user.id,
+        login_id=current_user.login_id,
+        client_request_id=payload.client_request_id,
         prompt_hash=prompt_hash.digest,
         prompt_hash_key_id=prompt_hash.key_id,
         action=action,
         risk_score=risk_score,
         risk_level=risk_level,
         filter_rule_set_version=active_filter_rule_set_version,
+        filter_config_revision=payload.filter_config_revision,
         service=payload.context.ai_service,
         service_domain=payload.context.ai_service_domain,
         platform=payload.context.browser,
     )
     session.add(event)
-    for row in event_detection_rows(event_id, matches):
+    for row in event_input_rows(event_id, input_results, payload):
+        session.add(row)
+    for row in event_detection_rows(event_id, matched_inputs):
         session.add(row)
 
     current_user.last_event_at = checked_at
@@ -572,7 +624,7 @@ async def analyze_prompt(
         allow_original_send=allow_original_send(action),
         requires_user_confirmation=requires_user_confirmation(action, matches),
         detections=response_detections(matched_inputs),
-        input_results=input_results_for_payload(payload, detection_input_indexes),
+        input_results=input_results,
         content_unavailable_inputs=content_unavailable_summaries(payload),
         business_context_matches=business_context_matches(matched_inputs),
         client_request_id=payload.client_request_id,

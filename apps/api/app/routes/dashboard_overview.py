@@ -129,7 +129,7 @@ def dashboard_overview_response(
                 if event.id in login_ids_by_event_id
             }
         ),
-        # event_inputs persistence is not available yet, so this remains a 0 fallback.
+        # Input-level overview aggregation is handled separately from Analyze persistence.
         content_unavailable_event_count=0,
         last_event_at=max((event.created_at for event in events_in_window), default=None),
         action_counts=_action_counts(actions),
