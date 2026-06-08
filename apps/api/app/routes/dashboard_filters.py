@@ -17,9 +17,7 @@ from app.routes.filters import (
     CUSTOM_EDITABLE_FIELDS,
     FilterRuleCreateRequest,
     FilterRulePatchRequest,
-    _add_version,
     _get_rule,
-    _snapshot,
 )
 from app.routes.analyze import risk_level_for_score
 from app.services.filter_rules import RuleMatch, evaluate_filter_rules, score_for_matches
@@ -213,7 +211,6 @@ async def create_dashboard_filter(
 ) -> DashboardFilterRuleResponse:
     rule = _dashboard_rule_from_create(payload, current_admin)
     session.add(rule)
-    _add_version(session, rule=rule, change_type="create", before=None, after=_snapshot(rule), admin=current_admin)
     await session.commit()
     await session.refresh(rule)
     return _dashboard_response(rule)
@@ -245,12 +242,10 @@ async def update_dashboard_filter(
             re.compile(pattern)
         except re.error as exc:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="pattern is invalid") from exc
-    before = _snapshot(rule)
     for field, value in updates.items():
         setattr(rule, field, value)
     rule.version += 1
     rule.updated_by_user_id = current_admin.id
-    _add_version(session, rule=rule, change_type="update", before=before, after=_snapshot(rule), admin=current_admin)
     await session.commit()
     await session.refresh(rule)
     return _dashboard_response(rule)
@@ -276,11 +271,9 @@ async def disable_dashboard_filter(
 
 async def _set_dashboard_enabled(rule_id: uuid.UUID, enabled: bool, current_admin: User, session: AsyncSession) -> DashboardFilterRuleResponse:
     rule = await _get_rule(session, rule_id)
-    before = _snapshot(rule)
     rule.enabled = enabled
     rule.version += 1
     rule.updated_by_user_id = current_admin.id
-    _add_version(session, rule=rule, change_type="enable" if enabled else "disable", before=before, after=_snapshot(rule), admin=current_admin)
     await session.commit()
     await session.refresh(rule)
     return _dashboard_response(rule)
@@ -295,12 +288,10 @@ async def archive_dashboard_filter(
     rule = await _get_rule(session, rule_id)
     if rule.origin == "built_in":
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="built-in rules cannot be archived")
-    before = _snapshot(rule)
     rule.archived_at = utc_now()
     rule.enabled = False
     rule.version += 1
     rule.updated_by_user_id = current_admin.id
-    _add_version(session, rule=rule, change_type="archive", before=before, after=_snapshot(rule), admin=current_admin)
     await session.commit()
     return None
 

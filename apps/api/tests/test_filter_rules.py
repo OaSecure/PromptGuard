@@ -5,7 +5,7 @@ from uuid import uuid4
 from fastapi import FastAPI, HTTPException, status
 from fastapi.testclient import TestClient
 
-from app.models.filters import FilterRule, FilterRuleVersion
+from app.models.filters import FilterRule
 from app.routes import filters
 
 
@@ -119,7 +119,7 @@ def test_list_filters_returns_safe_rule_metadata() -> None:
     assert "raw_prompt" not in encoded
 
 
-def test_create_custom_keyword_rule_records_version() -> None:
+def test_create_custom_keyword_rule_does_not_record_history_row() -> None:
     fake_session = _FakeSession()
     response = _client(fake_session).post(
         "/filters",
@@ -137,7 +137,7 @@ def test_create_custom_keyword_rule_records_version() -> None:
     assert response.status_code == 201
     assert response.json()["origin"] == "custom"
     assert any(isinstance(item, FilterRule) for item in fake_session.added)
-    assert any(isinstance(item, FilterRuleVersion) and item.change_type == "create" for item in fake_session.added)
+    assert not any(item.__class__.__name__ == "FilterRuleVersion" for item in fake_session.added)
     assert fake_session.commits == 1
 
 
@@ -170,7 +170,7 @@ def test_built_in_rule_blocks_non_editable_fields() -> None:
     assert response.json()["detail"] == "label is not editable"
 
 
-def test_disable_rule_increments_version_and_records_audit() -> None:
+def test_disable_rule_increments_version_without_history_row() -> None:
     rule = _rule()
     fake_session = _FakeSession([rule])
     response = _client(fake_session).patch(f"/filters/{rule.id}/disable")
@@ -178,7 +178,7 @@ def test_disable_rule_increments_version_and_records_audit() -> None:
     assert response.status_code == 200
     assert response.json()["enabled"] is False
     assert rule.version == 2
-    assert any(isinstance(item, FilterRuleVersion) and item.change_type == "disable" for item in fake_session.added)
+    assert not any(item.__class__.__name__ == "FilterRuleVersion" for item in fake_session.added)
 
 
 def test_dry_run_returns_metadata_without_raw_sample() -> None:
