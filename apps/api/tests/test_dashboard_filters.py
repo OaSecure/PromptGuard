@@ -6,7 +6,7 @@ from fastapi import FastAPI, HTTPException, status
 from fastapi.testclient import TestClient
 
 from app.models.events import AnalysisEvent
-from app.models.filters import FilterRule, FilterRuleVersion
+from app.models.filters import FilterRule
 from app.routes import dashboard_filters
 
 
@@ -237,7 +237,7 @@ def test_dashboard_filters_create_custom_keyword_and_invalid_regex() -> None:
 
     assert created.status_code == 201
     assert created.json()["origin"] == "custom"
-    assert any(isinstance(item, FilterRuleVersion) and item.change_type == "create" for item in fake_session.added)
+    assert not any(item.__class__.__name__ == "FilterRuleVersion" for item in fake_session.added)
     assert invalid_regex.status_code == 422
 
 
@@ -296,10 +296,24 @@ def test_dashboard_filters_custom_archive_sets_enabled_false() -> None:
     assert response.status_code == 204
     assert rule.archived_at is not None
     assert rule.enabled is False
-    assert any(isinstance(item, FilterRuleVersion) and item.change_type == "archive" for item in fake_session.added)
+    assert not any(item.__class__.__name__ == "FilterRuleVersion" for item in fake_session.added)
 
 
-def test_dashboard_filters_enable_disable_keeps_existing_version_behavior() -> None:
+def test_dashboard_filters_update_keeps_internal_revision_without_history_side_effect() -> None:
+    rule = _rule()
+    fake_session = _FakeSession([rule])
+    response = _client(fake_session).patch(
+        f"/dashboard/filters/{rule.id}",
+        json={"label": "Changed Label"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["label"] == "Changed Label"
+    assert rule.version == 2
+    assert not any(item.__class__.__name__ == "FilterRuleVersion" for item in fake_session.added)
+
+
+def test_dashboard_filters_enable_disable_keeps_internal_revision_without_history_side_effect() -> None:
     rule = _rule()
     fake_session = _FakeSession([rule])
     response = _client(fake_session).patch(f"/dashboard/filters/{rule.id}/disable")
@@ -307,7 +321,18 @@ def test_dashboard_filters_enable_disable_keeps_existing_version_behavior() -> N
     assert response.status_code == 200
     assert response.json()["enabled"] is False
     assert rule.version == 2
-    assert any(isinstance(item, FilterRuleVersion) and item.change_type == "disable" for item in fake_session.added)
+    assert not any(item.__class__.__name__ == "FilterRuleVersion" for item in fake_session.added)
+
+
+def test_dashboard_filters_enable_keeps_internal_revision_without_history_side_effect() -> None:
+    rule = _rule(enabled=False)
+    fake_session = _FakeSession([rule])
+    response = _client(fake_session).patch(f"/dashboard/filters/{rule.id}/enable")
+
+    assert response.status_code == 200
+    assert response.json()["enabled"] is True
+    assert rule.version == 2
+    assert not any(item.__class__.__name__ == "FilterRuleVersion" for item in fake_session.added)
 
 
 def test_dashboard_filter_dry_run_returns_safe_single_rule_metadata() -> None:
@@ -390,3 +415,17 @@ def test_dashboard_filters_router_uses_dashboard_session_and_csrf_guards() -> No
             assert dashboard_filters.require_dashboard_admin_session in dependency_calls
         if path in mutation_paths and methods.intersection({"POST", "PATCH", "DELETE"}):
             assert dashboard_filters.require_dashboard_admin_mutation in dependency_calls
+
+
+def test_dashboard_filters_responses_do_not_expose_version_history_fields() -> None:
+    rule = _rule()
+    list_response = _client(_FakeSession([rule])).get("/dashboard/filters")
+    detail_response = _client(_FakeSession([rule])).get(f"/dashboard/filters/{rule.id}")
+    list_encoded = json.dumps(list_response.json(), ensure_ascii=False)
+    detail_encoded = json.dumps(detail_response.json(), ensure_ascii=False)
+
+    assert list_response.status_code == 200
+    assert detail_response.status_code == 200
+    for forbidden in ("filter_rule_versions", "FilterRuleVersion", "change_type", "before_json", "after_json"):
+        assert forbidden not in list_encoded
+        assert forbidden not in detail_encoded
