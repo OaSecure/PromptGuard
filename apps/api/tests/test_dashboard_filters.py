@@ -299,6 +299,20 @@ def test_dashboard_filters_custom_archive_sets_enabled_false() -> None:
     assert not any(item.__class__.__name__ == "FilterRuleVersion" for item in fake_session.added)
 
 
+def test_dashboard_filters_update_keeps_internal_revision_without_history_side_effect() -> None:
+    rule = _rule()
+    fake_session = _FakeSession([rule])
+    response = _client(fake_session).patch(
+        f"/dashboard/filters/{rule.id}",
+        json={"label": "Changed Label"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["label"] == "Changed Label"
+    assert rule.version == 2
+    assert not any(item.__class__.__name__ == "FilterRuleVersion" for item in fake_session.added)
+
+
 def test_dashboard_filters_enable_disable_keeps_internal_revision_without_history_side_effect() -> None:
     rule = _rule()
     fake_session = _FakeSession([rule])
@@ -306,6 +320,17 @@ def test_dashboard_filters_enable_disable_keeps_internal_revision_without_histor
 
     assert response.status_code == 200
     assert response.json()["enabled"] is False
+    assert rule.version == 2
+    assert not any(item.__class__.__name__ == "FilterRuleVersion" for item in fake_session.added)
+
+
+def test_dashboard_filters_enable_keeps_internal_revision_without_history_side_effect() -> None:
+    rule = _rule(enabled=False)
+    fake_session = _FakeSession([rule])
+    response = _client(fake_session).patch(f"/dashboard/filters/{rule.id}/enable")
+
+    assert response.status_code == 200
+    assert response.json()["enabled"] is True
     assert rule.version == 2
     assert not any(item.__class__.__name__ == "FilterRuleVersion" for item in fake_session.added)
 
