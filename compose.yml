@@ -9,7 +9,7 @@ services:
       PROMPTGUARD_API_PUBLIC_URL: ${PROMPTGUARD_API_PUBLIC_URL:-http://localhost:8000}
       PROMPTGUARD_DASHBOARD_PUBLIC_URL: ${PROMPTGUARD_DASHBOARD_PUBLIC_URL:-http://localhost:3000}
       PROMPTGUARD_CORS_ORIGINS: ${PROMPTGUARD_CORS_ORIGINS:-http://localhost:3000,chrome-extension://placeholder}
-      PROMPTGUARD_INITIAL_ADMIN_PASSWORD: ${PROMPTGUARD_INITIAL_ADMIN_PASSWORD:-Admin1234!ChangeMe}
+      PROMPTGUARD_INITIAL_ADMIN_PASSWORD: ${PROMPTGUARD_INITIAL_ADMIN_PASSWORD:-1234}
       DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://promptguard:promptguard_dev_password@postgres:5432/promptguard}
       REDIS_URL: ${REDIS_URL:-}
       ACCESS_TOKEN_SECRET: ${ACCESS_TOKEN_SECRET:-change-me-access-token-secret}
@@ -29,11 +29,7 @@ services:
         condition: service_healthy
     volumes:
       - ./apps/api:/app
-    command: >
-      uvicorn app.main:app
-      --host ${PROMPTGUARD_API_HOST:-0.0.0.0}
-      --port ${PROMPTGUARD_API_PORT:-8000}
-      --reload
+    command: /bin/sh /app/scripts/start_api.sh
 
   postgres:
     image: postgres:16-alpine
