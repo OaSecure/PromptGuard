@@ -26,6 +26,7 @@ describe("ChatGPT-like fixture", () => {
     expect(document.querySelector("button[data-testid='send-button']")).toBeTruthy();
     expect(document.querySelector("input[type='file']")).toBeTruthy();
     expect(document.querySelector("[data-testid='drop-zone']")).toBeTruthy();
+    expect(document.querySelector("[data-testid='attachment-chip']")).toBeTruthy();
 
     const candidate = findBestInputCandidate(document);
     expect(candidate?.element).toBe(input);
@@ -51,6 +52,7 @@ describe("ChatGPT-like fixture", () => {
 
     let promptRequests = 0;
     let fileRequests = 0;
+    let capturedPromptRequest: AnalyzeRequest | undefined;
     vi.stubGlobal("chrome", {
       runtime: {
         id: "test-extension",
@@ -60,6 +62,7 @@ describe("ChatGPT-like fixture", () => {
           }
           if (message.type === "PROMPT_ANALYZE_REQUEST") {
             promptRequests += 1;
+            capturedPromptRequest = message.payload as AnalyzeRequest;
             return promptResponse("Allow", message.payload as AnalyzeRequest);
           }
           if (message.type === "FILES_ANALYZE_REQUEST") {
@@ -85,6 +88,8 @@ describe("ChatGPT-like fixture", () => {
     sendButton.click();
     await waitFor(() => submits === 1);
     expect(promptRequests).toBe(1);
+    expect(capturedPromptRequest?.inputs.some((input) => input.source === "attachment_chip")).toBe(true);
+    expect(JSON.stringify(capturedPromptRequest)).not.toContain("customer-secret.png");
 
     fileInput.dispatchEvent(new Event("change", { bubbles: true, cancelable: true }));
     await waitFor(() => uploadEvents === 1);

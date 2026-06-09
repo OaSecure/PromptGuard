@@ -73,6 +73,17 @@ describe("extension config validation", () => {
     expect(
       isExtensionConfigResponse({
         ...DEFAULT_CONFIG,
+        ai_service_configs: [
+          {
+            ...DEFAULT_CONFIG.ai_service_configs[0],
+            selectors: { ...DEFAULT_CONFIG.ai_service_configs[0].selectors, attachment_chip: [] }
+          }
+        ]
+      })
+    ).toBe(false);
+    expect(
+      isExtensionConfigResponse({
+        ...DEFAULT_CONFIG,
         file_upload: { ...DEFAULT_CONFIG.file_upload, allowed_extensions: [] }
       })
     ).toBe(false);

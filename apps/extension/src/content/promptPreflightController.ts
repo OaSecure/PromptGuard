@@ -1,7 +1,9 @@
 import { createAnalyzeRequest, createComposerInput, createConvertedPasteInput } from "../shared/analyzeRequestBuilder";
 import { createClientRequestId } from "../shared/hashing";
+import type { AnalyzeInput } from "../shared/types";
 import { isAnalyzeResponse } from "../shared/responseValidation";
 import type { AnalyzeRequest, AnalyzeResponse, ExtensionConfigResponse, ExtensionContext, NormalizedError } from "../shared/types";
+import { collectAttachmentChipInputs } from "./attachmentChipCapture";
 import { findBestInputCandidate, type DetectorSelectors } from "./domDetector";
 import { applyMaskedPrompt } from "./maskedTextInjector";
 import { createPreflightOverlay, type PreflightOverlay } from "./preflightOverlay";
@@ -90,7 +92,8 @@ export function startPromptPreflightController(options: PromptPreflightControlle
       options.getContext(),
       options.config.policy_version,
       convertedPasteText,
-      requestIdForAttempt(attempt)
+      requestIdForAttempt(attempt),
+      collectAttachmentChipInputs(doc, { attachment_chip: selectors.attachment_chip })
     );
     convertedPasteText = undefined;
     recordPromptAttempt(doc, request, "inspecting");
@@ -298,10 +301,11 @@ export function buildPromptAnalyzeRequest(
   context: ExtensionContext,
   policyVersion: string,
   convertedPaste?: string,
-  clientRequestId?: string
+  clientRequestId?: string,
+  attachmentChipInputs: AnalyzeInput[] = []
 ): AnalyzeRequest {
   const text = extractPromptText(input);
-  const inputs = [createComposerInput({ text, inputMethod })];
+  const inputs = [createComposerInput({ text, inputMethod }), ...attachmentChipInputs];
   if (convertedPaste && !text.includes(convertedPaste)) {
     inputs.push(createConvertedPasteInput({ text: convertedPaste }));
   }
@@ -316,11 +320,12 @@ export function buildPromptAnalyzeRequest(
   );
 }
 
-function serviceSelectors(config: ExtensionConfigResponse): DetectorSelectors & { send_button: string[] } {
+function serviceSelectors(config: ExtensionConfigResponse): DetectorSelectors & { send_button: string[]; attachment_chip: string[] } {
   const serviceConfig = config.ai_service_configs.find((item) => item.service === "CHATGPT") ?? config.ai_service_configs[0];
   return {
     input: serviceConfig.selectors.input,
-    send_button: serviceConfig.selectors.send_button
+    send_button: serviceConfig.selectors.send_button,
+    attachment_chip: serviceConfig.selectors.attachment_chip
   };
 }
 

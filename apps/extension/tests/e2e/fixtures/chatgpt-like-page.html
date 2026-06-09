@@ -13,6 +13,16 @@
       <form id="composer">
         <textarea id="prompt-textarea" aria-label="Prompt" rows="4"></textarea>
         <div id="contenteditable-prompt" contenteditable="true" aria-label="Prompt editor"></div>
+        <div
+          data-testid="attachment-chip"
+          data-promptguard-attachment-chip
+          data-promptguard-extension=".png"
+          data-promptguard-mime="image/png"
+          data-promptguard-size-bytes="2048"
+          data-promptguard-attachment-kind="image"
+        >
+          customer-secret.png
+        </div>
         <input id="file-input" type="file" multiple />
         <div data-testid="drop-zone">Drop files here</div>
         <button type="submit" data-testid="send-button">Send</button>

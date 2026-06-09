@@ -142,6 +142,7 @@ export interface AiServiceConfig {
     send_button: string[];
     file_input: string[];
     drop_zone: string[];
+    attachment_chip: string[];
   };
 }
 
