@@ -1,6 +1,14 @@
-import type { FilesAnalyzeRequest } from "../shared/types";
 import type { FilePolicyDecision } from "../shared/filePolicy";
 import type { FileUploadSnapshot } from "./fileUploadSnapshot";
+
+/** Safe transient text-file payload returned after in-memory reads. */
+export interface ReadableTextFile {
+  client_file_id: string;
+  extension: string;
+  mime_type: string;
+  size_bytes: number;
+  content_text: string;
+}
 
 /**
  * Reads policy-approved files into Analyze request entries.
@@ -12,8 +20,8 @@ import type { FileUploadSnapshot } from "./fileUploadSnapshot";
 export async function readAllowedTextFiles(
   snapshots: FileUploadSnapshot[],
   decisions: FilePolicyDecision[]
-): Promise<FilesAnalyzeRequest["files"]> {
-  const requestFiles: FilesAnalyzeRequest["files"] = [];
+): Promise<ReadableTextFile[]> {
+  const requestFiles: ReadableTextFile[] = [];
 
   for (const [index, snapshot] of snapshots.entries()) {
     const decision = decisions[index];

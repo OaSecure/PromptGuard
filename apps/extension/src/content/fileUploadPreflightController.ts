@@ -1,15 +1,15 @@
-import { DEFAULT_POLICY_VERSION, EXTENSION_VERSION } from "../shared/constants";
+import { createAnalyzeRequest, createFileTextInput, createUnavailableTextInput, createUnsupportedAttachmentInput } from "../shared/analyzeRequestBuilder";
 import { createClientRequestId } from "../shared/hashing";
 import { validateFilePolicy } from "../shared/filePolicy";
-import { isFilesAnalyzeResponse } from "../shared/responseValidation";
-import type { ExtensionConfigResponse, ExtensionContext, FilesAnalyzeRequest, FilesAnalyzeResponse, NormalizedError } from "../shared/types";
+import { isAnalyzeResponse } from "../shared/responseValidation";
+import type { AnalyzeInput, AnalyzeRequest, AnalyzeResponse, ExtensionConfigResponse, ExtensionContext, NormalizedError } from "../shared/types";
 import { createFileUploadSnapshots, type FileUploadAttempt } from "./fileUploadSnapshot";
 import { installFileUploadInterceptor, replayFileUploadAttempt, type FileUploadInterceptor } from "./fileUploadInterceptor";
 import { readAllowedTextFiles } from "./textFileReader";
 import { createPreflightOverlay, type PreflightOverlay } from "./preflightOverlay";
 
 /** Sends one text-file inspection request through the background boundary. */
-export type FilesAnalyzeSender = (request: FilesAnalyzeRequest) => Promise<FilesAnalyzeResponse | NormalizedError>;
+export type FilesAnalyzeSender = (request: AnalyzeRequest) => Promise<AnalyzeResponse | NormalizedError>;
 
 /**
  * Configures the text-file upload preflight controller.
@@ -44,6 +44,16 @@ export function startFileUploadPreflightController(options: FileUploadPreflightC
   let currentAttemptId = 0;
   let analyzing = false;
   let replaying = false;
+  const requestIds = new WeakMap<FileUploadAttempt, string>();
+  const requestIdForAttempt = (attempt: FileUploadAttempt): string => {
+    const existing = requestIds.get(attempt);
+    if (existing) {
+      return existing;
+    }
+    const created = createClientRequestId("frq");
+    requestIds.set(attempt, created);
+    return created;
+  };
 
   const interceptor: FileUploadInterceptor = installFileUploadInterceptor({
     document: doc,
@@ -66,7 +76,7 @@ export function startFileUploadPreflightController(options: FileUploadPreflightC
       snapshots.map((snapshot) => snapshot.policyInput),
       options.config.file_upload
     );
-    const rejected = policyDecisions.find((decision) => !decision.allowed);
+    const rejected = policyDecisions.find((decision) => !decision.allowed && (decision.reason === "disabled" || decision.reason === "too_many_files" || decision.reason === "batch_too_large"));
     if (rejected) {
       showBlocked(policyMessage(rejected.reason));
       return;
@@ -77,12 +87,22 @@ export function startFileUploadPreflightController(options: FileUploadPreflightC
     overlay.show({ decision: "analyzing", message: "Inspecting attached text files.", actions: [] });
 
     try {
-      const files = await readAllowedTextFiles(snapshots, policyDecisions);
-      const response = await withTimeout(options.sendAnalyze(buildFilesAnalyzeRequest(files, options.getContext(), options.config.policy_version)), options.config.timeout_ms);
+      const files = await readAllowedTextFiles(
+        snapshots.filter((_, index) => policyDecisions[index]?.allowed),
+        policyDecisions.filter((decision) => decision.allowed)
+      );
+      const inputs: AnalyzeInput[] = [
+        ...files.map((file) => createFileTextInput({ extension: file.extension, mimeType: file.mime_type, sizeBytes: file.size_bytes, text: file.content_text })),
+        ...buildMetadataOnlyInputs(snapshots, policyDecisions)
+      ];
+      const response = await withTimeout(
+        options.sendAnalyze(buildFilesAnalyzeRequest(inputs, options.getContext(), options.config.policy_version, requestIdForAttempt(attempt))),
+        options.config.timeout_ms
+      );
       if (attemptId !== currentAttemptId) {
         return;
       }
-      if (!isFilesAnalyzeResponse(response)) {
+      if (!isAnalyzeResponse(response)) {
         showFailClosed("File inspection failed. Files were not attached.", () => void handleAttempt(attempt));
         return;
       }
@@ -98,12 +118,10 @@ export function startFileUploadPreflightController(options: FileUploadPreflightC
     }
   }
 
-  function handleDecision(response: FilesAnalyzeResponse, attempt: FileUploadAttempt): void {
-    switch (response.decision.action) {
+  function handleDecision(response: AnalyzeResponse, attempt: FileUploadAttempt): void {
+    switch (response.action) {
       case "Allow":
-        // A false authorization flag overrides the Allow action because the
-        // native file attach is the irreversible page action.
-        if (response.decision.allow_original_upload === false) {
+        if (response.allow_original_send === false) {
           showFailClosed("File inspection did not authorize attaching the original files.", () => void handleAttempt(attempt));
           return;
         }
@@ -177,21 +195,20 @@ export function startFileUploadPreflightController(options: FileUploadPreflightC
  * through generated client IDs and metadata that is safe to send.
  */
 export function buildFilesAnalyzeRequest(
-  files: FilesAnalyzeRequest["files"],
+  inputs: AnalyzeInput[],
   context: ExtensionContext,
-  policyVersion = DEFAULT_POLICY_VERSION
-): FilesAnalyzeRequest {
-  return {
-    files,
-    context: {
+  policyVersion: string,
+  clientRequestId?: string
+): AnalyzeRequest {
+  return createAnalyzeRequest(
+    {
       ...context,
-      extension_version: context.extension_version || EXTENSION_VERSION
+      extension_version: context.extension_version || "0.4.0"
     },
-    policy: {
-      version: policyVersion || DEFAULT_POLICY_VERSION
-    },
-    client_request_id: createClientRequestId("frq")
-  };
+    policyVersion,
+    inputs,
+    clientRequestId
+  );
 }
 
 function serviceSelectors(config: ExtensionConfigResponse): { file_input: string[]; drop_zone: string[] } {
@@ -233,4 +250,30 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T
       window.clearTimeout(timeoutId);
     }
   }
+}
+
+function buildMetadataOnlyInputs(
+  snapshots: Array<{ file: File }>,
+  decisions: Array<{ allowed: boolean; extension: string; reason?: string }>
+): AnalyzeInput[] {
+  return snapshots.flatMap((snapshot, index) => {
+    const decision = decisions[index];
+    if (!decision || decision.allowed) {
+      return [];
+    }
+    if (decision.reason === "file_too_large") {
+      return [createUnavailableTextInput("file", snapshot.file.size, "oversized", "MAX_FILE_TEXT_SCAN_BYTES")];
+    }
+    if (decision.reason === "excluded_extension" || decision.reason === "unsupported_extension" || decision.reason === "non_text_mime") {
+      return [
+        createUnsupportedAttachmentInput({
+          extension: decision.extension,
+          mimeType: snapshot.file.type,
+          sizeBytes: snapshot.file.size,
+          attachmentIndex: index
+        })
+      ];
+    }
+    return [];
+  });
 }

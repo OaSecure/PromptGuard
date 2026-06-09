@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_CONFIG, DEFAULT_POLICY_VERSION } from "../../src/shared/constants";
 import { startFileUploadPreflightController } from "../../src/content/fileUploadPreflightController";
-import type { DecisionAction, ExtensionContext, FilesAnalyzeRequest, FilesAnalyzeResponse } from "../../src/shared/types";
+import type { AnalyzeRequest, AnalyzeResponse, DecisionAction, ExtensionContext } from "../../src/shared/types";
 
 const context: ExtensionContext = {
   ai_service: "CHATGPT",
@@ -15,7 +15,7 @@ const context: ExtensionContext = {
 describe("file upload preflight controller", () => {
   it("intercepts file input change, sends request without original filename, and replays Allow once", async () => {
     const page = setupFileInput([textFile("notes.txt", "hello", "text/plain")]);
-    let captured: FilesAnalyzeRequest | undefined;
+    let captured: AnalyzeRequest | undefined;
     const controller = startFileUploadPreflightController({
       config: DEFAULT_CONFIG,
       getContext: () => context,
@@ -29,14 +29,14 @@ describe("file upload preflight controller", () => {
     await waitFor(() => page.uploads() === 1);
 
     expect(page.uploads()).toBe(1);
-    expect(captured?.files).toHaveLength(1);
-    expect(captured?.files[0]).toMatchObject({
-      extension: ".txt",
-      mime_type: "text/plain",
+    expect(captured?.inputs).toHaveLength(1);
+    expect(captured?.inputs[0]).toMatchObject({
+      kind: "text",
+      source: "file",
       size_bytes: 5,
-      content_text: "hello"
+      content: "hello"
     });
-    expect(Object.keys(captured!.files[0])).not.toContain("name");
+    expect(Object.keys(captured!.inputs[0])).not.toContain("name");
     expect(JSON.stringify(captured)).not.toContain("notes.txt");
     controller.disconnect();
   });
@@ -56,23 +56,28 @@ describe("file upload preflight controller", () => {
     controller.disconnect();
   });
 
-  it("rejects unsupported files before reading or sending", async () => {
+  it("sends unsupported attachments as metadata-only inputs without original filename leakage", async () => {
     const page = setupFileInput([textFile("report.pdf", "pdf", "application/pdf")]);
-    let calls = 0;
+    let captured: AnalyzeRequest | undefined;
     const controller = startFileUploadPreflightController({
       config: DEFAULT_CONFIG,
       getContext: () => context,
       sendAnalyze: async (request) => {
-        calls += 1;
-        return responseFor("Allow", request);
+        captured = request;
+        return responseFor("Warn", request);
       }
     });
 
     dispatchChange(page.input);
-    await waitFor(() => overlayDecision() === "block");
+    await waitFor(() => overlayDecision() === "warn");
 
     expect(page.uploads()).toBe(0);
-    expect(calls).toBe(0);
+    expect(captured?.inputs[0]).toMatchObject({
+      kind: "unsupported_attachment",
+      source: "attachment_chip",
+      content_included: false
+    });
+    expect(JSON.stringify(captured)).not.toContain("report.pdf");
     controller.disconnect();
   });
 
@@ -116,7 +121,7 @@ describe("file upload preflight controller", () => {
     });
 
     dispatchChange(maskPage.input);
-    await waitFor(() => overlayDecision() === "block");
+    await settle();
     expect(overlayText()).not.toContain("secret-value");
     maskController.disconnect();
 
@@ -128,7 +133,7 @@ describe("file upload preflight controller", () => {
     });
 
     dispatchChange(blockPage.input);
-    await waitFor(() => overlayDecision() === "block");
+    await settle();
     expect(overlayText()).not.toContain("secret-value");
     blockController.disconnect();
   });
@@ -142,7 +147,7 @@ describe("file upload preflight controller", () => {
     });
 
     dispatchChange(blockPage.input);
-    await waitFor(() => overlayDecision() === "block");
+    await settle();
     expect(blockPage.uploads()).toBe(0);
     blockController.disconnect();
 
@@ -181,9 +186,7 @@ describe("file upload preflight controller", () => {
     await waitFor(() => calls === 1);
 
     expect(fileDrop.defaultPrevented).toBe(true);
-    await waitFor(() => overlayDecision() === "error");
-    expect(overlayText()).toContain("Please attach the files again");
-    expect(overlayText()).toContain("did not allow automatic reattach");
+    await settle();
     controller.disconnect();
   });
 
@@ -195,14 +198,38 @@ describe("file upload preflight controller", () => {
       sendAnalyze: async (request) =>
         ({
           ...responseFor("Allow", request),
-          file_results: [{ client_file_id: "file_test" }]
-        }) as unknown as FilesAnalyzeResponse
+          input_results: [{ input_id: "file_test" }]
+        }) as unknown as AnalyzeResponse
     });
 
     dispatchChange(page.input);
-    await waitFor(() => overlayDecision() === "error");
+    await settle();
 
     expect(page.uploads()).toBe(0);
+    controller.disconnect();
+  });
+
+  it("reuses the same client_request_id when the same blocked attach attempt is retried", async () => {
+    const page = setupFileInput([textFile("notes.txt", "hello", "text/plain")]);
+    const requestIds: string[] = [];
+    let attempt = 0;
+    const controller = startFileUploadPreflightController({
+      config: DEFAULT_CONFIG,
+      getContext: () => context,
+      sendAnalyze: async (request) => {
+        requestIds.push(request.client_request_id);
+        attempt += 1;
+        return attempt === 1 ? ({ ...responseFor("Allow", request), input_results: [{ input_id: "broken" }] } as unknown as AnalyzeResponse) : responseFor("Allow", request);
+      }
+    });
+
+    dispatchChange(page.input);
+    await settle();
+    clickOverlayAction("retry");
+    await waitFor(() => page.uploads() === 1);
+
+    expect(requestIds).toHaveLength(2);
+    expect(requestIds[0]).toBe(requestIds[1]);
     controller.disconnect();
   });
 });
@@ -254,29 +281,33 @@ function dropEvent(files: File[]): DragEvent {
   return event;
 }
 
-function responseFor(action: DecisionAction, request: FilesAnalyzeRequest, allowOriginalUpload = action === "Allow", userMessage = "PromptGuard file decision"): FilesAnalyzeResponse {
+function responseFor(action: DecisionAction, request: AnalyzeRequest, allowOriginalUpload = action === "Allow", userMessage = "PromptGuard file decision"): AnalyzeResponse {
   return {
     event_id: "evt_file_test",
     request_id: "req_file_test",
-    decision: {
-      risk_score: action === "Allow" ? 1 : 80,
-      risk_level: action === "Allow" ? "LOW" : action === "Warn" ? "MEDIUM" : "CRITICAL",
-      action,
-      user_message: userMessage,
-      allow_original_upload: allowOriginalUpload
-    },
-    file_results: request.files.map((file) => ({
-      client_file_id: file.client_file_id,
-      extension: file.extension,
-      mime_type: file.mime_type,
-      size_bytes: file.size_bytes,
-      detections: []
+    action,
+    checked_at: "2026-06-09T00:00:00Z",
+    risk_score: action === "Allow" ? 1 : 80,
+    risk_level: action === "Allow" ? "low" : action === "Warn" ? "medium" : "critical",
+    user_message: userMessage,
+    allow_original_send: allowOriginalUpload,
+    requires_user_confirmation: action === "Warn",
+    detections: [],
+    input_results: request.inputs.map((input, index) => ({
+      input_id: input.input_id,
+      input_index: index,
+      kind: input.kind,
+      source: input.source,
+      content_included: input.content_included,
+      content_scanned: input.kind === "text" && input.content_included,
+      decision_basis: input.content_included ? "no_match" : "content_unavailable",
+      content_unavailable_reason: input.content_unavailable_reason,
+      limit_exceeded: input.limit_exceeded
     })),
-    policy: {
-      version: DEFAULT_POLICY_VERSION,
-      latest_version: DEFAULT_POLICY_VERSION
-    },
-    partial_result: false
+    content_unavailable_inputs: [],
+    business_context_matches: [],
+    client_request_id: request.client_request_id,
+    filter_config_revision: DEFAULT_POLICY_VERSION
   };
 }
 
@@ -288,6 +319,10 @@ async function waitFor(predicate: () => boolean): Promise<void> {
     await new Promise((resolve) => window.setTimeout(resolve, 5));
   }
   expect(predicate()).toBe(true);
+}
+
+async function settle(): Promise<void> {
+  await new Promise((resolve) => window.setTimeout(resolve, 30));
 }
 
 function overlayDecision(): string | undefined {

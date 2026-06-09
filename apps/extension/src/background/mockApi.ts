@@ -1,64 +1,59 @@
-import { DEFAULT_CONFIG, DEFAULT_POLICY_VERSION } from "../shared/constants";
+import { DEFAULT_CONFIG } from "../shared/constants";
 import type {
+  AnalyzeInput,
+  AnalyzeInputResult,
   AnalyzeRequest,
   AnalyzeResponse,
   AuthMeResponse,
+  ContentUnavailableInput,
   DecisionAction,
-  FilesAnalyzeRequest,
-  FilesAnalyzeResponse,
   RiskLevel
 } from "../shared/types";
 
 function riskForAction(action: DecisionAction): { score: number; level: RiskLevel; message: string } {
   switch (action) {
     case "Block":
-      return { score: 92, level: "CRITICAL", message: "Policy blocks this content." };
+      return { score: 92, level: "critical", message: "Policy blocks this content." };
     case "Mask":
-      return { score: 72, level: "HIGH", message: "Sensitive-looking content can be masked before sending." };
+      return { score: 72, level: "high", message: "Sensitive-looking content can be masked before sending." };
     case "Warn":
-      return { score: 48, level: "MEDIUM", message: "Sensitive-looking content may be present." };
+      return { score: 48, level: "medium", message: "Sensitive-looking content may be present." };
     case "Allow":
-      return { score: 5, level: "LOW", message: "No high-risk evidence was found." };
+      return { score: 5, level: "low", message: "No high-risk evidence was found." };
   }
 }
 
-function actionFromText(text: string): DecisionAction {
+function actionFromRequest(request: AnalyzeRequest): DecisionAction {
+  const text = request.inputs
+    .filter((input) => input.kind === "text" && input.content_included && typeof input.content === "string")
+    .map((input) => input.content)
+    .join("\n");
   const normalized = text.toLowerCase();
+
   if (normalized.includes("mock:block") || normalized.includes("database_url")) {
     return "Block";
   }
   if (normalized.includes("mock:mask") || containsEmailAddress(text)) {
     return "Mask";
   }
-  if (normalized.includes("mock:warn") || normalized.includes("token")) {
+  if (normalized.includes("mock:warn") || normalized.includes("token") || request.inputs.some((input) => input.kind === "unsupported_attachment")) {
     return "Warn";
   }
   return "Allow";
 }
 
-/**
- * Produces a deterministic masked prompt for local Analyze smoke tests.
- *
- * The mock backend owns this transformation so the content script can exercise
- * the same contract as the real API path: receive `masked_prompt`, apply it to
- * the page input, and leave final sending to the user.
- */
 function maskPromptForMockAnalyze(text: string): string {
-  let masked = text
+  const masked = text
     .replace(/\bmock:mask\b/gi, "[masked-trigger]")
     .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[masked-email]");
-
-  if (masked === text) {
-    return "[masked] content requires review";
-  }
-  return masked;
+  return masked === text ? "[masked] content requires review" : masked;
 }
 
 function containsEmailAddress(text: string): boolean {
   return /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(text);
 }
 
-/** Returns a stable mock identity for options-page connection checks. */
+/** Returns a stable mock auth identity for options-page and auth-boundary tests. */
 export async function mockAuthMe(): Promise<AuthMeResponse> {
   return {
     id: "mock_user",
@@ -69,96 +64,95 @@ export async function mockAuthMe(): Promise<AuthMeResponse> {
   };
 }
 
-/** Returns the default extension config for mock-mode development. */
+/** Returns the default extension config in mock mode. */
 export async function mockConfig() {
   return DEFAULT_CONFIG;
 }
 
-/**
- * Produces a deterministic prompt Analyze response for local development.
- *
- * Trigger words let tests exercise Allow, Warn, Mask, and Block without a
- * server while keeping the response shape aligned with the real client path.
- */
+/** Returns a deterministic mock Analyze response for prompt preflight tests. */
 export async function mockPromptAnalyze(request: AnalyzeRequest): Promise<AnalyzeResponse> {
-  const action = actionFromText(request.prompt.text);
+  return mockAnalyze(request);
+}
+
+/** Returns a deterministic mock Analyze response for file preflight tests. */
+export async function mockFilesAnalyze(request: AnalyzeRequest): Promise<AnalyzeResponse> {
+  return mockAnalyze(request);
+}
+
+function mockAnalyze(request: AnalyzeRequest): AnalyzeResponse {
+  const action = actionFromRequest(request);
   const risk = riskForAction(action);
+  const composerText =
+    request.inputs.find((input) => input.kind === "text" && input.source === "composer" && input.content_included && typeof input.content === "string")?.content ??
+    "";
+
   return {
     event_id: `evt_mock_${request.client_request_id}`,
     request_id: `req_mock_${request.client_request_id}`,
-    decision: {
-      risk_score: risk.score,
-      risk_level: risk.level,
-      action,
-      user_message: risk.message,
-      allow_original_send: action === "Allow"
-    },
+    action,
+    checked_at: new Date().toISOString(),
+    risk_score: risk.score,
+    risk_level: risk.level,
+    user_message: risk.message,
+    allow_original_send: action === "Allow",
+    requires_user_confirmation: action === "Warn",
     detections:
       action === "Allow"
         ? []
         : [
             {
-              type: action === "Block" ? "SECRET_FILE_CONTEXT" : "EMAIL",
-              label: action === "Block" ? "Secret candidate" : "Email candidate",
-              count: 1,
+              input_id: request.inputs[0]?.input_id ?? "in_mock_1",
+              input_index: 0,
+              kind: request.inputs[0]?.kind ?? "text",
+              category: action === "Block" ? "Built-in" : "PII",
+              type: action === "Block" ? "DB_CONNECTION_STRING" : "EMAIL",
+              source: request.inputs[0]?.source ?? "composer",
+              rule_id: null,
+              detector_id: "mock_detector",
               severity: action === "Block" ? "critical" : "medium",
+              action,
+              placeholder: action === "Block" ? "DB_CONNECTION_STRING" : "EMAIL",
               confidence: 0.9,
-              source: "mock"
+              reason_code: "mock_match",
+              match_count: 1
             }
           ],
-    masked_prompt: action === "Mask" ? maskPromptForMockAnalyze(request.prompt.text) : undefined,
-    policy: {
-      version: request.policy.version,
-      latest_version: DEFAULT_POLICY_VERSION
-    },
-    partial_result: false
+    input_results: buildInputResults(request.inputs, action),
+    content_unavailable_inputs: buildContentUnavailableInputs(request.inputs),
+    business_context_matches: [],
+    client_request_id: request.client_request_id,
+    filter_config_revision: request.filter_config_revision,
+    masked_prompt: action === "Mask" ? maskPromptForMockAnalyze(composerText) : undefined
   };
 }
 
-/**
- * Produces a deterministic text-file Analyze response for local development.
- *
- * The mock inspects transient request text only in memory and returns decisions
- * through generated client file IDs rather than original filenames.
- */
-export async function mockFilesAnalyze(request: FilesAnalyzeRequest): Promise<FilesAnalyzeResponse> {
-  const hasSecretContext = request.files.some((file) => file.extension === ".env" || file.content_text.toLowerCase().includes("database_url"));
-  const hasWarningContext = request.files.some((file) => file.content_text.toLowerCase().includes("token"));
-  const action: DecisionAction = hasSecretContext ? "Block" : hasWarningContext ? "Warn" : "Allow";
-  const risk = riskForAction(action);
-  return {
-    event_id: `evt_mock_${request.client_request_id}`,
-    request_id: `req_mock_${request.client_request_id}`,
-    decision: {
-      risk_score: risk.score,
-      risk_level: risk.level,
-      action,
-      user_message: risk.message,
-      allow_original_upload: action === "Allow"
-    },
-    file_results: request.files.map((file) => ({
-      client_file_id: file.client_file_id,
-      extension: file.extension,
-      mime_type: file.mime_type,
-      size_bytes: file.size_bytes,
-      detections:
-        action === "Block"
-          ? [
-              {
-                type: "DB_CONNECTION_STRING",
-                label: "DB connection string candidate",
-                count: 1,
-                severity: "critical",
-                confidence: 0.9,
-                source: "mock"
-              }
-            ]
-          : []
-    })),
-    policy: {
-      version: request.policy.version,
-      latest_version: DEFAULT_POLICY_VERSION
-    },
-    partial_result: false
-  };
+function buildInputResults(inputs: AnalyzeInput[], action: DecisionAction): AnalyzeInputResult[] {
+  return inputs.map((input, index) => ({
+    input_id: input.input_id,
+    input_index: index,
+    kind: input.kind,
+    source: input.source,
+    content_included: input.content_included,
+    content_scanned: input.kind === "text" && input.content_included,
+    decision_basis: input.content_included ? (action === "Allow" ? "no_match" : "detection") : "content_unavailable",
+    content_unavailable_reason: input.content_unavailable_reason,
+    limit_exceeded: input.limit_exceeded
+  }));
+}
+
+function buildContentUnavailableInputs(inputs: AnalyzeInput[]): ContentUnavailableInput[] {
+  return inputs.flatMap((input, index) =>
+    input.content_included || !input.content_unavailable_reason
+      ? []
+      : [
+          {
+            input_id: input.input_id,
+            input_index: index,
+            kind: input.kind,
+            source: input.source,
+            reason: input.content_unavailable_reason,
+            limit_exceeded: input.limit_exceeded
+          }
+        ]
+  );
 }

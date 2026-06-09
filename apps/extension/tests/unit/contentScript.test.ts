@@ -21,6 +21,9 @@ describe("content script request context", () => {
 
     expect(request?.context.page_url_origin).toBe(window.location.origin);
     expect(request?.context.ai_service_domain).toBe(window.location.hostname);
+    expect(request?.filter_config_revision).toBeTruthy();
+    expect(Array.isArray(request?.inputs)).toBe(true);
+    expect(serialized).not.toContain("login_id");
     expect(serialized).not.toContain("private-thread");
     expect(serialized).not.toContain("token=secret");
     expect(serialized).not.toContain("fragment");

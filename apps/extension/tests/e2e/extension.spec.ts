@@ -6,7 +6,7 @@ import { DEFAULT_CONFIG, DEFAULT_POLICY_VERSION } from "../../src/shared/constan
 import { findBestInputCandidate } from "../../src/content/domDetector";
 import { initializePromptGuardContentScript, shutdownPromptGuardContentScript } from "../../src/content/contentScript";
 import { extractPromptText } from "../../src/content/promptExtractor";
-import type { AnalyzeRequest, DecisionAction, FilesAnalyzeRequest } from "../../src/shared/types";
+import type { AnalyzeRequest, DecisionAction } from "../../src/shared/types";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -64,7 +64,7 @@ describe("ChatGPT-like fixture", () => {
           }
           if (message.type === "FILES_ANALYZE_REQUEST") {
             fileRequests += 1;
-            return filesResponse("Allow", message.payload as FilesAnalyzeRequest);
+            return filesResponse("Allow", message.payload as AnalyzeRequest);
           }
           return { code: "UNKNOWN_ERROR", message: "Unsupported test message." };
         })
@@ -130,7 +130,7 @@ describe("ChatGPT-like fixture", () => {
           }
           if (message.type === "FILES_ANALYZE_REQUEST") {
             fileRequests += 1;
-            return filesResponse("Allow", message.payload as FilesAnalyzeRequest);
+            return filesResponse("Allow", message.payload as AnalyzeRequest);
           }
           return { code: "UNKNOWN_ERROR", message: "Unsupported test message." };
         })
@@ -238,39 +238,47 @@ function promptResponse(action: DecisionAction, request: AnalyzeRequest) {
   return {
     event_id: "evt_prompt_fixture",
     request_id: "req_prompt_fixture",
-    decision: {
-      risk_score: 1,
-      risk_level: "LOW",
-      action,
-      user_message: "PromptGuard decision",
-      allow_original_send: action === "Allow"
-    },
+    action,
+    checked_at: "2026-06-09T00:00:00Z",
+    risk_score: 1,
+    risk_level: "low",
+    user_message: "PromptGuard decision",
+    allow_original_send: action === "Allow",
+    requires_user_confirmation: action === "Warn",
     detections: [],
-    policy: { version: request.policy.version, latest_version: DEFAULT_POLICY_VERSION },
-    partial_result: false
+    input_results: [],
+    content_unavailable_inputs: [],
+    business_context_matches: [],
+    client_request_id: request.client_request_id,
+    filter_config_revision: request.filter_config_revision
   };
 }
 
-function filesResponse(action: DecisionAction, request: FilesAnalyzeRequest) {
+function filesResponse(action: DecisionAction, request: AnalyzeRequest) {
   return {
     event_id: "evt_files_fixture",
     request_id: "req_files_fixture",
-    decision: {
-      risk_score: 1,
-      risk_level: "LOW",
-      action,
-      user_message: "PromptGuard file decision",
-      allow_original_upload: action === "Allow"
-    },
-    file_results: request.files.map((file) => ({
-      client_file_id: file.client_file_id,
-      extension: file.extension,
-      mime_type: file.mime_type,
-      size_bytes: file.size_bytes,
-      detections: []
+    action,
+    checked_at: "2026-06-09T00:00:00Z",
+    risk_score: 1,
+    risk_level: "low",
+    user_message: "PromptGuard file decision",
+    allow_original_send: action === "Allow",
+    requires_user_confirmation: action === "Warn",
+    detections: [],
+    input_results: request.inputs.map((input, index) => ({
+      input_id: input.input_id,
+      input_index: index,
+      kind: input.kind,
+      source: input.source,
+      content_included: input.content_included,
+      content_scanned: input.kind === "text" && input.content_included,
+      decision_basis: "no_match"
     })),
-    policy: { version: request.policy.version, latest_version: DEFAULT_POLICY_VERSION },
-    partial_result: false
+    content_unavailable_inputs: [],
+    business_context_matches: [],
+    client_request_id: request.client_request_id,
+    filter_config_revision: request.filter_config_revision
   };
 }
 

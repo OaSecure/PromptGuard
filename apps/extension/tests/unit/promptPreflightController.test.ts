@@ -276,7 +276,7 @@ describe("prompt preflight controller", () => {
       sendAnalyze: async () =>
         ({
           ...responseFor("Allow"),
-          decision: { ...responseFor("Allow").decision, action: "Review" }
+          action: "Review"
         }) as unknown as AnalyzeResponse
     });
 
@@ -284,6 +284,30 @@ describe("prompt preflight controller", () => {
     await waitFor(() => overlayDecision() === "error");
 
     expect(page.submits()).toBe(0);
+    controller.disconnect();
+  });
+
+  it("reuses the same client_request_id when the same blocked send attempt is retried", async () => {
+    const page = setupComposer("retry case");
+    const requestIds: string[] = [];
+    let attempt = 0;
+    const controller = startPromptPreflightController({
+      config: DEFAULT_CONFIG,
+      getContext: () => context,
+      sendAnalyze: async (request) => {
+        requestIds.push(request.client_request_id);
+        attempt += 1;
+        return attempt === 1 ? ({ ...responseFor("Allow"), action: "Review" } as unknown as AnalyzeResponse) : responseFor("Allow");
+      }
+    });
+
+    page.button.click();
+    await waitFor(() => overlayDecision() === "error");
+    clickOverlayAction("retry");
+    await waitFor(() => page.submits() === 1);
+
+    expect(requestIds).toHaveLength(2);
+    expect(requestIds[0]).toBe(requestIds[1]);
     controller.disconnect();
   });
 
@@ -353,20 +377,20 @@ function responseFor(action: DecisionAction, maskedPrompt?: string, allowOrigina
   return {
     event_id: "evt_test",
     request_id: "req_test",
-    decision: {
-      risk_score: action === "Allow" ? 1 : 70,
-      risk_level: action === "Allow" ? "LOW" : action === "Block" ? "CRITICAL" : "HIGH",
-      action,
-      user_message: userMessage,
-      allow_original_send: allowOriginalSend
-    },
+    action,
+    checked_at: "2026-06-09T00:00:00Z",
+    risk_score: action === "Allow" ? 1 : 70,
+    risk_level: action === "Allow" ? "low" : action === "Block" ? "critical" : "high",
+    user_message: userMessage,
+    allow_original_send: allowOriginalSend,
+    requires_user_confirmation: action === "Warn",
     detections: [],
+    input_results: [],
+    content_unavailable_inputs: [],
+    business_context_matches: [],
+    client_request_id: "crq_test",
+    filter_config_revision: DEFAULT_POLICY_VERSION,
     masked_prompt: maskedPrompt,
-    policy: {
-      version: DEFAULT_POLICY_VERSION,
-      latest_version: DEFAULT_POLICY_VERSION
-    },
-    partial_result: false
   };
 }
 
