@@ -151,7 +151,17 @@ export function startPromptPreflightController(options: PromptPreflightControlle
           decision: "warn",
           message: safeDecisionMessage(response),
           actions: [
-            { label: "Continue", variant: "primary", onClick: () => replay(attempt) },
+            {
+              label: "Continue",
+              variant: "primary",
+              onClick: () => {
+                if (response.allow_original_send !== true) {
+                  showFailClosed("Inspection did not authorize sending the original prompt.", () => void handleAttempt(attempt));
+                  return;
+                }
+                replay(attempt);
+              }
+            },
             { label: "Cancel", variant: "secondary", onClick: overlay.hide }
           ]
         });
@@ -177,7 +187,7 @@ export function startPromptPreflightController(options: PromptPreflightControlle
                       ]
                     });
                   } else {
-                    overlay.hide();
+                    replay(attempt);
                   }
                 } else {
                   showFailClosed("Masked replacement could not be applied.", () => void handleAttempt(attempt));

@@ -132,7 +132,17 @@ export function startFileUploadPreflightController(options: FileUploadPreflightC
           decision: "warn",
           message: "PromptGuard found attached file content that may need review.",
           actions: [
-            { label: "Continue", variant: "primary", onClick: () => replayOrFallback(attempt) },
+            {
+              label: "Continue",
+              variant: "primary",
+              onClick: () => {
+                if (response.allow_original_send !== true) {
+                  showFailClosed("File inspection did not authorize attaching the original files.", () => void handleAttempt(attempt));
+                  return;
+                }
+                replayOrFallback(attempt);
+              }
+            },
             { label: "Cancel", variant: "secondary", onClick: overlay.hide }
           ]
         });

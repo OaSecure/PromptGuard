@@ -168,12 +168,31 @@ describe("prompt preflight controller", () => {
     controller.disconnect();
   });
 
-  it("requires confirmation before replaying Warn", async () => {
+  it("fails closed when Warn does not authorize original send", async () => {
     const page = setupComposer("warn case");
     const controller = startPromptPreflightController({
       config: DEFAULT_CONFIG,
       getContext: () => context,
       sendAnalyze: async () => responseFor("Warn")
+    });
+
+    page.button.click();
+    await waitFor(() => overlayDecision() === "warn");
+    expect(page.submits()).toBe(0);
+
+    clickOverlayAction("continue");
+    await waitFor(() => overlayDecision() === "error");
+
+    expect(page.submits()).toBe(0);
+    controller.disconnect();
+  });
+
+  it("replays Warn only after confirmation when original send is authorized", async () => {
+    const page = setupComposer("warn authorized case");
+    const controller = startPromptPreflightController({
+      config: DEFAULT_CONFIG,
+      getContext: () => context,
+      sendAnalyze: async () => responseFor("Warn", undefined, true)
     });
 
     page.button.click();
@@ -225,7 +244,7 @@ describe("prompt preflight controller", () => {
     blockController.disconnect();
   });
 
-  it("applies Mask without automatic send", async () => {
+  it("applies Mask and sends masked text once without extra confirmation", async () => {
     const page = setupComposer("mask case");
     const controller = startPromptPreflightController({
       config: DEFAULT_CONFIG,
@@ -236,9 +255,34 @@ describe("prompt preflight controller", () => {
     page.button.click();
     await waitFor(() => overlayDecision() === "mask");
     clickOverlayAction("apply-mask");
+    await waitFor(() => page.submits() === 1);
 
     expect(page.textarea.value).toBe("[masked]");
+    expect(page.submits()).toBe(1);
+    controller.disconnect();
+  });
+
+  it("applies Mask, then requires explicit confirmation before replaying masked text when requested", async () => {
+    const page = setupComposer("contact member@example.com");
+    const controller = startPromptPreflightController({
+      config: DEFAULT_CONFIG,
+      getContext: () => context,
+      sendAnalyze: async () => responseFor("Mask", "contact [masked-email]", false, "PromptGuard decision", true)
+    });
+
+    page.button.click();
+    await waitFor(() => overlayDecision() === "mask");
+    clickOverlayAction("apply-mask");
+    await waitFor(() => overlayDecision() === "warn");
+
+    expect(page.textarea.value).toBe("contact [masked-email]");
     expect(page.submits()).toBe(0);
+
+    clickOverlayAction("continue");
+    await waitFor(() => page.submits() === 1);
+
+    expect(page.textarea.value).toBe("contact [masked-email]");
+    expect(page.submits()).toBe(1);
     controller.disconnect();
   });
 
@@ -373,7 +417,13 @@ function setupComposer(value: string, options: { buttonAttrs?: string } = {}) {
   };
 }
 
-function responseFor(action: DecisionAction, maskedPrompt?: string, allowOriginalSend = action === "Allow", userMessage = "PromptGuard decision"): AnalyzeResponse {
+function responseFor(
+  action: DecisionAction,
+  maskedPrompt?: string,
+  allowOriginalSend = action === "Allow",
+  userMessage = "PromptGuard decision",
+  requiresUserConfirmation = action === "Warn"
+): AnalyzeResponse {
   return {
     event_id: "evt_test",
     request_id: "req_test",
@@ -383,7 +433,7 @@ function responseFor(action: DecisionAction, maskedPrompt?: string, allowOrigina
     risk_level: action === "Allow" ? "low" : action === "Block" ? "critical" : "high",
     user_message: userMessage,
     allow_original_send: allowOriginalSend,
-    requires_user_confirmation: action === "Warn",
+    requires_user_confirmation: requiresUserConfirmation,
     detections: [],
     input_results: [],
     content_unavailable_inputs: [],

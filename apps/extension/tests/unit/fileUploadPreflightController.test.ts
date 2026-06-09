@@ -81,12 +81,31 @@ describe("file upload preflight controller", () => {
     controller.disconnect();
   });
 
-  it("requires confirmation before replaying Warn", async () => {
+  it("fails closed when Warn does not authorize original upload", async () => {
     const page = setupFileInput([textFile("notes.txt", "token-like marker", "text/plain")]);
     const controller = startFileUploadPreflightController({
       config: DEFAULT_CONFIG,
       getContext: () => context,
       sendAnalyze: async (request) => responseFor("Warn", request)
+    });
+
+    dispatchChange(page.input);
+    await waitFor(() => overlayDecision() === "warn");
+    expect(page.uploads()).toBe(0);
+
+    clickOverlayAction("continue");
+    await waitFor(() => overlayDecision() === "error");
+
+    expect(page.uploads()).toBe(0);
+    controller.disconnect();
+  });
+
+  it("replays Warn only after confirmation when original upload is authorized", async () => {
+    const page = setupFileInput([textFile("notes.txt", "token-like marker", "text/plain")]);
+    const controller = startFileUploadPreflightController({
+      config: DEFAULT_CONFIG,
+      getContext: () => context,
+      sendAnalyze: async (request) => responseFor("Warn", request, true)
     });
 
     dispatchChange(page.input);
