@@ -6,7 +6,7 @@ import { DEFAULT_CONFIG, DEFAULT_POLICY_VERSION } from "../../src/shared/constan
 import { findBestInputCandidate } from "../../src/content/domDetector";
 import { initializePromptGuardContentScript, shutdownPromptGuardContentScript } from "../../src/content/contentScript";
 import { extractPromptText } from "../../src/content/promptExtractor";
-import type { AnalyzeRequest, DecisionAction, FilesAnalyzeRequest } from "../../src/shared/types";
+import type { AnalyzeRequest, DecisionAction } from "../../src/shared/types";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -26,6 +26,8 @@ describe("ChatGPT-like fixture", () => {
     expect(document.querySelector("button[data-testid='send-button']")).toBeTruthy();
     expect(document.querySelector("input[type='file']")).toBeTruthy();
     expect(document.querySelector("[data-testid='drop-zone']")).toBeTruthy();
+    expect(document.querySelector("[data-testid='attachment-chip']")).toBeTruthy();
+    expect(document.querySelector("[data-testid='history-attachment-chip']")).toBeTruthy();
 
     const candidate = findBestInputCandidate(document);
     expect(candidate?.element).toBe(input);
@@ -51,6 +53,7 @@ describe("ChatGPT-like fixture", () => {
 
     let promptRequests = 0;
     let fileRequests = 0;
+    let capturedPromptRequest: AnalyzeRequest | undefined;
     vi.stubGlobal("chrome", {
       runtime: {
         id: "test-extension",
@@ -60,11 +63,12 @@ describe("ChatGPT-like fixture", () => {
           }
           if (message.type === "PROMPT_ANALYZE_REQUEST") {
             promptRequests += 1;
+            capturedPromptRequest = message.payload as AnalyzeRequest;
             return promptResponse("Allow", message.payload as AnalyzeRequest);
           }
           if (message.type === "FILES_ANALYZE_REQUEST") {
             fileRequests += 1;
-            return filesResponse("Allow", message.payload as FilesAnalyzeRequest);
+            return filesResponse("Allow", message.payload as AnalyzeRequest);
           }
           return { code: "UNKNOWN_ERROR", message: "Unsupported test message." };
         })
@@ -85,6 +89,10 @@ describe("ChatGPT-like fixture", () => {
     sendButton.click();
     await waitFor(() => submits === 1);
     expect(promptRequests).toBe(1);
+    expect(capturedPromptRequest?.inputs.some((input) => input.source === "attachment_chip")).toBe(true);
+    expect(capturedPromptRequest?.inputs.filter((input) => input.source === "attachment_chip")).toHaveLength(1);
+    expect(JSON.stringify(capturedPromptRequest)).not.toContain("customer-secret.png");
+    expect(JSON.stringify(capturedPromptRequest)).not.toContain("stale-history.zip");
 
     fileInput.dispatchEvent(new Event("change", { bubbles: true, cancelable: true }));
     await waitFor(() => uploadEvents === 1);
@@ -130,7 +138,7 @@ describe("ChatGPT-like fixture", () => {
           }
           if (message.type === "FILES_ANALYZE_REQUEST") {
             fileRequests += 1;
-            return filesResponse("Allow", message.payload as FilesAnalyzeRequest);
+            return filesResponse("Allow", message.payload as AnalyzeRequest);
           }
           return { code: "UNKNOWN_ERROR", message: "Unsupported test message." };
         })
@@ -238,39 +246,47 @@ function promptResponse(action: DecisionAction, request: AnalyzeRequest) {
   return {
     event_id: "evt_prompt_fixture",
     request_id: "req_prompt_fixture",
-    decision: {
-      risk_score: 1,
-      risk_level: "LOW",
-      action,
-      user_message: "PromptGuard decision",
-      allow_original_send: action === "Allow"
-    },
+    action,
+    checked_at: "2026-06-09T00:00:00Z",
+    risk_score: 1,
+    risk_level: "low",
+    user_message: "PromptGuard decision",
+    allow_original_send: action === "Allow",
+    requires_user_confirmation: action === "Warn",
     detections: [],
-    policy: { version: request.policy.version, latest_version: DEFAULT_POLICY_VERSION },
-    partial_result: false
+    input_results: [],
+    content_unavailable_inputs: [],
+    business_context_matches: [],
+    client_request_id: request.client_request_id,
+    filter_config_revision: request.filter_config_revision
   };
 }
 
-function filesResponse(action: DecisionAction, request: FilesAnalyzeRequest) {
+function filesResponse(action: DecisionAction, request: AnalyzeRequest) {
   return {
     event_id: "evt_files_fixture",
     request_id: "req_files_fixture",
-    decision: {
-      risk_score: 1,
-      risk_level: "LOW",
-      action,
-      user_message: "PromptGuard file decision",
-      allow_original_upload: action === "Allow"
-    },
-    file_results: request.files.map((file) => ({
-      client_file_id: file.client_file_id,
-      extension: file.extension,
-      mime_type: file.mime_type,
-      size_bytes: file.size_bytes,
-      detections: []
+    action,
+    checked_at: "2026-06-09T00:00:00Z",
+    risk_score: 1,
+    risk_level: "low",
+    user_message: "PromptGuard file decision",
+    allow_original_send: action === "Allow",
+    requires_user_confirmation: action === "Warn",
+    detections: [],
+    input_results: request.inputs.map((input, index) => ({
+      input_id: input.input_id,
+      input_index: index,
+      kind: input.kind,
+      source: input.source,
+      content_included: input.content_included,
+      content_scanned: input.kind === "text" && input.content_included,
+      decision_basis: input.kind === "attachment_metadata" ? "metadata_only" : "no_detection"
     })),
-    policy: { version: request.policy.version, latest_version: DEFAULT_POLICY_VERSION },
-    partial_result: false
+    content_unavailable_inputs: [],
+    business_context_matches: [],
+    client_request_id: request.client_request_id,
+    filter_config_revision: request.filter_config_revision
   };
 }
 

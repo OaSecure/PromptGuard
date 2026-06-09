@@ -18,7 +18,7 @@ export function isExtensionMessage(value: unknown): value is ExtensionMessage {
     case "PROMPT_ANALYZE_RESULT":
       return isRecord(value.payload);
     case "FILES_ANALYZE_REQUEST":
-      return isFilesAnalyzeRequest(value.payload);
+      return isAnalyzeRequest(value.payload);
     case "FILES_ANALYZE_RESULT":
     case "CONFIG_SYNC_RESULT":
     case "GET_CONFIG_RESULT":
@@ -37,37 +37,33 @@ export function isExtensionMessage(value: unknown): value is ExtensionMessage {
 function isAnalyzeRequest(value: unknown): boolean {
   return (
     isRecord(value) &&
-    isRecord(value.prompt) &&
-    typeof value.prompt.text === "string" &&
-    isPromptInputMethod(value.prompt.input_method) &&
-    isNonNegativeFiniteNumber(value.prompt.content_length) &&
     isExtensionContext(value.context) &&
-    isPolicyRef(value.policy) &&
+    Array.isArray(value.inputs) &&
+    value.inputs.length > 0 &&
+    value.inputs.every(isAnalyzeInput) &&
+    isNonEmptyString(value.filter_config_revision) &&
     isNonEmptyString(value.client_request_id)
   );
 }
 
-function isFilesAnalyzeRequest(value: unknown): boolean {
+function isAnalyzeInput(value: unknown): boolean {
+  if (!isRecord(value)) {
+    return false;
+  }
+  if (!isNonEmptyString(value.input_id) || !isAnalyzeInputKind(value.kind) || !isAnalyzeInputSource(value.source) || !isNonNegativeFiniteNumber(value.size_bytes)) {
+    return false;
+  }
+  if (typeof value.content_included !== "boolean") {
+    return false;
+  }
+  if (value.content_included) {
+    return typeof value.content === "string";
+  }
   return (
-    isRecord(value) &&
-    Array.isArray(value.files) &&
-    value.files.length > 0 &&
-    value.files.every(isFileAnalyzeInput) &&
-    isExtensionContext(value.context) &&
-    isPolicyRef(value.policy) &&
-    isNonEmptyString(value.client_request_id)
-  );
-}
-
-function isFileAnalyzeInput(value: unknown): boolean {
-  return (
-    isRecord(value) &&
-    isNonEmptyString(value.client_file_id) &&
-    (value.name_hash === undefined || typeof value.name_hash === "string") &&
-    isNonEmptyString(value.extension) &&
-    typeof value.mime_type === "string" &&
-    isNonNegativeFiniteNumber(value.size_bytes) &&
-    typeof value.content_text === "string"
+    value.content === undefined &&
+    (value.metadata === undefined || isRecord(value.metadata)) &&
+    (value.content_unavailable_reason === undefined || isNonEmptyString(value.content_unavailable_reason)) &&
+    (value.limit_exceeded === undefined || isNonEmptyString(value.limit_exceeded))
   );
 }
 
@@ -83,12 +79,12 @@ function isExtensionContext(value: unknown): boolean {
   );
 }
 
-function isPolicyRef(value: unknown): boolean {
-  return isRecord(value) && isNonEmptyString(value.version);
+function isAnalyzeInputKind(value: unknown): boolean {
+  return value === "text" || value === "attachment_metadata" || value === "unsupported_attachment";
 }
 
-function isPromptInputMethod(value: unknown): boolean {
-  return value === "CLICK" || value === "ENTER" || value === "UNKNOWN";
+function isAnalyzeInputSource(value: unknown): boolean {
+  return value === "composer" || value === "converted_paste" || value === "file" || value === "attachment_chip";
 }
 
 function isNonEmptyString(value: unknown): value is string {

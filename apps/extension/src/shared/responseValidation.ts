@@ -1,4 +1,4 @@
-import type { AnalyzeResponse, Decision, FilesAnalyzeResponse } from "./types";
+import type { AnalyzeResponse } from "./types";
 
 /**
  * Validates a prompt Analyze response before controller action handling.
@@ -11,58 +11,87 @@ export function isAnalyzeResponse(value: unknown): value is AnalyzeResponse {
     isRecord(value) &&
     isNonEmptyString(value.event_id) &&
     isNonEmptyString(value.request_id) &&
-    isDecision(value.decision) &&
-    (value.decision.action !== "Mask" || typeof value.masked_prompt === "string") &&
-    Array.isArray(value.detections) &&
-    isPolicyStatus(value.policy) &&
-    typeof value.partial_result === "boolean"
-  );
-}
-
-/**
- * Validates a files Analyze response before upload action handling.
- *
- * Invalid file responses fail closed so native upload replay happens only after
- * a well-formed decision.
- */
-export function isFilesAnalyzeResponse(value: unknown): value is FilesAnalyzeResponse {
-  return (
-    isRecord(value) &&
-    isNonEmptyString(value.event_id) &&
-    isNonEmptyString(value.request_id) &&
-    isDecision(value.decision) &&
-    Array.isArray(value.file_results) &&
-    value.file_results.every(isFileAnalyzeResult) &&
-    isPolicyStatus(value.policy) &&
-    typeof value.partial_result === "boolean"
-  );
-}
-
-function isDecision(value: unknown): value is Decision {
-  return (
-    isRecord(value) &&
+    isDecisionAction(value.action) &&
+    isNonEmptyString(value.checked_at) &&
     isNonNegativeFiniteNumber(value.risk_score) &&
     isRiskLevel(value.risk_level) &&
-    isDecisionAction(value.action) &&
     typeof value.user_message === "string" &&
-    (value.allow_original_send === undefined || typeof value.allow_original_send === "boolean") &&
-    (value.allow_original_upload === undefined || typeof value.allow_original_upload === "boolean")
+    typeof value.allow_original_send === "boolean" &&
+    typeof value.requires_user_confirmation === "boolean" &&
+    (value.action !== "Mask" || typeof value.masked_prompt === "string") &&
+    Array.isArray(value.detections) &&
+    value.detections.every(isDetection) &&
+    Array.isArray(value.input_results) &&
+    value.input_results.every(isInputResult) &&
+    Array.isArray(value.content_unavailable_inputs) &&
+    value.content_unavailable_inputs.every(isContentUnavailableInput) &&
+    Array.isArray(value.business_context_matches) &&
+    value.business_context_matches.every(isBusinessContextMatch) &&
+    isNonEmptyString(value.client_request_id) &&
+    isNonEmptyString(value.filter_config_revision)
   );
 }
 
-function isFileAnalyzeResult(value: unknown): boolean {
+function isDetection(value: unknown): boolean {
   return (
     isRecord(value) &&
-    isNonEmptyString(value.client_file_id) &&
-    isNonEmptyString(value.extension) &&
-    typeof value.mime_type === "string" &&
-    isNonNegativeFiniteNumber(value.size_bytes) &&
-    Array.isArray(value.detections)
+    isNonEmptyString(value.input_id) &&
+    isNonNegativeFiniteNumber(value.input_index) &&
+    isNonEmptyString(value.kind) &&
+    isNonEmptyString(value.category) &&
+    isNonEmptyString(value.type) &&
+    isNonEmptyString(value.source) &&
+    (value.rule_id === null || typeof value.rule_id === "string") &&
+    (value.detector_id === null || typeof value.detector_id === "string") &&
+    isNonEmptyString(value.severity) &&
+    isDecisionAction(value.action) &&
+    isNonEmptyString(value.placeholder) &&
+    isNonNegativeFiniteNumber(value.confidence) &&
+    isNonEmptyString(value.reason_code) &&
+    isNonNegativeFiniteNumber(value.match_count)
   );
 }
 
-function isPolicyStatus(value: unknown): boolean {
-  return isRecord(value) && isNonEmptyString(value.version) && isNonEmptyString(value.latest_version);
+function isInputResult(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    isNonEmptyString(value.input_id) &&
+    isNonNegativeFiniteNumber(value.input_index) &&
+    isNonEmptyString(value.kind) &&
+    isNonEmptyString(value.source) &&
+    typeof value.content_included === "boolean" &&
+    typeof value.content_scanned === "boolean" &&
+    isDecisionBasis(value.decision_basis) &&
+    (value.content_unavailable_reason === undefined || isNonEmptyString(value.content_unavailable_reason)) &&
+    (value.limit_exceeded === undefined || isNonEmptyString(value.limit_exceeded))
+  );
+}
+
+function isContentUnavailableInput(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    isNonEmptyString(value.input_id) &&
+    isNonNegativeFiniteNumber(value.input_index) &&
+    isNonEmptyString(value.kind) &&
+    isNonEmptyString(value.source) &&
+    isNonEmptyString(value.reason) &&
+    (value.limit_exceeded === undefined || isNonEmptyString(value.limit_exceeded))
+  );
+}
+
+function isBusinessContextMatch(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    isNonEmptyString(value.input_id) &&
+    isNonNegativeFiniteNumber(value.input_index) &&
+    isNonEmptyString(value.kind) &&
+    isNonEmptyString(value.source) &&
+    isNonEmptyString(value.category) &&
+    isNonEmptyString(value.reason_code) &&
+    isNonNegativeFiniteNumber(value.match_count) &&
+    Array.isArray(value.matched_keywords) &&
+    isRecord(value.evidence_counts)
+  );
 }
 
 function isDecisionAction(value: unknown): boolean {
@@ -70,7 +99,11 @@ function isDecisionAction(value: unknown): boolean {
 }
 
 function isRiskLevel(value: unknown): boolean {
-  return value === "LOW" || value === "MEDIUM" || value === "HIGH" || value === "CRITICAL";
+  return value === "low" || value === "medium" || value === "high" || value === "critical";
+}
+
+function isDecisionBasis(value: unknown): boolean {
+  return value === "no_detection" || value === "detection" || value === "content_unavailable" || value === "metadata_only";
 }
 
 function isNonEmptyString(value: unknown): value is string {

@@ -1,43 +1,55 @@
 import { describe, expect, it } from "vitest";
 import { buildFilesInspectionAuditEvent, buildPromptInspectionAuditEvent } from "../../src/shared/auditEvents";
+import { createAnalyzeRequest, createComposerInput, createFileTextInput } from "../../src/shared/analyzeRequestBuilder";
 import { containsForbiddenDiagnosticKey } from "../../src/shared/sanitize";
-import type { AnalyzeRequest, AnalyzeResponse, FilesAnalyzeRequest, FilesAnalyzeResponse } from "../../src/shared/types";
+import type { AnalyzeResponse, ExtensionContext } from "../../src/shared/types";
 
-const context = {
-  ai_service: "CHATGPT" as const,
+const context: ExtensionContext = {
+  ai_service: "CHATGPT",
   ai_service_domain: "chatgpt.com",
   page_url_origin: "https://chatgpt.com",
   extension_version: "0.4.0",
-  browser: "Chrome" as const,
+  browser: "Chrome",
   locale: "ko-KR"
 };
 
 describe("inspection audit events", () => {
   it("builds prompt audit metadata without raw prompt, mask, or server message text", () => {
-    const request: AnalyzeRequest = {
-      prompt: {
-        text: "SEEDED_PROMPT_SHOULD_NOT_SURVIVE",
-        input_method: "CLICK",
-        content_length: 32
-      },
-      context,
-      policy: { version: "policy-a" },
-      client_request_id: "crq_test"
-    };
+    const request = createAnalyzeRequest(context, "cfg_prompt", [createComposerInput({ text: "SEEDED_PROMPT_SHOULD_NOT_SURVIVE", inputMethod: "CLICK" })], "crq_test");
     const response: AnalyzeResponse = {
       event_id: "evt_prompt",
       request_id: "req_prompt",
-      decision: {
-        action: "Mask",
-        risk_level: "HIGH",
-        risk_score: 91,
-        user_message: "server echoed secret-value",
-        allow_original_send: false
-      },
-      detections: [{ type: "secret", label: "API key", count: 2, severity: "high", confidence: 0.9, source: "prompt" }],
-      masked_prompt: "SEEDED_MASKED_PROMPT_SHOULD_NOT_SURVIVE",
-      policy: { version: "policy-a", latest_version: "policy-b" },
-      partial_result: false
+      action: "Mask",
+      checked_at: "2026-06-09T00:00:00Z",
+      risk_level: "high",
+      risk_score: 91,
+      user_message: "server echoed secret-value",
+      allow_original_send: false,
+      requires_user_confirmation: false,
+      detections: [
+        {
+          input_id: request.inputs[0].input_id,
+          input_index: 0,
+          kind: "text",
+          category: "PII",
+          type: "EMAIL",
+          source: "composer",
+          rule_id: null,
+          detector_id: "mock",
+          severity: "high",
+          action: "Mask",
+          placeholder: "EMAIL",
+          confidence: 0.9,
+          reason_code: "match",
+          match_count: 2
+        }
+      ],
+      input_results: [],
+      content_unavailable_inputs: [],
+      business_context_matches: [],
+      client_request_id: "crq_test",
+      filter_config_revision: "cfg_prompt",
+      masked_prompt: "SEEDED_MASKED_PROMPT_SHOULD_NOT_SURVIVE"
     };
 
     const event = buildPromptInspectionAuditEvent(request, response);
@@ -58,40 +70,40 @@ describe("inspection audit events", () => {
   });
 
   it("builds file audit metadata without file content, filenames, or raw detections", () => {
-    const request: FilesAnalyzeRequest = {
-      files: [
-        {
-          client_file_id: "file_a",
-          extension: ".txt",
-          mime_type: "text/plain",
-          size_bytes: 64,
-          content_text: "SEEDED_FILE_SHOULD_NOT_SURVIVE"
-        }
-      ],
-      context,
-      policy: { version: "policy-a" },
-      client_request_id: "frq_test"
-    };
-    const response: FilesAnalyzeResponse = {
+    const request = createAnalyzeRequest(context, "cfg_file", [createFileTextInput({ extension: ".txt", mimeType: "text/plain", sizeBytes: 64, text: "SEEDED_FILE_SHOULD_NOT_SURVIVE" })], "frq_test");
+    const response: AnalyzeResponse = {
       event_id: "evt_files",
       request_id: "req_files",
-      decision: {
-        action: "Block",
-        risk_level: "CRITICAL",
-        risk_score: 99,
-        user_message: "server echoed customer-project.env"
-      },
-      file_results: [
+      action: "Block",
+      checked_at: "2026-06-09T00:00:00Z",
+      risk_level: "critical",
+      risk_score: 99,
+      user_message: "server echoed customer-project.env",
+      allow_original_send: false,
+      requires_user_confirmation: false,
+      detections: [
         {
-          client_file_id: "file_a",
-          extension: ".txt",
-          mime_type: "text/plain",
-          size_bytes: 64,
-          detections: [{ type: "secret", label: "API key", count: 3, severity: "critical", confidence: 0.95, source: "file" }]
+          input_id: request.inputs[0].input_id,
+          input_index: 0,
+          kind: "text",
+          category: "Built-in",
+          type: "DB_CONNECTION_STRING",
+          source: "file",
+          rule_id: null,
+          detector_id: "mock",
+          severity: "critical",
+          action: "Block",
+          placeholder: "DB_CONNECTION_STRING",
+          confidence: 0.95,
+          reason_code: "match",
+          match_count: 3
         }
       ],
-      policy: { version: "policy-a", latest_version: "policy-b" },
-      partial_result: true
+      input_results: [],
+      content_unavailable_inputs: [],
+      business_context_matches: [],
+      client_request_id: "frq_test",
+      filter_config_revision: "cfg_file"
     };
 
     const event = buildFilesInspectionAuditEvent(request, response);
@@ -109,6 +121,5 @@ describe("inspection audit events", () => {
     expect(containsForbiddenDiagnosticKey(event)).toBe(false);
     expect(serialized).not.toContain("SEEDED_FILE_SHOULD_NOT_SURVIVE");
     expect(serialized).not.toContain("customer-project.env");
-    expect(serialized).not.toContain("file_a");
   });
 });

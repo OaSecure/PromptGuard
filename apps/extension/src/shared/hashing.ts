@@ -6,7 +6,7 @@
  * hashes. File IDs are opaque per-attempt identifiers, not stable user or file
  * fingerprints.
  */
-export function createClientRequestId(prefix: "crq" | "frq" | "file" = "crq"): string {
+export function createClientRequestId(prefix: "crq" | "frq" | "file" | "in" = "crq"): string {
   const random = new Uint32Array(2);
   if (globalThis.crypto?.getRandomValues) {
     globalThis.crypto.getRandomValues(random);

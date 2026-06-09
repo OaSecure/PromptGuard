@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { routeMessage } from "../../src/background/messageRouter";
+import { createAnalyzeRequest, createComposerInput, createFileTextInput } from "../../src/shared/analyzeRequestBuilder";
 import { DEFAULT_CONFIG, STORAGE_KEYS } from "../../src/shared/constants";
-import { createClientRequestId } from "../../src/shared/hashing";
-import type { AnalyzeRequest, AuthMeResponse, ExtensionConfigResponse, FilesAnalyzeRequest } from "../../src/shared/types";
+import type { AnalyzeRequest, AuthMeResponse } from "../../src/shared/types";
 
 describe("message router API auth boundary", () => {
   afterEach(() => {
@@ -309,10 +309,8 @@ describe("message router API auth boundary", () => {
 
     expect(fetchMock).not.toHaveBeenCalled();
     expect(response).toMatchObject({
-      decision: {
-        action: "Mask",
-        allow_original_send: false
-      },
+      action: "Mask",
+      allow_original_send: false,
       masked_prompt: "contact [masked-email]"
     });
   });
@@ -359,7 +357,7 @@ describe("message router API auth boundary", () => {
     const response = await routeMessage({ type: "FILES_ANALYZE_REQUEST", payload: filesAnalyzeRequest() });
 
     expect(response).toMatchObject({ request_id: "req_test_files" });
-    expect(fetchMock).toHaveBeenNthCalledWith(3, "https://api.promptguard.test/files/analyze", expect.objectContaining({
+    expect(fetchMock).toHaveBeenNthCalledWith(3, "https://api.promptguard.test/prompts/analyze", expect.objectContaining({
       method: "POST",
       headers: expect.objectContaining({ Authorization: "Bearer new-access-token" })
     }));
@@ -426,13 +424,8 @@ function authMeResponse(): AuthMeResponse {
 }
 
 function analyzeRequest(text: string): AnalyzeRequest {
-  return {
-    prompt: {
-      text,
-      input_method: "ENTER",
-      content_length: text.length
-    },
-    context: {
+  return createAnalyzeRequest(
+    {
       ai_service: "CHATGPT",
       ai_service_domain: "chatgpt.com",
       page_url_origin: "https://chatgpt.com",
@@ -440,23 +433,14 @@ function analyzeRequest(text: string): AnalyzeRequest {
       browser: "Chrome",
       locale: "ko-KR"
     },
-    policy: { version: DEFAULT_CONFIG.policy_version },
-    client_request_id: createClientRequestId("crq")
-  };
+    DEFAULT_CONFIG.policy_version,
+    [createComposerInput({ text, inputMethod: "ENTER" })]
+  );
 }
 
-function filesAnalyzeRequest(): FilesAnalyzeRequest {
-  return {
-    files: [
-      {
-        client_file_id: "file_test",
-        extension: ".txt",
-        mime_type: "text/plain",
-        size_bytes: 11,
-        content_text: "safe file"
-      }
-    ],
-    context: {
+function filesAnalyzeRequest(): AnalyzeRequest {
+  return createAnalyzeRequest(
+    {
       ai_service: "CHATGPT",
       ai_service_domain: "chatgpt.com",
       page_url_origin: "https://chatgpt.com",
@@ -464,49 +448,35 @@ function filesAnalyzeRequest(): FilesAnalyzeRequest {
       browser: "Chrome",
       locale: "ko-KR"
     },
-    policy: { version: DEFAULT_CONFIG.policy_version },
-    client_request_id: createClientRequestId("frq")
-  };
+    DEFAULT_CONFIG.policy_version,
+    [createFileTextInput({ extension: ".txt", mimeType: "text/plain", sizeBytes: 11, text: "safe file" })]
+  );
 }
 
-function analyzeResponse() {
+function analyzeResponse(clientRequestId = "crq_test", filterConfigRevision = DEFAULT_CONFIG.policy_version) {
   return {
     event_id: "evt_test_prompt",
     request_id: "req_test_prompt",
-    decision: {
-      risk_score: 1,
-      risk_level: "LOW",
-      action: "Allow",
-      user_message: "Allowed.",
-      allow_original_send: true
-    },
+    action: "Allow",
+    checked_at: "2026-06-09T00:00:00Z",
+    risk_score: 1,
+    risk_level: "low",
+    user_message: "Allowed.",
+    allow_original_send: true,
+    requires_user_confirmation: false,
     detections: [],
-    policy: { version: DEFAULT_CONFIG.policy_version, latest_version: DEFAULT_CONFIG.policy_version },
-    partial_result: false
+    input_results: [],
+    content_unavailable_inputs: [],
+    business_context_matches: [],
+    client_request_id: clientRequestId,
+    filter_config_revision: filterConfigRevision
   };
 }
 
 function filesAnalyzeResponse() {
   return {
+    ...analyzeResponse("frq_test"),
     event_id: "evt_test_files",
-    request_id: "req_test_files",
-    decision: {
-      risk_score: 1,
-      risk_level: "LOW",
-      action: "Allow",
-      user_message: "Allowed.",
-      allow_original_upload: true
-    },
-    file_results: [
-      {
-        client_file_id: "file_test",
-        extension: ".txt",
-        mime_type: "text/plain",
-        size_bytes: 11,
-        detections: []
-      }
-    ],
-    policy: { version: DEFAULT_CONFIG.policy_version, latest_version: DEFAULT_CONFIG.policy_version },
-    partial_result: false
+    request_id: "req_test_files"
   };
 }

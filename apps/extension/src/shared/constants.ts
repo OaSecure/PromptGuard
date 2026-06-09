@@ -33,7 +33,12 @@ export const DEFAULT_CONFIG: ExtensionConfigResponse = {
           "button[aria-label*='보내기']"
         ],
         file_input: ["input[type='file']"],
-        drop_zone: ["body"]
+        drop_zone: ["body"],
+        attachment_chip: [
+          "[data-promptguard-attachment-chip]",
+          "[data-testid='attachment-chip']",
+          "[data-testid='attachment-item']"
+        ]
       }
     }
   ],

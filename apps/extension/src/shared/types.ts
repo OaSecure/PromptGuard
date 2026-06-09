@@ -1,87 +1,119 @@
-/** Policy actions that can be returned by prompt or file analysis. */
+/** Policy actions that can be returned by Analyze. */
 export type DecisionAction = "Allow" | "Warn" | "Mask" | "Block";
-/** Risk labels used by Analyze responses and mock decisions. */
-export type RiskLevel = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+/** Risk labels used by Analyze responses. */
+export type RiskLevel = "low" | "medium" | "high" | "critical";
 /** AI service surfaces supported by the MVP. */
 export type AiService = "CHATGPT";
 /** User interaction that started a prompt inspection request. */
 export type PromptInputMethod = "CLICK" | "ENTER" | "UNKNOWN";
+/** Unified Analyze input kinds accepted by the MVP API. */
+export type AnalyzeInputKind = "text" | "attachment_metadata" | "unsupported_attachment";
+/** Unified Analyze input sources accepted by the MVP API. */
+export type AnalyzeInputSource = "composer" | "converted_paste" | "file" | "attachment_chip";
+/** Content-unavailable reasons accepted by the MVP API. */
+export type ContentUnavailableReason = "oversized" | "unsupported" | "metadata_only" | "unavailable";
+/** Limit-exceeded identifiers accepted by the MVP API. */
+export type LimitExceededCode =
+  | "MAX_ANALYZE_REQUEST_BYTES"
+  | "MAX_COMPOSER_TEXT_BYTES"
+  | "MAX_CONVERTED_PASTE_TEXT_BYTES"
+  | "MAX_FILE_TEXT_SCAN_BYTES";
+/** Input-result decision basis values returned by the MVP API. */
+export type AnalyzeDecisionBasis = "no_detection" | "detection" | "content_unavailable" | "metadata_only";
 
 /** Metadata summary for one policy detection without raw detected values. */
-export interface DetectionSummary {
+export interface AnalyzeDetection {
+  input_id: string;
+  input_index: number;
+  kind: AnalyzeInputKind;
+  category: string;
   type: string;
-  label: string;
-  count: number;
+  source: AnalyzeInputSource;
+  rule_id: string | null;
+  detector_id: string | null;
   severity: "low" | "medium" | "high" | "critical";
-  confidence: number;
-  source: string;
-}
-
-/** Analyze decision that controls whether the original action may continue. */
-export interface Decision {
-  risk_score: number;
-  risk_level: RiskLevel;
   action: DecisionAction;
-  user_message: string;
-  allow_original_send?: boolean;
-  allow_original_upload?: boolean;
+  placeholder: string;
+  confidence: number;
+  reason_code: string;
+  match_count: number;
 }
 
-/** Prompt inspection request sent from content script to background analysis. */
+/** Result summary for one Analyze input item. */
+export interface AnalyzeInputResult {
+  input_id: string;
+  input_index: number;
+  kind: AnalyzeInputKind;
+  source: AnalyzeInputSource;
+  content_included: boolean;
+  content_scanned: boolean;
+  decision_basis: AnalyzeDecisionBasis;
+  content_unavailable_reason?: ContentUnavailableReason;
+  limit_exceeded?: LimitExceededCode;
+}
+
+/** Content-unavailable summary returned without raw content. */
+export interface ContentUnavailableInput {
+  input_id: string;
+  input_index: number;
+  kind: AnalyzeInputKind;
+  source: AnalyzeInputSource;
+  reason: ContentUnavailableReason;
+  limit_exceeded?: LimitExceededCode;
+}
+
+/** Business-context summary returned without raw text. */
+export interface BusinessContextMatch {
+  input_id: string;
+  input_index: number;
+  kind: AnalyzeInputKind;
+  source: AnalyzeInputSource;
+  category: string;
+  reason_code: string;
+  match_count: number;
+  matched_keywords: string[];
+  evidence_counts: Record<string, number>;
+}
+
+/** One unified Analyze request input item. */
+export interface AnalyzeInput {
+  input_id: string;
+  kind: AnalyzeInputKind;
+  source: AnalyzeInputSource;
+  size_bytes: number;
+  content_included: boolean;
+  content?: string;
+  metadata?: Record<string, unknown>;
+  content_unavailable_reason?: ContentUnavailableReason;
+  limit_exceeded?: LimitExceededCode;
+}
+
+/** Unified Analyze request sent from content script to background analysis. */
 export interface AnalyzeRequest {
-  prompt: {
-    text: string;
-    input_method: PromptInputMethod;
-    content_length: number;
-  };
   context: ExtensionContext;
-  policy: PolicyRef;
+  inputs: AnalyzeInput[];
+  filter_config_revision: string;
   client_request_id: string;
 }
 
-/** Prompt inspection response consumed by the prompt preflight controller. */
+/** Unified Analyze response consumed by prompt and file preflight controllers. */
 export interface AnalyzeResponse {
   event_id: string;
   request_id: string;
-  decision: Decision;
-  detections: DetectionSummary[];
-  masked_prompt?: string;
-  policy: PolicyStatus;
-  partial_result: boolean;
-}
-
-/** Text-file inspection request sent from content script to background analysis. */
-export interface FilesAnalyzeRequest {
-  files: Array<{
-    client_file_id: string;
-    name_hash?: string;
-    extension: string;
-    mime_type: string;
-    size_bytes: number;
-    content_text: string;
-  }>;
-  context: ExtensionContext;
-  policy: PolicyRef;
+  action: DecisionAction;
+  checked_at: string;
+  risk_score: number;
+  risk_level: RiskLevel;
+  user_message: string;
+  allow_original_send: boolean;
+  requires_user_confirmation: boolean;
+  detections: AnalyzeDetection[];
+  input_results: AnalyzeInputResult[];
+  content_unavailable_inputs: ContentUnavailableInput[];
+  business_context_matches: BusinessContextMatch[];
   client_request_id: string;
-}
-
-/** Per-file result metadata returned without original filenames. */
-export interface FileAnalyzeResult {
-  client_file_id: string;
-  extension: string;
-  mime_type: string;
-  size_bytes: number;
-  detections: DetectionSummary[];
-}
-
-/** File inspection response consumed by the upload preflight controller. */
-export interface FilesAnalyzeResponse {
-  event_id: string;
-  request_id: string;
-  decision: Decision;
-  file_results: FileAnalyzeResult[];
-  policy: PolicyStatus;
-  partial_result: boolean;
+  filter_config_revision: string;
+  masked_prompt?: string;
 }
 
 /** Page and extension metadata attached to inspection requests. */
@@ -92,16 +124,6 @@ export interface ExtensionContext {
   extension_version: string;
   browser: "Chrome";
   locale: string;
-}
-
-/** Policy version reference used to correlate requests with server policy. */
-export interface PolicyRef {
-  version: string;
-}
-
-/** Policy version status returned by Analyze responses. */
-export interface PolicyStatus extends PolicyRef {
-  latest_version: string;
 }
 
 /** Remote or cached config that controls selectors, timeouts, and file policy. */
@@ -122,6 +144,7 @@ export interface AiServiceConfig {
     send_button: string[];
     file_input: string[];
     drop_zone: string[];
+    attachment_chip: string[];
   };
 }
 
@@ -182,8 +205,8 @@ export type FileInspectionState =
 export type ExtensionMessage =
   | { type: "PROMPT_ANALYZE_REQUEST"; payload: AnalyzeRequest }
   | { type: "PROMPT_ANALYZE_RESULT"; payload: AnalyzeResponse | NormalizedError }
-  | { type: "FILES_ANALYZE_REQUEST"; payload: FilesAnalyzeRequest }
-  | { type: "FILES_ANALYZE_RESULT"; payload: FilesAnalyzeResponse | NormalizedError }
+  | { type: "FILES_ANALYZE_REQUEST"; payload: AnalyzeRequest }
+  | { type: "FILES_ANALYZE_RESULT"; payload: AnalyzeResponse | NormalizedError }
   | { type: "AUTH_LOGIN_REQUEST"; payload: { login_id: string; password: string } }
   | { type: "AUTH_ME_REQUEST" }
   | { type: "CONFIG_SYNC_REQUEST" }

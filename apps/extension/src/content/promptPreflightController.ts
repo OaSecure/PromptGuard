@@ -1,7 +1,9 @@
-import { DEFAULT_POLICY_VERSION, EXTENSION_VERSION } from "../shared/constants";
+import { createAnalyzeRequest, createComposerInput, createConvertedPasteInput } from "../shared/analyzeRequestBuilder";
 import { createClientRequestId } from "../shared/hashing";
+import type { AnalyzeInput } from "../shared/types";
 import { isAnalyzeResponse } from "../shared/responseValidation";
 import type { AnalyzeRequest, AnalyzeResponse, ExtensionConfigResponse, ExtensionContext, NormalizedError } from "../shared/types";
+import { collectAttachmentChipInputs, resolveAttachmentChipScope } from "./attachmentChipCapture";
 import { findBestInputCandidate, type DetectorSelectors } from "./domDetector";
 import { applyMaskedPrompt } from "./maskedTextInjector";
 import { createPreflightOverlay, type PreflightOverlay } from "./preflightOverlay";
@@ -47,8 +49,20 @@ export function startPromptPreflightController(options: PromptPreflightControlle
   let currentAttemptId = 0;
   let analyzing = false;
   let replaying = false;
+  let convertedPasteText: string | undefined;
+  const requestIds = new WeakMap<SendAttempt, string>();
+  const requestIdForAttempt = requestIdForAttemptFactory(requestIds);
 
   const getPromptInput = (): PromptInputElement | null => findBestInputCandidate(doc, { input: selectors.input })?.element ?? null;
+  const handlePaste = (event: ClipboardEvent): void => {
+    const promptInput = getPromptInput();
+    if (!promptInput || event.target !== promptInput) {
+      return;
+    }
+    const pasted = event.clipboardData?.getData("text/plain")?.trim();
+    convertedPasteText = pasted || undefined;
+  };
+  doc.addEventListener("paste", handlePaste, true);
 
   const interceptor: SendInterceptor = installSendInterceptor({
     document: doc,
@@ -72,9 +86,19 @@ export function startPromptPreflightController(options: PromptPreflightControlle
       return;
     }
 
-    const request = buildPromptAnalyzeRequest(candidate.element, attempt.method, options.getContext(), options.config.policy_version);
+    const request = buildPromptAnalyzeRequest(
+      candidate.element,
+      attempt.method,
+      options.getContext(),
+      options.config.policy_version,
+      convertedPasteText,
+      requestIdForAttempt(attempt),
+      collectAttachmentChipInputs(resolveAttachmentChipScope(candidate.element, doc), { attachment_chip: selectors.attachment_chip })
+    );
+    convertedPasteText = undefined;
     recordPromptAttempt(doc, request, "inspecting");
-    if (request.prompt.content_length === 0) {
+    const composerInput = request.inputs.find((item) => item.source === "composer");
+    if (!composerInput || composerInput.size_bytes === 0) {
       recordPromptStatus(doc, "error", "empty-prompt");
       showFailClosed("PromptGuard could not read this prompt. Prompt was not sent.", () => void handleAttempt(attempt));
       return;
@@ -115,12 +139,10 @@ export function startPromptPreflightController(options: PromptPreflightControlle
   }
 
   function handleDecision(response: AnalyzeResponse, input: PromptInputElement, attempt: SendAttempt): void {
-    recordPromptStatus(doc, response.decision.action.toLowerCase());
-    switch (response.decision.action) {
+    recordPromptStatus(doc, response.action.toLowerCase());
+    switch (response.action) {
       case "Allow":
-        // Treat contradictory Allow responses as unsafe because replaying the
-        // original prompt is the irreversible page action.
-        if (response.decision.allow_original_send === false) {
+        if (response.allow_original_send === false) {
           showFailClosed("Inspection did not authorize sending the original prompt.", () => void handleAttempt(attempt));
           return;
         }
@@ -132,7 +154,17 @@ export function startPromptPreflightController(options: PromptPreflightControlle
           decision: "warn",
           message: safeDecisionMessage(response),
           actions: [
-            { label: "Continue", variant: "primary", onClick: () => replay(attempt) },
+            {
+              label: "Continue",
+              variant: "primary",
+              onClick: () => {
+                if (response.allow_original_send !== true) {
+                  showFailClosed("Inspection did not authorize sending the original prompt.", () => void handleAttempt(attempt));
+                  return;
+                }
+                replay(attempt);
+              }
+            },
             { label: "Cancel", variant: "secondary", onClick: overlay.hide }
           ]
         });
@@ -148,7 +180,18 @@ export function startPromptPreflightController(options: PromptPreflightControlle
               onClick: () => {
                 const result = applyMaskedPrompt(input, response.masked_prompt);
                 if (result.applied) {
-                  overlay.hide();
+                  if (response.requires_user_confirmation) {
+                    overlay.show({
+                      decision: "warn",
+                      message: "PromptGuard applied the mask. Review and confirm before sending.",
+                      actions: [
+                        { label: "Continue", variant: "primary", onClick: () => replay(attempt) },
+                        { label: "Cancel", variant: "secondary", onClick: overlay.hide }
+                      ]
+                    });
+                  } else {
+                    replay(attempt);
+                  }
                 } else {
                   showFailClosed("Masked replacement could not be applied.", () => void handleAttempt(attempt));
                 }
@@ -199,16 +242,30 @@ export function startPromptPreflightController(options: PromptPreflightControlle
     disconnect() {
       currentAttemptId += 1;
       interceptor.disconnect();
+      doc.removeEventListener("paste", handlePaste, true);
       overlay.destroy();
     }
   };
 }
 
+function requestIdForAttemptFactory(requestIds: WeakMap<SendAttempt, string>) {
+  return (attempt: SendAttempt): string => {
+    const existing = requestIds.get(attempt);
+    if (existing) {
+      return existing;
+    }
+    const created = createClientRequestId("crq");
+    requestIds.set(attempt, created);
+    return created;
+  };
+}
+
 function recordPromptAttempt(doc: Document, request: AnalyzeRequest, status: string): void {
   const root = doc.documentElement;
+  const composerInput = request.inputs.find((item) => item.source === "composer");
   root.dataset.promptguardLastStatus = status;
-  root.dataset.promptguardLastPromptLength = String(request.prompt.content_length);
-  root.dataset.promptguardLastInputMethod = request.prompt.input_method;
+  root.dataset.promptguardLastPromptLength = String(composerInput?.size_bytes ?? 0);
+  root.dataset.promptguardLastInputMethod = String(composerInput?.metadata?.input_method ?? "UNKNOWN");
 }
 
 function recordPromptStatus(doc: Document, status: string, reason?: string): void {
@@ -219,7 +276,7 @@ function recordPromptStatus(doc: Document, status: string, reason?: string): voi
 }
 
 function safeDecisionMessage(response: AnalyzeResponse): string {
-  switch (response.decision.action) {
+  switch (response.action) {
     case "Warn":
       return "PromptGuard found content that may need review.";
     case "Mask":
@@ -240,33 +297,35 @@ function safeDecisionMessage(response: AnalyzeResponse): string {
  */
 export function buildPromptAnalyzeRequest(
   input: PromptInputElement,
-  inputMethod: AnalyzeRequest["prompt"]["input_method"],
+  inputMethod: "CLICK" | "ENTER" | "UNKNOWN",
   context: ExtensionContext,
-  policyVersion = DEFAULT_POLICY_VERSION
+  policyVersion: string,
+  convertedPaste?: string,
+  clientRequestId?: string,
+  attachmentChipInputs: AnalyzeInput[] = []
 ): AnalyzeRequest {
   const text = extractPromptText(input);
-  return {
-    prompt: {
-      text,
-      input_method: inputMethod,
-      content_length: text.length
-    },
-    context: {
+  const inputs = [createComposerInput({ text, inputMethod }), ...attachmentChipInputs];
+  if (convertedPaste && !text.includes(convertedPaste)) {
+    inputs.push(createConvertedPasteInput({ text: convertedPaste }));
+  }
+  return createAnalyzeRequest(
+    {
       ...context,
-      extension_version: context.extension_version || EXTENSION_VERSION
+      extension_version: context.extension_version || "0.4.0"
     },
-    policy: {
-      version: policyVersion || DEFAULT_POLICY_VERSION
-    },
-    client_request_id: createClientRequestId("crq")
-  };
+    policyVersion,
+    inputs,
+    clientRequestId
+  );
 }
 
-function serviceSelectors(config: ExtensionConfigResponse): DetectorSelectors & { send_button: string[] } {
+function serviceSelectors(config: ExtensionConfigResponse): DetectorSelectors & { send_button: string[]; attachment_chip: string[] } {
   const serviceConfig = config.ai_service_configs.find((item) => item.service === "CHATGPT") ?? config.ai_service_configs[0];
   return {
     input: serviceConfig.selectors.input,
-    send_button: serviceConfig.selectors.send_button
+    send_button: serviceConfig.selectors.send_button,
+    attachment_chip: serviceConfig.selectors.attachment_chip
   };
 }
 

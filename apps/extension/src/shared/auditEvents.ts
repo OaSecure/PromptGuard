@@ -1,4 +1,4 @@
-import type { AnalyzeRequest, AnalyzeResponse, FilesAnalyzeRequest, FilesAnalyzeResponse } from "./types";
+import type { AnalyzeRequest, AnalyzeResponse } from "./types";
 
 /** Names the preflight surface that produced a metadata-only audit event. */
 export type InspectionAuditSurface = "prompt" | "files";
@@ -15,12 +15,10 @@ export interface InspectionAuditEvent {
   event_id: string;
   request_id: string;
   client_request_id: string;
-  action: AnalyzeResponse["decision"]["action"];
-  risk_level: AnalyzeResponse["decision"]["risk_level"];
+  action: AnalyzeResponse["action"];
+  risk_level: AnalyzeResponse["risk_level"];
   risk_score: number;
-  policy_version: string;
-  latest_policy_version: string;
-  partial_result: boolean;
+  filter_config_revision: string;
   ai_service: string;
   ai_service_domain: string;
   page_url_origin: string;
@@ -36,41 +34,34 @@ export function buildPromptInspectionAuditEvent(request: AnalyzeRequest, respons
     event_id: response.event_id,
     request_id: response.request_id,
     client_request_id: request.client_request_id,
-    action: response.decision.action,
-    risk_level: response.decision.risk_level,
-    risk_score: response.decision.risk_score,
-    policy_version: response.policy.version,
-    latest_policy_version: response.policy.latest_version,
-    partial_result: response.partial_result,
+    action: response.action,
+    risk_level: response.risk_level,
+    risk_score: response.risk_score,
+    filter_config_revision: response.filter_config_revision,
     ai_service: request.context.ai_service,
     ai_service_domain: request.context.ai_service_domain,
     page_url_origin: request.context.page_url_origin,
     extension_version: request.context.extension_version,
-    detection_count: response.detections.reduce((total, detection) => total + Math.max(0, detection.count), 0)
+    detection_count: response.detections.reduce((total, detection) => total + Math.max(0, detection.match_count), 0)
   };
 }
 
 /** Builds a metadata-only audit event for one text-file inspection response. */
-export function buildFilesInspectionAuditEvent(request: FilesAnalyzeRequest, response: FilesAnalyzeResponse): InspectionAuditEvent {
+export function buildFilesInspectionAuditEvent(request: AnalyzeRequest, response: AnalyzeResponse): InspectionAuditEvent {
   return {
     surface: "files",
     event_id: response.event_id,
     request_id: response.request_id,
     client_request_id: request.client_request_id,
-    action: response.decision.action,
-    risk_level: response.decision.risk_level,
-    risk_score: response.decision.risk_score,
-    policy_version: response.policy.version,
-    latest_policy_version: response.policy.latest_version,
-    partial_result: response.partial_result,
+    action: response.action,
+    risk_level: response.risk_level,
+    risk_score: response.risk_score,
+    filter_config_revision: response.filter_config_revision,
     ai_service: request.context.ai_service,
     ai_service_domain: request.context.ai_service_domain,
     page_url_origin: request.context.page_url_origin,
     extension_version: request.context.extension_version,
-    detection_count: response.file_results.reduce(
-      (total, fileResult) => total + fileResult.detections.reduce((fileTotal, detection) => fileTotal + Math.max(0, detection.count), 0),
-      0
-    ),
-    file_count: request.files.length
+    detection_count: response.detections.reduce((total, detection) => total + Math.max(0, detection.match_count), 0),
+    file_count: request.inputs.filter((input) => input.source === "file" || input.source === "attachment_chip").length
   };
 }

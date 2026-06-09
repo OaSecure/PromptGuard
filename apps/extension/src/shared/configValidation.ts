@@ -32,7 +32,8 @@ function isAiServiceConfig(value: unknown): boolean {
     isNonEmptyStringArray(value.selectors.input) &&
     isNonEmptyStringArray(value.selectors.send_button) &&
     isNonEmptyStringArray(value.selectors.file_input) &&
-    isNonEmptyStringArray(value.selectors.drop_zone)
+    isNonEmptyStringArray(value.selectors.drop_zone) &&
+    isNonEmptyStringArray(value.selectors.attachment_chip)
   );
 }
 
