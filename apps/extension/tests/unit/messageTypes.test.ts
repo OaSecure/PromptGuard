@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { isExtensionMessage } from "../../src/shared/messageTypes";
+import { createAnalyzeRequest, createAttachmentMetadataInput, createComposerInput, createFileTextInput } from "../../src/shared/analyzeRequestBuilder";
+import type { ExtensionContext } from "../../src/shared/types";
 
 describe("extension message guard", () => {
   it("accepts known messages with the minimum required payload shape", () => {
@@ -22,11 +24,11 @@ describe("extension message guard", () => {
   });
 
   it("rejects malformed analyze request payloads", () => {
-    expect(isExtensionMessage({ type: "PROMPT_ANALYZE_REQUEST", payload: { prompt: {}, context: {}, policy: {}, client_request_id: "crq_test" } })).toBe(false);
+    expect(isExtensionMessage({ type: "PROMPT_ANALYZE_REQUEST", payload: { inputs: [], context: {}, client_request_id: "crq_test" } })).toBe(false);
     expect(
       isExtensionMessage({
         type: "PROMPT_ANALYZE_REQUEST",
-        payload: { ...promptAnalyzeRequest(), prompt: { text: "text", input_method: "PASTE", content_length: 4 } }
+        payload: { ...promptAnalyzeRequest(), filter_config_revision: "" }
       })
     ).toBe(false);
     expect(
@@ -38,47 +40,43 @@ describe("extension message guard", () => {
     expect(
       isExtensionMessage({
         type: "FILES_ANALYZE_REQUEST",
-        payload: { ...filesAnalyzeRequest(), files: [] }
+        payload: { ...filesAnalyzeRequest(), inputs: [] }
       })
     ).toBe(false);
     expect(
       isExtensionMessage({
         type: "FILES_ANALYZE_REQUEST",
-        payload: { ...filesAnalyzeRequest(), files: [{ ...fileInput(), extension: "" }] }
+        payload: { ...filesAnalyzeRequest(), inputs: [{ ...fileInput(), source: "invalid" }] }
       })
     ).toBe(false);
   });
 });
 
 function promptAnalyzeRequest() {
-  return {
-    prompt: { text: "text", input_method: "ENTER", content_length: 4 },
-    context: context(),
-    policy: { version: "v-test" },
-    client_request_id: "crq_test"
-  };
+  return createAnalyzeRequest(context(), "cfg_2026_06_09", [createComposerInput({ text: "text", inputMethod: "ENTER" })], "crq_test");
 }
 
 function filesAnalyzeRequest() {
-  return {
-    files: [fileInput()],
-    context: context(),
-    policy: { version: "v-test" },
-    client_request_id: "frq_test"
-  };
+  return createAnalyzeRequest(
+    context(),
+    "cfg_2026_06_09",
+    [createFileTextInput({ extension: ".txt", mimeType: "text/plain", sizeBytes: 4, text: "text" }), createAttachmentMetadataInput({ extension: ".png", mimeType: "image/png", sizeBytes: 4, attachmentKind: "image", attachmentIndex: 1 })],
+    "frq_test"
+  );
 }
 
 function fileInput() {
   return {
-    client_file_id: "file_test",
-    extension: ".txt",
-    mime_type: "text/plain",
+    input_id: "in_test",
+    kind: "text",
+    source: "file",
     size_bytes: 4,
-    content_text: "text"
+    content_included: true,
+    content: "text"
   };
 }
 
-function context() {
+function context(): ExtensionContext {
   return {
     ai_service: "CHATGPT",
     ai_service_domain: "chatgpt.com",

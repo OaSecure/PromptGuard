@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_POLICY_VERSION } from "../../src/shared/constants";
-import { createClientRequestId } from "../../src/shared/hashing";
+import { createAnalyzeRequest, createComposerInput, createFileTextInput, createUnsupportedAttachmentInput } from "../../src/shared/analyzeRequestBuilder";
 import { mockFilesAnalyze, mockPromptAnalyze } from "../../src/background/mockApi";
-import type { AnalyzeRequest, ExtensionContext, FilesAnalyzeRequest } from "../../src/shared/types";
+import type { ExtensionContext } from "../../src/shared/types";
 
 const context: ExtensionContext = {
   ai_service: "CHATGPT",
@@ -15,54 +15,35 @@ const context: ExtensionContext = {
 
 describe("mock API", () => {
   it("returns Mask without allowing automatic send", async () => {
-    const request: AnalyzeRequest = {
-      prompt: { text: "mock:mask contact member@example.com", input_method: "ENTER", content_length: 36 },
-      context,
-      policy: { version: DEFAULT_POLICY_VERSION },
-      client_request_id: createClientRequestId("crq")
-    };
+    const request = createAnalyzeRequest(context, DEFAULT_POLICY_VERSION, [createComposerInput({ text: "mock:mask contact member@example.com", inputMethod: "ENTER" })], "crq_test");
 
     const response = await mockPromptAnalyze(request);
 
-    expect(response.decision.action).toBe("Mask");
-    expect(response.decision.allow_original_send).toBe(false);
+    expect(response.action).toBe("Mask");
+    expect(response.allow_original_send).toBe(false);
     expect(response.masked_prompt).toBe("[masked-trigger] contact [masked-email]");
   });
 
   it("does not treat a bare at-sign picker token as a mask trigger", async () => {
-    const request: AnalyzeRequest = {
-      prompt: { text: "@", input_method: "ENTER", content_length: 1 },
-      context,
-      policy: { version: DEFAULT_POLICY_VERSION },
-      client_request_id: createClientRequestId("crq")
-    };
+    const request = createAnalyzeRequest(context, DEFAULT_POLICY_VERSION, [createComposerInput({ text: "@", inputMethod: "ENTER" })], "crq_test");
 
     const response = await mockPromptAnalyze(request);
 
-    expect(response.decision.action).toBe("Allow");
+    expect(response.action).toBe("Allow");
     expect(response.masked_prompt).toBeUndefined();
   });
 
-  it("blocks env-like file content in mock mode", async () => {
-    const request: FilesAnalyzeRequest = {
-      files: [
-        {
-          client_file_id: "file_req_random",
-          extension: ".env",
-          mime_type: "text/plain",
-          size_bytes: 42,
-          content_text: "DATABASE_URL=postgres://example"
-        }
-      ],
-      context,
-      policy: { version: DEFAULT_POLICY_VERSION },
-      client_request_id: createClientRequestId("frq")
-    };
+  it("warns for unsupported attachments and blocks env-like file content in mock mode", async () => {
+    const warnRequest = createAnalyzeRequest(context, DEFAULT_POLICY_VERSION, [createUnsupportedAttachmentInput({ extension: ".pdf", mimeType: "application/pdf", sizeBytes: 12, attachmentIndex: 0 })], "frq_warn");
+    const blockRequest = createAnalyzeRequest(context, DEFAULT_POLICY_VERSION, [createFileTextInput({ extension: ".env", mimeType: "text/plain", sizeBytes: 42, text: "DATABASE_URL=postgres://example" })], "frq_block");
 
-    const response = await mockFilesAnalyze(request);
+    const warnResponse = await mockFilesAnalyze(warnRequest);
+    const blockResponse = await mockFilesAnalyze(blockRequest);
 
-    expect(response.decision.action).toBe("Block");
-    expect(response.decision.allow_original_upload).toBe(false);
-    expect(response.file_results[0].detections[0].type).toBe("DB_CONNECTION_STRING");
+    expect(warnResponse.action).toBe("Warn");
+    expect(warnResponse.requires_user_confirmation).toBe(true);
+    expect(blockResponse.action).toBe("Block");
+    expect(blockResponse.allow_original_send).toBe(false);
+    expect(blockResponse.detections[0].type).toBe("DB_CONNECTION_STRING");
   });
 });
