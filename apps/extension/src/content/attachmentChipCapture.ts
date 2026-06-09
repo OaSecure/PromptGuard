@@ -7,6 +7,21 @@ export interface AttachmentChipSelectors {
 }
 
 /**
+ * Narrows attachment-chip scanning to the current send-attempt region.
+ *
+ * The send attempt is scoped to the active composer container first. When the
+ * page does not expose a stable composer container, the fallback stays local
+ * to the input's parent branch instead of scanning the full document.
+ */
+export function resolveAttachmentChipScope(anchor: Element, fallbackRoot: ParentNode = document): ParentNode {
+  return (
+    anchor.closest("[data-promptguard-composer-root], [data-testid='composer-root'], [data-testid='composer'], form, [role='form']") ??
+    anchor.parentElement ??
+    fallbackRoot
+  );
+}
+
+/**
  * Collects metadata-only attachment inputs from service-rendered chip DOM.
  *
  * This path is used only when the page already exposes attachment chips and

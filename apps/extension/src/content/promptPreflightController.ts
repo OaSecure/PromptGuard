@@ -3,7 +3,7 @@ import { createClientRequestId } from "../shared/hashing";
 import type { AnalyzeInput } from "../shared/types";
 import { isAnalyzeResponse } from "../shared/responseValidation";
 import type { AnalyzeRequest, AnalyzeResponse, ExtensionConfigResponse, ExtensionContext, NormalizedError } from "../shared/types";
-import { collectAttachmentChipInputs } from "./attachmentChipCapture";
+import { collectAttachmentChipInputs, resolveAttachmentChipScope } from "./attachmentChipCapture";
 import { findBestInputCandidate, type DetectorSelectors } from "./domDetector";
 import { applyMaskedPrompt } from "./maskedTextInjector";
 import { createPreflightOverlay, type PreflightOverlay } from "./preflightOverlay";
@@ -93,7 +93,7 @@ export function startPromptPreflightController(options: PromptPreflightControlle
       options.config.policy_version,
       convertedPasteText,
       requestIdForAttempt(attempt),
-      collectAttachmentChipInputs(doc, { attachment_chip: selectors.attachment_chip })
+      collectAttachmentChipInputs(resolveAttachmentChipScope(candidate.element, doc), { attachment_chip: selectors.attachment_chip })
     );
     convertedPasteText = undefined;
     recordPromptAttempt(doc, request, "inspecting");

@@ -18,6 +18,8 @@ export type LimitExceededCode =
   | "MAX_COMPOSER_TEXT_BYTES"
   | "MAX_CONVERTED_PASTE_TEXT_BYTES"
   | "MAX_FILE_TEXT_SCAN_BYTES";
+/** Input-result decision basis values returned by the MVP API. */
+export type AnalyzeDecisionBasis = "no_detection" | "detection" | "content_unavailable" | "metadata_only";
 
 /** Metadata summary for one policy detection without raw detected values. */
 export interface AnalyzeDetection {
@@ -45,7 +47,7 @@ export interface AnalyzeInputResult {
   source: AnalyzeInputSource;
   content_included: boolean;
   content_scanned: boolean;
-  decision_basis: "detection" | "content_unavailable" | "no_match";
+  decision_basis: AnalyzeDecisionBasis;
   content_unavailable_reason?: ContentUnavailableReason;
   limit_exceeded?: LimitExceededCode;
 }

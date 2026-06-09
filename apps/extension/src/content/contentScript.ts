@@ -1,7 +1,7 @@
 import { DEFAULT_CONFIG, EXTENSION_VERSION } from "../shared/constants";
 import { isExtensionConfigResponse } from "../shared/configValidation";
 import type { AnalyzeRequest, ExtensionConfigResponse, ExtensionContext } from "../shared/types";
-import { collectAttachmentChipInputs } from "./attachmentChipCapture";
+import { collectAttachmentChipInputs, resolveAttachmentChipScope } from "./attachmentChipCapture";
 import { findBestInputCandidate } from "./domDetector";
 import { watchInputArea } from "./mutationWatcher";
 import {
@@ -53,7 +53,7 @@ export function buildPromptAnalyzeRequest(inputMethod: "CLICK" | "ENTER" | "UNKN
     activeConfig.policy_version,
     undefined,
     undefined,
-    collectAttachmentChipInputs(document, {
+    collectAttachmentChipInputs(resolveAttachmentChipScope(candidate.element, document), {
       attachment_chip: config?.selectors.attachment_chip ?? DEFAULT_CONFIG.ai_service_configs[0].selectors.attachment_chip
     })
   );

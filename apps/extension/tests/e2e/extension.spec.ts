@@ -27,6 +27,7 @@ describe("ChatGPT-like fixture", () => {
     expect(document.querySelector("input[type='file']")).toBeTruthy();
     expect(document.querySelector("[data-testid='drop-zone']")).toBeTruthy();
     expect(document.querySelector("[data-testid='attachment-chip']")).toBeTruthy();
+    expect(document.querySelector("[data-testid='history-attachment-chip']")).toBeTruthy();
 
     const candidate = findBestInputCandidate(document);
     expect(candidate?.element).toBe(input);
@@ -89,7 +90,9 @@ describe("ChatGPT-like fixture", () => {
     await waitFor(() => submits === 1);
     expect(promptRequests).toBe(1);
     expect(capturedPromptRequest?.inputs.some((input) => input.source === "attachment_chip")).toBe(true);
+    expect(capturedPromptRequest?.inputs.filter((input) => input.source === "attachment_chip")).toHaveLength(1);
     expect(JSON.stringify(capturedPromptRequest)).not.toContain("customer-secret.png");
+    expect(JSON.stringify(capturedPromptRequest)).not.toContain("stale-history.zip");
 
     fileInput.dispatchEvent(new Event("change", { bubbles: true, cancelable: true }));
     await waitFor(() => uploadEvents === 1);
@@ -278,7 +281,7 @@ function filesResponse(action: DecisionAction, request: AnalyzeRequest) {
       source: input.source,
       content_included: input.content_included,
       content_scanned: input.kind === "text" && input.content_included,
-      decision_basis: "no_match"
+      decision_basis: input.kind === "attachment_metadata" ? "metadata_only" : "no_detection"
     })),
     content_unavailable_inputs: [],
     business_context_matches: [],

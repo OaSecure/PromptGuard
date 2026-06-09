@@ -61,7 +61,7 @@ function isInputResult(value: unknown): boolean {
     isNonEmptyString(value.source) &&
     typeof value.content_included === "boolean" &&
     typeof value.content_scanned === "boolean" &&
-    isNonEmptyString(value.decision_basis) &&
+    isDecisionBasis(value.decision_basis) &&
     (value.content_unavailable_reason === undefined || isNonEmptyString(value.content_unavailable_reason)) &&
     (value.limit_exceeded === undefined || isNonEmptyString(value.limit_exceeded))
   );
@@ -100,6 +100,10 @@ function isDecisionAction(value: unknown): boolean {
 
 function isRiskLevel(value: unknown): boolean {
   return value === "low" || value === "medium" || value === "high" || value === "critical";
+}
+
+function isDecisionBasis(value: unknown): boolean {
+  return value === "no_detection" || value === "detection" || value === "content_unavailable" || value === "metadata_only";
 }
 
 function isNonEmptyString(value: unknown): value is string {

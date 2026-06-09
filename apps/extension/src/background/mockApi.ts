@@ -134,7 +134,7 @@ function buildInputResults(inputs: AnalyzeInput[], action: DecisionAction): Anal
     source: input.source,
     content_included: input.content_included,
     content_scanned: input.kind === "text" && input.content_included,
-    decision_basis: input.content_included ? (action === "Allow" ? "no_match" : "detection") : "content_unavailable",
+    decision_basis: input.content_included ? (action === "Allow" ? "no_detection" : "detection") : input.kind === "attachment_metadata" ? "metadata_only" : "content_unavailable",
     content_unavailable_reason: input.content_unavailable_reason,
     limit_exceeded: input.limit_exceeded
   }));

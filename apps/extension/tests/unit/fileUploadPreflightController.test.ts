@@ -319,7 +319,7 @@ function responseFor(action: DecisionAction, request: AnalyzeRequest, allowOrigi
       source: input.source,
       content_included: input.content_included,
       content_scanned: input.kind === "text" && input.content_included,
-      decision_basis: input.content_included ? "no_match" : "content_unavailable",
+      decision_basis: input.content_included ? "no_detection" : input.kind === "attachment_metadata" ? "metadata_only" : "content_unavailable",
       content_unavailable_reason: input.content_unavailable_reason,
       limit_exceeded: input.limit_exceeded
     })),

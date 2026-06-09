@@ -14,6 +14,7 @@ describe("analyze response validation", () => {
     expect(isAnalyzeResponse({ ...promptResponse("Allow"), input_results: [{ input_id: "in_1" }] })).toBe(false);
     expect(isAnalyzeResponse({ ...promptResponse("Allow"), risk_score: Number.NaN })).toBe(false);
     expect(isAnalyzeResponse({ ...promptResponse("Allow"), requires_user_confirmation: "false" })).toBe(false);
+    expect(isAnalyzeResponse({ ...promptResponse("Allow"), input_results: [{ ...promptResponse("Allow").input_results[0], decision_basis: "no_match" }] })).toBe(false);
   });
 });
 
@@ -37,7 +38,7 @@ function promptResponse(action: AnalyzeResponse["action"], maskedPrompt?: string
         source: "composer",
         content_included: true,
         content_scanned: true,
-        decision_basis: action === "Allow" ? "no_match" : "detection"
+        decision_basis: action === "Allow" ? "no_detection" : "detection"
       }
     ],
     content_unavailable_inputs: [],
