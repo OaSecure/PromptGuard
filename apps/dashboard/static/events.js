@@ -3,6 +3,10 @@ import { logoutDashboardSession } from "./session.js";
 import { deriveEventsScreenState, projectEventTableRows, safeEventsErrorMessage, } from "./eventsPageModel.js";
 const eventsMessage = requireElement("events-message");
 const eventsTableBody = requireElement("events-table-body");
+const eventsTotalCount = document.getElementById("events-total-count");
+const eventsBlockCount = document.getElementById("events-block-count");
+const eventsMaskCount = document.getElementById("events-mask-count");
+const eventsWarnCount = document.getElementById("events-warn-count");
 function requireElement(id) {
     const element = document.getElementById(id);
     if (!element) {
@@ -45,6 +49,7 @@ function riskBadgeClass(riskLevel) {
 }
 function renderEvents(events) {
     const rows = projectEventTableRows(events);
+    renderOverviewCounts(events);
     eventsTableBody.replaceChildren(...rows.map((row) => {
         const tr = document.createElement("tr");
         row.cells.forEach((cell) => {
@@ -69,6 +74,16 @@ function renderEvents(events) {
         eventsTableBody.append(tr);
         return tr;
     }));
+}
+function renderOverviewCounts(events) {
+    if (eventsTotalCount)
+        eventsTotalCount.textContent = String(events.length);
+    if (eventsBlockCount)
+        eventsBlockCount.textContent = String(events.filter((event) => event.action === "BLOCK").length);
+    if (eventsMaskCount)
+        eventsMaskCount.textContent = String(events.filter((event) => event.action === "MASK").length);
+    if (eventsWarnCount)
+        eventsWarnCount.textContent = String(events.filter((event) => event.action === "WARN").length);
 }
 async function loadEvents() {
     const loadingState = deriveEventsScreenState("loading", 0);

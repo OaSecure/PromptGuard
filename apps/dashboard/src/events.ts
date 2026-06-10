@@ -9,6 +9,10 @@ import {
 
 const eventsMessage = requireElement<HTMLElement>("events-message");
 const eventsTableBody = requireElement<HTMLTableSectionElement>("events-table-body");
+const eventsTotalCount = document.getElementById("events-total-count");
+const eventsBlockCount = document.getElementById("events-block-count");
+const eventsMaskCount = document.getElementById("events-mask-count");
+const eventsWarnCount = document.getElementById("events-warn-count");
 
 function requireElement<T extends HTMLElement>(id: string): T {
   const element = document.getElementById(id);
@@ -52,6 +56,7 @@ function riskBadgeClass(riskLevel: string): string {
 
 function renderEvents(events: DashboardEventListItem[]): void {
   const rows = projectEventTableRows(events);
+  renderOverviewCounts(events);
   eventsTableBody.replaceChildren(
     ...rows.map((row) => {
       const tr = document.createElement("tr");
@@ -75,6 +80,13 @@ function renderEvents(events: DashboardEventListItem[]): void {
       return tr;
     }),
   );
+}
+
+function renderOverviewCounts(events: DashboardEventListItem[]): void {
+  if (eventsTotalCount) eventsTotalCount.textContent = String(events.length);
+  if (eventsBlockCount) eventsBlockCount.textContent = String(events.filter((event) => event.action === "BLOCK").length);
+  if (eventsMaskCount) eventsMaskCount.textContent = String(events.filter((event) => event.action === "MASK").length);
+  if (eventsWarnCount) eventsWarnCount.textContent = String(events.filter((event) => event.action === "WARN").length);
 }
 
 async function loadEvents(): Promise<void> {

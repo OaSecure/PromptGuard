@@ -60,12 +60,12 @@ function renderDetail(detail) {
     appendKeyValue(summaryGrid, "사용자", summary.username);
     appendKeyValue(summaryGrid, "서비스", summary.service);
     appendKeyValue(summaryGrid, "플랫폼", summary.platform);
-    appendKeyValue(summaryGrid, "Action", summary.action);
+    appendKeyValue(summaryGrid, "처리", summary.action);
     appendKeyValue(summaryGrid, "위험도 점수", summary.riskScore);
     appendKeyValue(summaryGrid, "위험도", summary.riskLevel);
     appendKeyValue(summaryGrid, "탐지 개수", summary.detectionCount);
     appendKeyValue(summaryGrid, "입력 개수", summary.inputCount);
-    appendKeyValue(summaryGrid, "Content unavailable", summary.contentUnavailableCount);
+    appendKeyValue(summaryGrid, "스캔 불가 입력", summary.contentUnavailableCount);
     detectionSummaryBody.replaceChildren(...(detail.detection_summary.length > 0
         ? detail.detection_summary.map((item) => renderTableRow([item.category, item.type, String(item.count)]))
         : [renderEmptyRow(3, "탐지 요약이 없습니다.")]));
@@ -80,11 +80,11 @@ function renderDetail(detail) {
     const unavailableInputs = projectInputRows(detail.content_unavailable_inputs);
     unavailableInputsBody.replaceChildren(...(unavailableInputs.length > 0
         ? unavailableInputs.map((row) => renderTableRow([row.inputId, row.inputIndex, row.kind, row.source, row.decisionBasis, row.contentUnavailableReason, row.limitExceeded]))
-        : [renderEmptyRow(7, "Content unavailable 입력이 없습니다.")]));
+        : [renderEmptyRow(7, "스캔 불가 입력이 없습니다.")]));
     const businessContextRows = projectBusinessContextRows(detail.business_context_matches);
     businessContextBody.replaceChildren(...(businessContextRows.length > 0
         ? businessContextRows.map((row) => renderTableRow([row.source, row.reasonCode, row.matchCount, row.matchedKeywords, row.evidenceCounts]))
-        : [renderEmptyRow(5, "Business Context metadata가 없습니다.")]));
+        : [renderEmptyRow(5, "업무 맥락 메타데이터가 없습니다.")]));
 }
 async function loadEventDetail() {
     const eventId = parseEventIdFromLocationSearch(window.location.search);

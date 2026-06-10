@@ -10,21 +10,24 @@
     <header class="admin-header">
       <div>
         <p class="eyebrow">OASecure Event Detail</p>
-        <h1 id="detail-title">이벤트 상세보기</h1>
-        <p class="header-desc">원문 프롬프트 없이 detection, input, Business Context 메타데이터만 표시합니다.</p>
+        <h1 id="detail-title">전체 이벤트 상세보기</h1>
+        <p class="header-desc">선택한 이벤트의 안전한 메타데이터 상세 내용을 확인합니다.</p>
       </div>
       <nav class="header-actions">
-        <a href="./events.html" class="nav-button">Events</a>
-        <a href="./overview.html" class="nav-button">Overview</a>
-        <a href="./login.html" class="logout-button">Logout</a>
+        <a href="./events.html" class="nav-button">이벤트 목록</a>
+        <a href="./overview.html" class="nav-button">대시보드</a>
+        <a href="./users.html" class="nav-button">사용자 관리</a>
+        <a href="./filters.html" class="nav-button">필터 관리</a>
+        <a href="./status.html" class="nav-button">서버 상태</a>
+        <a href="./login.html" class="logout-button">로그아웃</a>
       </nav>
     </header>
     <main class="dashboard">
       <section class="overview-section">
         <div class="section-title-wrap">
           <div>
-            <h2>Event Summary</h2>
-            <p>metadata-only event summary</p>
+            <h2>이벤트 요약</h2>
+            <p>원문 프롬프트는 저장하지 않고 이벤트 메타데이터만 표시합니다.</p>
           </div>
         </div>
         <div id="detail-message" class="privacy-note" role="status" aria-live="polite">이벤트 상세 정보를 불러오는 중입니다.</div>
@@ -33,7 +36,7 @@
       <section class="table-section">
         <div class="section-title-wrap">
           <div>
-            <h2>Detection Summary</h2>
+            <h2>탐지 요약</h2>
             <p>카테고리와 유형별 탐지 개수</p>
           </div>
         </div>
@@ -53,7 +56,7 @@
       <section class="table-section">
         <div class="section-title-wrap">
           <div>
-            <h2>Detections</h2>
+            <h2>탐지 상세</h2>
             <p>원문 값 없이 탐지 메타데이터만 표시합니다.</p>
           </div>
         </div>
@@ -63,11 +66,11 @@
               <tr>
                 <th>카테고리</th>
                 <th>유형</th>
-                <th>입력 Source</th>
-                <th>Severity</th>
-                <th>Action</th>
-                <th>Reason Code</th>
-                <th>Match Count</th>
+                <th>입력 출처</th>
+                <th>심각도</th>
+                <th>처리</th>
+                <th>사유 코드</th>
+                <th>일치 수</th>
               </tr>
             </thead>
             <tbody id="detections-body"></tbody>
@@ -77,21 +80,21 @@
       <section class="table-section">
         <div class="section-title-wrap">
           <div>
-            <h2>Input Results</h2>
-            <p>input-level metadata-only 결과</p>
+            <h2>입력별 결과</h2>
+            <p>입력 단위의 안전한 메타데이터 결과</p>
           </div>
         </div>
         <div class="table-card">
           <table class="data-table">
             <thead>
               <tr>
-                <th>Input ID</th>
-                <th>Index</th>
-                <th>Kind</th>
-                <th>Source</th>
-                <th>Decision Basis</th>
-                <th>Unavailable Reason</th>
-                <th>Limit Exceeded</th>
+                <th>입력 ID</th>
+                <th>순서</th>
+                <th>입력 유형</th>
+                <th>출처</th>
+                <th>판단 근거</th>
+                <th>스캔 불가 사유</th>
+                <th>제한 초과</th>
               </tr>
             </thead>
             <tbody id="inputs-body"></tbody>
@@ -101,21 +104,21 @@
       <section class="table-section">
         <div class="section-title-wrap">
           <div>
-            <h2>Content Unavailable Inputs</h2>
-            <p>내용을 스캔하지 못한 입력의 메타데이터</p>
+            <h2>스캔 불가 입력</h2>
+            <p>내용을 스캔하지 못한 입력의 안전한 메타데이터</p>
           </div>
         </div>
         <div class="table-card">
           <table class="data-table">
             <thead>
               <tr>
-                <th>Input ID</th>
-                <th>Index</th>
-                <th>Kind</th>
-                <th>Source</th>
-                <th>Decision Basis</th>
-                <th>Unavailable Reason</th>
-                <th>Limit Exceeded</th>
+                <th>입력 ID</th>
+                <th>순서</th>
+                <th>입력 유형</th>
+                <th>출처</th>
+                <th>판단 근거</th>
+                <th>스캔 불가 사유</th>
+                <th>제한 초과</th>
               </tr>
             </thead>
             <tbody id="unavailable-inputs-body"></tbody>
@@ -125,19 +128,19 @@
       <section class="table-section">
         <div class="section-title-wrap">
           <div>
-            <h2>Business Context</h2>
-            <p>Business Context match metadata</p>
+            <h2>업무 맥락</h2>
+            <p>업무 맥락 규칙과 일치한 메타데이터</p>
           </div>
         </div>
         <div class="table-card">
           <table class="data-table">
             <thead>
               <tr>
-                <th>Source</th>
-                <th>Reason Code</th>
-                <th>Match Count</th>
-                <th>Matched Keywords</th>
-                <th>Evidence Counts</th>
+                <th>출처</th>
+                <th>사유 코드</th>
+                <th>일치 수</th>
+                <th>일치 키워드</th>
+                <th>근거 카운트</th>
               </tr>
             </thead>
             <tbody id="business-context-body"></tbody>
