@@ -31,15 +31,15 @@ function setMetric(key, value) {
     }
 }
 function formatNumber(value) {
-    return new Intl.NumberFormat("en-US").format(value);
+    return new Intl.NumberFormat("ko-KR").format(value);
 }
 function formatDateTime(value) {
     if (!value)
-        return "None";
+        return "없음";
     const date = new Date(value);
     if (Number.isNaN(date.getTime()))
-        return "None";
-    return new Intl.DateTimeFormat("en-US", {
+        return "없음";
+    return new Intl.DateTimeFormat("ko-KR", {
         month: "short",
         day: "2-digit",
         hour: "2-digit",
@@ -50,7 +50,7 @@ function formatPeriodDate(value) {
     const date = new Date(value);
     if (Number.isNaN(date.getTime()))
         return "-";
-    return new Intl.DateTimeFormat("en-US", { month: "short", day: "2-digit" }).format(date);
+    return new Intl.DateTimeFormat("ko-KR", { month: "short", day: "2-digit" }).format(date);
 }
 function barClassForAction(action) {
     if (action === "block")
@@ -61,13 +61,24 @@ function barClassForAction(action) {
         return "warned";
     return "";
 }
+function formatActionLabel(action) {
+    if (action === "allow")
+        return "허용";
+    if (action === "block")
+        return "차단";
+    if (action === "mask")
+        return "마스킹";
+    if (action === "warn")
+        return "경고";
+    return action;
+}
 function renderActionCounts(rows) {
     const maxCount = Math.max(1, ...rows.map((row) => row.count));
     actionCounts.replaceChildren(...rows.map((row) => {
         const item = document.createElement("div");
         item.className = "bar-row";
         const label = document.createElement("span");
-        label.textContent = row.action;
+        label.textContent = formatActionLabel(row.action);
         const track = document.createElement("div");
         track.className = "bar-track";
         const fill = document.createElement("i");
@@ -102,7 +113,7 @@ function renderPeriodBuckets(rows) {
     if (rows.length === 0) {
         const empty = document.createElement("div");
         empty.className = "empty-state";
-        empty.textContent = "No period data.";
+        empty.textContent = "기간별 데이터가 없습니다.";
         periodBuckets.replaceChildren(empty);
         return;
     }
@@ -112,10 +123,10 @@ function renderPeriodBuckets(rows) {
         const item = document.createElement("div");
         item.className = "period-column";
         item.title = [
-            `Events: ${row.event_count}`,
-            `Blocked: ${row.blocked_count}`,
-            `Masked: ${row.masked_count}`,
-            `Warned: ${row.warned_count}`,
+            `전체: ${row.event_count}`,
+            `차단: ${row.blocked_count}`,
+            `마스킹: ${row.masked_count}`,
+            `경고: ${row.warned_count}`,
         ].join(" | ");
         const value = document.createElement("strong");
         value.textContent = formatNumber(row.event_count);
@@ -137,12 +148,12 @@ function renderOverview(data) {
     setMetric("last_event_at", formatDateTime(data.last_event_at));
     periodLabel.textContent = `${formatPeriodDate(data.period_start)} - ${formatPeriodDate(data.period_end)}`;
     renderActionCounts(data.action_counts);
-    renderList(riskLevelCounts, data.risk_level_counts, "risk_level", "No risk data.");
-    renderList(detectorCategoryCounts, data.detector_category_counts, "category", "No detector data.");
+    renderList(riskLevelCounts, data.risk_level_counts, "risk_level", "위험도 데이터가 없습니다.");
+    renderList(detectorCategoryCounts, data.detector_category_counts, "category", "탐지 카테고리 데이터가 없습니다.");
     renderPeriodBuckets(data.period_buckets);
     cards.setAttribute("aria-busy", "false");
     if (data.event_count === 0) {
-        setMessage("No events found for the current period.", "empty");
+        setMessage("현재 조회 기간에 표시할 이벤트가 없습니다.", "empty");
     }
     else {
         setMessage("", "ready");
@@ -154,15 +165,15 @@ function redirectToLogin() {
 function safeOverviewErrorMessage(error) {
     if (error instanceof DashboardApiError) {
         if (error.status === 401 || error.status === 403)
-            return "Dashboard login is required.";
+            return "대시보드 로그인이 필요합니다.";
         if (error.status === 0)
-            return "Dashboard API is unavailable. Try again later.";
+            return "대시보드 API에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.";
     }
-    return "Overview data could not be loaded.";
+    return "대시보드 요약을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.";
 }
 async function loadOverview() {
     cards.setAttribute("aria-busy", "true");
-    setMessage("Loading overview summary.", "loading");
+    setMessage("대시보드 요약을 불러오는 중입니다.", "loading");
     try {
         const data = await dashboardRequest("/dashboard/overview");
         renderOverview(data);

@@ -1,3 +1,6 @@
+import { DashboardApiError, dashboardRequest } from "./dashboardApi.js";
+import { logoutDashboardSession } from "./session.js";
+
 type StatusValue = "healthy" | "degraded" | "unhealthy" | "unknown";
 
 type DashboardStatus = {
@@ -10,7 +13,6 @@ type DashboardStatus = {
 };
 
 const root = document.querySelector<HTMLDivElement>("#status-app");
-const apiBaseUrl = document.documentElement.dataset.promptguardApiBaseUrl ?? "http://localhost:8000";
 
 if (!root) {
   throw new Error("Status root element is missing.");
@@ -26,15 +28,15 @@ function appendText(parent: HTMLElement, tagName: keyof HTMLElementTagNameMap, t
 }
 
 function statusLabel(value: StatusValue): string {
-  if (value === "healthy") return "Healthy";
-  if (value === "degraded") return "Degraded";
-  if (value === "unhealthy") return "Unhealthy";
-  return "Unknown";
+  if (value === "healthy") return "정상";
+  if (value === "degraded") return "주의";
+  if (value === "unhealthy") return "비정상";
+  return "알 수 없음";
 }
 
 function formatLastChecked(value: string): string {
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Unknown";
+  if (Number.isNaN(date.getTime())) return "알 수 없음";
   return new Intl.DateTimeFormat("ko-KR", {
     dateStyle: "medium",
     timeStyle: "short"
@@ -53,19 +55,33 @@ function renderHeader(): HTMLElement {
   header.className = "admin-header";
 
   const copy = document.createElement("div");
-  appendText(copy, "p", "PromptGuard Dashboard").className = "eyebrow";
-  appendText(copy, "h1", "Server Status");
-  appendText(copy, "p", "API, PostgreSQL, migration, and filter rule readiness.").className = "header-desc";
+  appendText(copy, "p", "OASecure 서버 상태").className = "eyebrow";
+  appendText(copy, "h1", "서버 상태");
+  appendText(copy, "p", "API, PostgreSQL, 마이그레이션, 필터 규칙 상태를 확인합니다.").className = "header-desc";
 
   const nav = document.createElement("nav");
   nav.className = "header-actions";
-  const admin = appendText(nav, "a", "Admin") as HTMLAnchorElement;
-  admin.href = "./admin.html";
-  admin.className = "nav-button";
-  const filters = appendText(nav, "a", "Filters") as HTMLAnchorElement;
+  const overview = appendText(nav, "a", "대시보드") as HTMLAnchorElement;
+  overview.href = "./overview.html";
+  overview.className = "nav-button";
+  const events = appendText(nav, "a", "이벤트 관리") as HTMLAnchorElement;
+  events.href = "./events.html";
+  events.className = "nav-button";
+  const users = appendText(nav, "a", "사용자 관리") as HTMLAnchorElement;
+  users.href = "./users.html";
+  users.className = "nav-button";
+  const filters = appendText(nav, "a", "필터 관리") as HTMLAnchorElement;
   filters.href = "./filters.html";
   filters.className = "nav-button";
+  const logout = appendText(nav, "a", "로그아웃") as HTMLAnchorElement;
+  logout.href = "./login.html";
+  logout.className = "logout-button";
+  logout.addEventListener("click", (event) => {
+    event.preventDefault();
+    void logoutAndRedirect();
+  });
 
+  nav.append(overview, events, users, filters, logout);
   header.append(copy, nav);
   return header;
 }
@@ -91,7 +107,7 @@ function dependencyCard(label: string, value: StatusValue): HTMLElement {
 function renderLoading(): void {
   const card = document.createElement("section");
   card.className = "status-summary-card";
-  appendText(card, "p", "Loading status metadata...");
+  appendText(card, "p", "서버 상태 정보를 불러오는 중입니다.");
   renderShell(card);
 }
 
@@ -99,9 +115,9 @@ function renderUnavailable(statusCode?: number): void {
   const card = document.createElement("section");
   card.className = "status-summary-card";
   const copy = document.createElement("div");
-  appendText(copy, "p", "Status Unavailable").className = "eyebrow";
-  appendText(copy, "h2", statusCode === 401 || statusCode === 403 ? "Authentication Required" : "Unknown");
-  appendText(copy, "p", "Status metadata could not be loaded safely. Use an ADMIN dashboard session and try again.").className =
+  appendText(copy, "p", "상태 확인 불가").className = "eyebrow";
+  appendText(copy, "h2", statusCode === 401 || statusCode === 403 ? "로그인이 필요합니다" : "상태 확인 불가");
+  appendText(copy, "p", "안전한 서버 상태 메타데이터를 불러오지 못했습니다. ADMIN 대시보드 세션으로 다시 시도해 주세요.").className =
     "status-summary-copy";
   card.append(copy, badge("unknown"));
   renderShell(card);
@@ -111,9 +127,9 @@ function renderStatus(payload: DashboardStatus): void {
   const summary = document.createElement("section");
   summary.className = "status-summary-card";
   const copy = document.createElement("div");
-  appendText(copy, "p", "Server Status").className = "eyebrow";
+  appendText(copy, "p", "서버 상태").className = "eyebrow";
   appendText(copy, "h2", statusLabel(payload.status));
-  appendText(copy, "p", "Dashboard-safe status summary. Detailed configuration values are not displayed.").className =
+  appendText(copy, "p", "대시보드에 표시 가능한 상태 메타데이터만 보여줍니다. 상세 설정값과 secret은 표시하지 않습니다.").className =
     "status-summary-copy";
   summary.append(copy, badge(payload.status));
 
@@ -121,17 +137,17 @@ function renderStatus(payload: DashboardStatus): void {
   meta.className = "status-meta-grid";
   const lastChecked = document.createElement("article");
   lastChecked.className = "status-meta-card";
-  appendText(lastChecked, "span", "Last Checked");
+  appendText(lastChecked, "span", "마지막 확인");
   appendText(lastChecked, "strong", formatLastChecked(payload.last_checked));
   meta.append(lastChecked);
 
   const dependencies = document.createElement("section");
   dependencies.className = "dependency-grid";
   dependencies.append(
-    dependencyCard("API", payload.api_status),
+    dependencyCard("API 서버", payload.api_status),
     dependencyCard("PostgreSQL", payload.postgres_status),
-    dependencyCard("Migration", payload.migration_status),
-    dependencyCard("Filter Rules", payload.filter_rules_status)
+    dependencyCard("마이그레이션", payload.migration_status),
+    dependencyCard("필터 규칙", payload.filter_rules_status)
   );
 
   renderShell(summary, meta, dependencies);
@@ -140,19 +156,17 @@ function renderStatus(payload: DashboardStatus): void {
 async function fetchStatus(): Promise<void> {
   renderLoading();
   try {
-    const response = await fetch(`${apiBaseUrl}/dashboard/status`, {
-      credentials: "include",
-      headers: {
-        Accept: "application/json"
-      }
-    });
-    if (!response.ok) {
-      renderUnavailable(response.status);
-      return;
-    }
-    renderStatus((await response.json()) as DashboardStatus);
-  } catch {
-    renderUnavailable();
+    renderStatus(await dashboardRequest<DashboardStatus>("/dashboard/status"));
+  } catch (error) {
+    renderUnavailable(error instanceof DashboardApiError ? error.status : undefined);
+  }
+}
+
+async function logoutAndRedirect(): Promise<void> {
+  try {
+    await logoutDashboardSession();
+  } finally {
+    window.location.href = "./login.html";
   }
 }
 
