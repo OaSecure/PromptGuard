@@ -24,6 +24,14 @@ def load_start_api_script() -> str:
     return (repo_api_root() / "scripts" / "start_api.sh").read_text(encoding="utf-8")
 
 
+def load_start_api_script_bytes() -> bytes:
+    return (repo_api_root() / "scripts" / "start_api.sh").read_bytes()
+
+
+def load_gitattributes_text() -> str:
+    return (repo_api_root().parents[1] / ".gitattributes").read_text(encoding="utf-8")
+
+
 def get_migration_head() -> str:
     alembic_config = Config(str(repo_api_root() / "alembic.ini"))
     alembic_config.set_main_option("script_location", str(repo_api_root() / "alembic"))
@@ -56,6 +64,18 @@ def test_compose_uses_startup_runner_and_v1_admin_default() -> None:
     assert "ACCESS_TOKEN_SECRET=" not in start_api_script
     assert "REFRESH_TOKEN_SECRET=" not in start_api_script
     assert "DATABASE_URL=" not in start_api_script
+
+
+def test_start_api_script_is_posix_shell_safe_for_compose() -> None:
+    script_bytes = load_start_api_script_bytes()
+    start_api_script = load_start_api_script()
+    gitattributes_text = load_gitattributes_text()
+
+    assert b"\r\n" not in script_bytes
+    assert start_api_script.startswith("#!/bin/sh\n")
+    assert "\nset -eu\n" in start_api_script
+    assert start_api_script.endswith("python -m app.db.startup\n")
+    assert "*.sh text eol=lf" in gitattributes_text
 
 
 def test_wbs48_required_metadata_tables_exist() -> None:

@@ -10,116 +10,141 @@
     <header class="admin-header">
       <div>
         <p class="eyebrow">OASecure Event Detail</p>
-        <h1 id="detail-title">전체 이벤트 상세보기</h1>
-        <p class="header-desc">선택한 위험도에 해당하는 이벤트 제목을 클릭하면 상세 내용을 확인할 수 있습니다.</p>
+        <h1 id="detail-title">이벤트 상세보기</h1>
+        <p class="header-desc">원문 프롬프트 없이 detection, input, Business Context 메타데이터만 표시합니다.</p>
       </div>
       <nav class="header-actions">
-        <a href="./events.html" class="nav-button">이벤트 목록</a>
-        <a href="./admin.html" class="nav-button">대시보드</a>
-        <a href="./index.html" class="logout-button">로그아웃</a>
+        <a href="./events.html" class="nav-button">Events</a>
+        <a href="./overview.html" class="nav-button">Overview</a>
+        <a href="./login.html" class="logout-button">Logout</a>
       </nav>
     </header>
     <main class="dashboard">
+      <section class="overview-section">
+        <div class="section-title-wrap">
+          <div>
+            <h2>Event Summary</h2>
+            <p>metadata-only event summary</p>
+          </div>
+        </div>
+        <div id="detail-message" class="privacy-note" role="status" aria-live="polite">이벤트 상세 정보를 불러오는 중입니다.</div>
+        <div id="detail-summary-grid" class="overview-grid"></div>
+      </section>
       <section class="table-section">
         <div class="section-title-wrap">
           <div>
-            <h2>상세 이벤트 게시판</h2>
-            <p>원문 프롬프트는 저장하지 않고 탐지 결과만 표시합니다.</p>
+            <h2>Detection Summary</h2>
+            <p>카테고리와 유형별 탐지 개수</p>
           </div>
         </div>
         <div class="table-card">
-          <table class="data-table detail-board-table">
+          <table class="data-table">
             <thead>
               <tr>
-                <th>No.</th>
-                <th>제목</th>
-                <th>사용자</th>
-                <th>위험도</th>
-                <th>Action</th>
-                <th>시간</th>
+                <th>카테고리</th>
+                <th>유형</th>
+                <th>개수</th>
               </tr>
             </thead>
-            <tbody>
-              <tr class="board-row" data-risk="critical">
-                <td>1</td>
-                <td><button class="board-title-button" type="button" data-detail-id="detail-1"><span class="toggle-icon">＋</span>API Key 형태의 민감정보 탐지</button></td>
-                <td>김OO</td>
-                <td><span class="risk-badge risk-critical">Critical</span></td>
-                <td>Block</td>
-                <td>10:32</td>
+            <tbody id="detection-summary-body"></tbody>
+          </table>
+        </div>
+      </section>
+      <section class="table-section">
+        <div class="section-title-wrap">
+          <div>
+            <h2>Detections</h2>
+            <p>원문 값 없이 탐지 메타데이터만 표시합니다.</p>
+          </div>
+        </div>
+        <div class="table-card">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>카테고리</th>
+                <th>유형</th>
+                <th>입력 Source</th>
+                <th>Severity</th>
+                <th>Action</th>
+                <th>Reason Code</th>
+                <th>Match Count</th>
               </tr>
-              <tr class="board-detail-row" id="detail-1" data-risk="critical">
-                <td colspan="6">
-                  <div class="board-detail-box">
-                    <div><span>이벤트 ID</span><strong>EVT-20260529-003</strong></div>
-                    <div><span>시간</span><strong>10:32</strong></div>
-                    <div><span>사용자</span><strong>김OO</strong></div>
-                    <div><span>서비스</span><strong>ChatGPT</strong></div>
-                    <div><span>Action</span><strong>Block</strong></div>
-                    <div><span>위험도 점수</span><strong>94</strong></div>
-                    <div><span>위험도</span><strong>Critical</strong></div>
-                    <div><span>탐지 요약</span><strong>API Key 형태의 민감정보 탐지</strong></div>
-                    <div><span>탐지 항목</span><strong>secret / api_key</strong></div>
-                    <div><span>프롬프트 해시</span><strong>ph_9a4c</strong></div>
-                    <div><span>플랫폼</span><strong>Web</strong></div>
-                  </div>
-                </td>
+            </thead>
+            <tbody id="detections-body"></tbody>
+          </table>
+        </div>
+      </section>
+      <section class="table-section">
+        <div class="section-title-wrap">
+          <div>
+            <h2>Input Results</h2>
+            <p>input-level metadata-only 결과</p>
+          </div>
+        </div>
+        <div class="table-card">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Input ID</th>
+                <th>Index</th>
+                <th>Kind</th>
+                <th>Source</th>
+                <th>Decision Basis</th>
+                <th>Unavailable Reason</th>
+                <th>Limit Exceeded</th>
               </tr>
-              <tr class="board-row" data-risk="high">
-                <td>2</td>
-                <td><button class="board-title-button" type="button" data-detail-id="detail-2"><span class="toggle-icon">＋</span>전화번호 형태의 개인정보 탐지</button></td>
-                <td>박OO</td>
-                <td><span class="risk-badge risk-high">High</span></td>
-                <td>Mask</td>
-                <td>10:28</td>
+            </thead>
+            <tbody id="inputs-body"></tbody>
+          </table>
+        </div>
+      </section>
+      <section class="table-section">
+        <div class="section-title-wrap">
+          <div>
+            <h2>Content Unavailable Inputs</h2>
+            <p>내용을 스캔하지 못한 입력의 메타데이터</p>
+          </div>
+        </div>
+        <div class="table-card">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Input ID</th>
+                <th>Index</th>
+                <th>Kind</th>
+                <th>Source</th>
+                <th>Decision Basis</th>
+                <th>Unavailable Reason</th>
+                <th>Limit Exceeded</th>
               </tr>
-              <tr class="board-detail-row" id="detail-2" data-risk="high">
-                <td colspan="6">
-                  <div class="board-detail-box">
-                    <div><span>이벤트 ID</span><strong>EVT-20260529-002</strong></div>
-                    <div><span>시간</span><strong>10:28</strong></div>
-                    <div><span>사용자</span><strong>박OO</strong></div>
-                    <div><span>서비스</span><strong>ChatGPT</strong></div>
-                    <div><span>Action</span><strong>Mask</strong></div>
-                    <div><span>위험도 점수</span><strong>72</strong></div>
-                    <div><span>위험도</span><strong>High</strong></div>
-                    <div><span>탐지 요약</span><strong>전화번호 형태의 개인정보 탐지</strong></div>
-                    <div><span>탐지 항목</span><strong>pii / phone</strong></div>
-                    <div><span>프롬프트 해시</span><strong>ph_7d2a</strong></div>
-                    <div><span>플랫폼</span><strong>Web</strong></div>
-                  </div>
-                </td>
+            </thead>
+            <tbody id="unavailable-inputs-body"></tbody>
+          </table>
+        </div>
+      </section>
+      <section class="table-section">
+        <div class="section-title-wrap">
+          <div>
+            <h2>Business Context</h2>
+            <p>Business Context match metadata</p>
+          </div>
+        </div>
+        <div class="table-card">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Source</th>
+                <th>Reason Code</th>
+                <th>Match Count</th>
+                <th>Matched Keywords</th>
+                <th>Evidence Counts</th>
               </tr>
-              <tr class="board-row" data-risk="medium">
-                <td>3</td>
-                <td><button class="board-title-button" type="button" data-detail-id="detail-3"><span class="toggle-icon">＋</span>계약 관련 내부 정보 탐지</button></td>
-                <td>이OO</td>
-                <td><span class="risk-badge risk-medium">Medium</span></td>
-                <td>Warn</td>
-                <td>10:15</td>
-              </tr>
-              <tr class="board-detail-row" id="detail-3" data-risk="medium">
-                <td colspan="6">
-                  <div class="board-detail-box">
-                    <div><span>이벤트 ID</span><strong>EVT-20260529-001</strong></div>
-                    <div><span>시간</span><strong>10:15</strong></div>
-                    <div><span>사용자</span><strong>이OO</strong></div>
-                    <div><span>서비스</span><strong>ChatGPT</strong></div>
-                    <div><span>Action</span><strong>Warn</strong></div>
-                    <div><span>위험도 점수</span><strong>51</strong></div>
-                    <div><span>위험도</span><strong>Medium</strong></div>
-                    <div><span>탐지 요약</span><strong>계약 관련 내부 정보 탐지</strong></div>
-                    <div><span>탐지 항목</span><strong>business / contract</strong></div>
-                    <div><span>프롬프트 해시</span><strong>ph_3f81</strong></div>
-                    <div><span>플랫폼</span><strong>Web</strong></div>
-                  </div>
-                </td>
-              </tr>
-            </tbody>
+            </thead>
+            <tbody id="business-context-body"></tbody>
           </table>
         </div>
       </section>
     </main>
-    <script src="./static/event-detail.js"></script>
+    <script type="module" src="./static/event-detail.js"></script>
   </body>
 </html>

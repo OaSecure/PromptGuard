@@ -7,7 +7,8 @@
     "dev": "tsc -p tsconfig.json --watch",
     "typecheck": "tsc --noEmit",
     "build": "tsc -p tsconfig.json",
-    "test:users": "npm run build && node --test tests/usersPageModel.test.mjs tests/usersRequestModel.test.mjs"
+    "test:users": "npm run build && node --test tests/usersPageModel.test.mjs tests/usersRequestModel.test.mjs",
+    "test:events": "npm run build && node --test tests/eventsPageModel.test.mjs tests/eventDetailPageModel.test.mjs tests/eventsScreenShell.test.mjs"
   },
   "devDependencies": {
     "typescript": "^5.8.3"
