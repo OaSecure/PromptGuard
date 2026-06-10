@@ -1,49 +1,17 @@
-import { dashboardRequest } from "./dashboardApi.js";
-import { refreshDashboardCsrf } from "./session.js";
-
-type RuleOrigin = "built_in" | "custom";
-type RuleKind = "detector" | "keyword" | "regex" | "context_rule";
-type RuleSeverity = "low" | "medium" | "high" | "critical";
-type RuleAction = "ALLOW" | "WARN" | "MASK" | "BLOCK";
-
-type FilterRule = {
-  id: string;
-  origin: RuleOrigin;
-  kind: RuleKind;
-  category: string;
-  label: string;
-  description: string | null;
-  placeholder: string | null;
-  severity: RuleSeverity;
-  action: RuleAction;
-  enabled: boolean;
-  editable_fields: Record<string, boolean>;
-  config_json: Record<string, unknown> | null;
-  created_at: string | null;
-  updated_at: string | null;
-  archived_at: string | null;
-};
-
-type FilterFormState = {
-  mode: "create" | "edit";
-  id: string | null;
-  origin: RuleOrigin;
-  kind: RuleKind;
-  category: string;
-  label: string;
-  description: string;
-  placeholder: string;
-  severity: RuleSeverity;
-  action: RuleAction;
-  enabled: boolean;
-  keywords: string;
-  exclusionKeywords: string;
-  pattern: string;
-  contextGroups: string;
-  windowSize: string;
-  minConditionCount: string;
-  sensitivity: "low" | "medium" | "high";
-};
+import { DashboardApiError, dashboardRequest } from "./dashboardApi.js";
+import {
+  buildFilterDryRunPayload,
+  buildFilterMutationPayload,
+  filterFormActionSpecs,
+  filterHeaderNavItems,
+  safeFilterMutationErrorMessage,
+  type FilterFormState,
+  type FilterRule,
+  type RuleAction,
+  type RuleKind,
+  type RuleSeverity,
+} from "./filtersPageModel.js";
+import { logoutDashboardSession, refreshDashboardCsrf } from "./session.js";
 
 type DryRunResult = {
   matched: boolean;
@@ -125,72 +93,6 @@ function formFromRule(rule: FilterRule): FilterFormState {
   };
 }
 
-function splitCsv(value: string): string[] {
-  return value
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
-function contextGroupConfig(value: string): Record<string, string[]> {
-  const groups: Record<string, string[]> = {};
-  for (const line of value.split("\n")) {
-    const [name, terms] = line.split(":");
-    if (!name || !terms) continue;
-    const items = splitCsv(terms);
-    if (items.length > 0) groups[name.trim()] = items;
-  }
-  return groups;
-}
-
-function configFromForm(state: FilterFormState): Record<string, unknown> {
-  if (state.kind === "keyword") {
-    return {
-      keywords: splitCsv(state.keywords),
-      exclusion_keywords: splitCsv(state.exclusionKeywords),
-    };
-  }
-  if (state.kind === "regex") {
-    return {
-      pattern: state.pattern.trim(),
-      exclusion_keywords: splitCsv(state.exclusionKeywords),
-    };
-  }
-  return {
-    keyword_groups: contextGroupConfig(state.contextGroups),
-    exclusion_keywords: splitCsv(state.exclusionKeywords),
-    window_size: Number(state.windowSize),
-    min_condition_count: Number(state.minConditionCount),
-    sensitivity: state.sensitivity,
-  };
-}
-
-function payloadFromForm(state: FilterFormState): Record<string, unknown> {
-  const config = configFromForm(state);
-  const payload: Record<string, unknown> = {
-    category: state.category.trim(),
-    label: state.label.trim(),
-    description: state.description.trim() || null,
-    placeholder: state.placeholder.trim() || null,
-    severity: state.severity,
-    action: state.action,
-    enabled: state.enabled,
-    config_json: config,
-  };
-  if (state.kind === "keyword") {
-    payload.kind = "keyword";
-    payload.keyword = splitCsv(state.keywords)[0] ?? "";
-  }
-  if (state.kind === "regex") {
-    payload.kind = "regex";
-    payload.pattern = state.pattern.trim();
-  }
-  if (state.kind === "context_rule") {
-    payload.kind = "context_rule";
-  }
-  return payload;
-}
-
 async function apiRequest<T>(
   path: string,
   options: { method?: "GET" | "POST" | "PATCH" | "DELETE"; body?: unknown } = {},
@@ -224,24 +126,14 @@ async function loadRules(): Promise<void> {
 }
 
 async function saveRule(): Promise<void> {
-  const payload = payloadFromForm(formState);
+  const payload = buildFilterMutationPayload(formState);
   if (formState.mode === "create") {
     await apiRequest<FilterRule>("/dashboard/filters", {
       method: "POST",
       body: payload,
     });
   } else if (formState.id) {
-    const updatePayload = formState.origin === "built_in"
-      ? {
-          severity: formState.severity,
-          action: formState.action,
-          enabled: formState.enabled,
-        }
-      : payload;
-    await apiRequest<FilterRule>(`/dashboard/filters/${formState.id}`, {
-      method: "PATCH",
-      body: updatePayload,
-    });
+    await apiRequest<FilterRule>(`/dashboard/filters/${formState.id}`, { method: "PATCH", body: payload });
   }
   dryRunResult = null;
   await loadRules();
@@ -261,14 +153,7 @@ async function archiveRule(rule: FilterRule): Promise<void> {
 }
 
 async function runDryRun(): Promise<void> {
-  const payload: Record<string, unknown> = {
-    sample_text: dryRunText,
-  };
-  if (formState.mode === "edit" && formState.id) {
-    payload.rule_id = formState.id;
-  } else {
-    payload.draft_rule = payloadFromForm(formState);
-  }
+  const payload = buildFilterDryRunPayload(formState, dryRunText);
   dryRunResult = await apiRequest<DryRunResult>("/dashboard/filters/dry-run", {
     method: "POST",
     body: payload,
@@ -283,11 +168,21 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, t
   return node;
 }
 
-function button(label: string, className: string, onClick: () => void, disabled = false): HTMLButtonElement {
+function apiStatus(error: unknown): number {
+  return error instanceof DashboardApiError ? error.status : 0;
+}
+
+function button(
+  label: string,
+  className: string,
+  onClick?: () => void,
+  disabled = false,
+  type: "button" | "submit" = "button",
+): HTMLButtonElement {
   const node = el("button", className, label);
-  node.type = "button";
+  node.type = type;
   node.disabled = disabled;
-  node.addEventListener("click", onClick);
+  if (onClick) node.addEventListener("click", onClick);
   return node;
 }
 
@@ -340,19 +235,19 @@ function renderHeader(): HTMLElement {
   const copy = el("div");
   copy.append(el("p", "eyebrow", "OASecure 필터 관리"), el("h1", undefined, "필터 관리"), el("p", "header-desc", "기본 탐지 규칙과 사용자 정의 규칙을 한 화면에서 관리합니다."));
   const nav = el("nav", "header-actions");
-  const overview = el("a", "nav-button", "대시보드");
-  overview.href = "overview.html";
-  const events = el("a", "nav-button", "이벤트 관리");
-  events.href = "events.html";
-  const users = el("a", "nav-button", "사용자 관리");
-  users.href = "users.html";
-  const filters = el("a", "nav-button active", "필터 관리");
-  filters.href = "filters.html";
-  const status = el("a", "nav-button", "서버 상태");
-  status.href = "status.html";
-  const logout = el("a", "logout-button", "로그아웃");
-  logout.href = "login.html";
-  nav.append(overview, events, users, filters, status, logout);
+  for (const item of filterHeaderNavItems()) {
+    const link = el("a", item.className, item.label);
+    link.href = item.href;
+    if (item.requiresSessionLogout) {
+      link.addEventListener("click", (event) => {
+        event.preventDefault();
+        void logoutDashboardSession().finally(() => {
+          window.location.href = item.href;
+        });
+      });
+    }
+    nav.append(link);
+  }
   header.append(copy, nav);
   return header;
 }
@@ -433,7 +328,7 @@ function renderForm(): HTMLElement {
   const header = el("div", "filter-card-header");
   const copy = el("div");
   copy.append(el("h2", undefined, formState.mode === "create" ? "사용자 정의 규칙 생성" : "규칙 수정"), el("p", undefined, "종류별 필드로 설정을 편집합니다."));
-  header.append(copy, button("New Custom", "nav-button", () => {
+  header.append(copy, button("사용자 정의 새로 만들기", "nav-button", () => {
     selectedRuleId = null;
     formState = blankForm();
     dryRunResult = null;
@@ -442,8 +337,8 @@ function renderForm(): HTMLElement {
   const form = el("form", "filter-form");
   form.addEventListener("submit", (event) => {
     event.preventDefault();
-    void saveRule().catch(() => {
-      pageMessage = "저장을 완료하지 못했습니다. 입력값과 관리자 권한을 확인하세요.";
+    void saveRule().catch((error: unknown) => {
+      pageMessage = safeFilterMutationErrorMessage(apiStatus(error), error);
       render();
     });
   });
@@ -473,10 +368,14 @@ function renderForm(): HTMLElement {
     form.append(renderKindFields());
   }
   const actions = el("div", "form-actions");
-  actions.append(button("저장", "login-button", () => undefined), button("미리 실행", "nav-button", () => void runDryRun().catch(() => {
-    pageMessage = "미리 실행을 완료하지 못했습니다. 샘플과 규칙 설정을 확인하세요.";
-    render();
-  }), !dryRunText.trim()));
+  const [saveAction, dryRunAction] = filterFormActionSpecs(Boolean(dryRunText.trim()));
+  actions.append(
+    button(saveAction.label, "login-button", undefined, saveAction.disabled, saveAction.type),
+    button(dryRunAction.label, "nav-button", () => void runDryRun().catch((error: unknown) => {
+      pageMessage = safeFilterMutationErrorMessage(apiStatus(error), error);
+      render();
+    }), dryRunAction.disabled, dryRunAction.type),
+  );
   form.append(actions);
   card.append(form);
   return card;
