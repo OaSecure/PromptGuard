@@ -29,3 +29,12 @@ test("dashboard pages expose consistent Korean navigation including server statu
   assert.doesNotMatch(surfaces, /Filter Rules를 불러오는 중입니다|Status metadata could not be loaded safely/);
   assert.doesNotMatch(surfaces, /프롬프트 해시|prompt_hash|request_fingerprint/);
 });
+
+test("status page navigation includes an active server status link", () => {
+  const statusScript = read("../static/status.js");
+
+  assert.match(statusScript, /appendText\(nav, "a", "서버 상태"\)/);
+  assert.match(statusScript, /status\.href = "\.\/status\.html"/);
+  assert.match(statusScript, /status\.className = "nav-button active"/);
+  assert.match(statusScript, /nav\.append\(overview, events, users, filters, status, logout\)/);
+});

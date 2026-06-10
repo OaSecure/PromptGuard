@@ -73,6 +73,9 @@ function renderHeader(): HTMLElement {
   const filters = appendText(nav, "a", "필터 관리") as HTMLAnchorElement;
   filters.href = "./filters.html";
   filters.className = "nav-button";
+  const status = appendText(nav, "a", "서버 상태") as HTMLAnchorElement;
+  status.href = "./status.html";
+  status.className = "nav-button active";
   const logout = appendText(nav, "a", "로그아웃") as HTMLAnchorElement;
   logout.href = "./login.html";
   logout.className = "logout-button";
@@ -81,7 +84,7 @@ function renderHeader(): HTMLElement {
     void logoutAndRedirect();
   });
 
-  nav.append(overview, events, users, filters, logout);
+  nav.append(overview, events, users, filters, status, logout);
   header.append(copy, nav);
   return header;
 }
