@@ -30,9 +30,12 @@ export type EventTableCell = {
     | "service"
     | "action"
     | "risk_level"
+    | "primary_detection_category"
     | "primary_detection_type"
+    | "detection_count"
     | "input_count"
-    | "content_unavailable_count";
+    | "content_unavailable_count"
+    | "detail";
   text: string;
   tone: EventTableCellTone;
 };
@@ -68,9 +71,12 @@ export function projectEventTableRows(events: DashboardEventListItem[]): EventTa
       { key: "service", text: event.service ?? "-", tone: "plain" },
       { key: "action", text: event.action, tone: "action" },
       { key: "risk_level", text: event.risk_level, tone: "risk" },
+      { key: "primary_detection_category", text: event.primary_detection_category ?? "-", tone: "plain" },
       { key: "primary_detection_type", text: event.primary_detection_type ?? "-", tone: "plain" },
+      { key: "detection_count", text: String(event.detection_count), tone: "count" },
       { key: "input_count", text: String(event.input_count), tone: "count" },
       { key: "content_unavailable_count", text: String(event.content_unavailable_count), tone: "count" },
+      { key: "detail", text: "상세보기", tone: "plain" },
     ],
   }));
 }

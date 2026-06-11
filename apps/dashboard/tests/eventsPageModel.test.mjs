@@ -38,14 +38,21 @@ test("projectEventTableRows maps metadata-only event fields", () => {
       "service",
       "action",
       "risk_level",
+      "primary_detection_category",
       "primary_detection_type",
+      "detection_count",
       "input_count",
       "content_unavailable_count",
+      "detail",
     ],
   );
   assert.equal(rows[0].cells[1].text, "Alice Kim");
-  assert.equal(rows[0].cells[6].text, "3");
-  assert.equal(rows[0].cells[7].text, "1");
+  assert.equal(rows[0].cells[5].text, "PII");
+  assert.equal(rows[0].cells[6].text, "EMAIL");
+  assert.equal(rows[0].cells[7].text, "2");
+  assert.equal(rows[0].cells[8].text, "3");
+  assert.equal(rows[0].cells[9].text, "1");
+  assert.equal(rows[0].cells[10].text, "상세보기");
   assert.equal(rows[0].detailHref, "./event-detail.html?event_id=evt-1");
 });
 
@@ -73,6 +80,8 @@ test("projectEventTableRows falls back safely for missing optional metadata", ()
   assert.equal(rows[0].cells[0].text, "-");
   assert.equal(rows[0].cells[2].text, "-");
   assert.equal(rows[0].cells[5].text, "-");
+  assert.equal(rows[0].cells[6].text, "-");
+  assert.equal(rows[0].cells[10].text, "상세보기");
 });
 
 test("buildEventDetailHref encodes event ids safely", () => {

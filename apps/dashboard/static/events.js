@@ -60,7 +60,7 @@ function renderEvents(events) {
             else if (cell.key === "risk_level") {
                 td.append(createBadge(cell.text, riskBadgeClass(cell.text)));
             }
-            else if (cell.key === "primary_detection_type") {
+            else if (cell.key === "detail") {
                 const link = document.createElement("a");
                 link.href = row.detailHref;
                 link.textContent = cell.text;
