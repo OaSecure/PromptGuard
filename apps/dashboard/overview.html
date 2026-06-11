@@ -3,23 +3,22 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>OASecure Overview</title>
+    <title>OASecure 관리자 대시보드</title>
     <link rel="stylesheet" href="./static/main.css" />
   </head>
   <body>
     <header class="admin-header">
       <div>
         <p class="eyebrow">OASecure Admin Dashboard</p>
-        <h1>Overview</h1>
-        <p class="header-desc">PromptGuard event summary and risk activity.</p>
+        <h1>관리자 대시보드</h1>
+        <p class="header-desc">조회 기간의 AI 사용 위험 현황을 한눈에 확인합니다.</p>
       </div>
       <nav class="header-actions">
-        <a href="./overview.html" class="nav-button">Overview</a>
-        <a href="./events.html" class="nav-button">Events</a>
-        <a href="./users.html" class="nav-button">Users</a>
-        <a href="./filters.html" class="nav-button">Filters</a>
-        <a href="./status.html" class="nav-button">Server Status</a>
-        <a href="./login.html" class="logout-button">Logout</a>
+        <a href="./events.html" class="nav-button">이벤트 관리</a>
+        <a href="./users.html" class="nav-button">사용자 관리</a>
+        <a href="./filters.html" class="nav-button">필터 관리</a>
+        <a href="./status.html" class="nav-button">서버 상태</a>
+        <a href="./login.html" class="logout-button">로그아웃</a>
       </nav>
     </header>
 
@@ -27,46 +26,46 @@
       <section class="overview-section">
         <div class="section-title-wrap">
           <div>
-            <h2>Overview</h2>
-            <p id="overview-period">Loading overview summary.</p>
+            <h2>요약</h2>
+            <p id="overview-period">조회 기간의 AI 사용 위험 현황</p>
           </div>
         </div>
-        <div id="overview-message" class="privacy-note" role="status" aria-live="polite">Loading overview summary.</div>
+        <div id="overview-message" class="privacy-note" role="status" aria-live="polite">대시보드 요약을 불러오는 중입니다.</div>
         <div class="overview-grid" aria-busy="true" id="overview-cards">
           <article class="overview-card">
-            <span class="card-label">Total Events</span>
+            <span class="card-label">전체 이벤트</span>
             <strong data-overview-value="event_count">-</strong>
-            <p>Events in the selected period.</p>
+            <p>분석된 프롬프트/파일 요청 수</p>
           </article>
           <article class="overview-card danger">
-            <span class="card-label">Blocked</span>
+            <span class="card-label">차단</span>
             <strong data-overview-value="blocked_count">-</strong>
-            <p>Events blocked by policy.</p>
+            <p>위험도가 높아 차단된 건수</p>
           </article>
           <article class="overview-card safe">
-            <span class="card-label">Masked</span>
+            <span class="card-label">마스킹</span>
             <strong data-overview-value="masked_count">-</strong>
-            <p>Events sent after masking.</p>
+            <p>민감정보가 마스킹된 건수</p>
           </article>
           <article class="overview-card warning">
-            <span class="card-label">Warned</span>
+            <span class="card-label">경고</span>
             <strong data-overview-value="warned_count">-</strong>
-            <p>Events that required warning.</p>
+            <p>사용자에게 경고 처리된 건수</p>
           </article>
           <article class="overview-card users">
-            <span class="card-label">Active Users</span>
+            <span class="card-label">활성 사용자</span>
             <strong data-overview-value="active_user_count">-</strong>
-            <p>Distinct login IDs with events.</p>
+            <p>기간 내 사용한 사용자 수</p>
           </article>
           <article class="overview-card">
-            <span class="card-label">Content Unavailable</span>
+            <span class="card-label">스캔 불가</span>
             <strong data-overview-value="content_unavailable_event_count">-</strong>
-            <p>Events with unavailable input content.</p>
+            <p>스캔 불가 입력이 포함된 이벤트</p>
           </article>
           <article class="overview-card">
-            <span class="card-label">Last Event</span>
+            <span class="card-label">마지막 이벤트</span>
             <strong data-overview-value="last_event_at">-</strong>
-            <p>Most recent event timestamp.</p>
+            <p>가장 최근 이벤트 시간</p>
           </article>
         </div>
       </section>
@@ -74,36 +73,36 @@
       <section class="chart-section">
         <div class="section-title-wrap">
           <div>
-            <h2>Statistics</h2>
-            <p>Action, risk, detector, and period summaries.</p>
+            <h2>통계</h2>
+            <p>이벤트별, 위험도별, 탐지 카테고리별, 기간별 통계를 차트로 확인합니다.</p>
           </div>
         </div>
         <div class="chart-grid">
           <article class="chart-card">
             <div class="chart-title">
-              <h3>Action Counts</h3>
-              <p>Allow, block, mask, and warn totals.</p>
+              <h3>이벤트별 통계</h3>
+              <p>허용, 차단, 마스킹, 경고 비율</p>
             </div>
             <div id="action-counts" class="chart-box bar-chart"></div>
           </article>
           <article class="chart-card">
             <div class="chart-title">
-              <h3>Risk Levels</h3>
-              <p>Risk distribution for the period.</p>
+              <h3>위험도별 통계</h3>
+              <p>조회 기간의 위험도 분포</p>
             </div>
             <ol id="risk-level-counts" class="chart-box donut-list"></ol>
           </article>
           <article class="chart-card">
             <div class="chart-title">
-              <h3>Detector Categories</h3>
-              <p>Safe category-level detection metadata.</p>
+              <h3>탐지 카테고리별 통계</h3>
+              <p>원문 값 없이 카테고리 메타데이터만 표시합니다.</p>
             </div>
             <ol id="detector-category-counts" class="chart-box donut-list"></ol>
           </article>
           <article class="chart-card wide">
             <div class="chart-title">
-              <h3>Period Trend</h3>
-              <p>Daily event counts for the default 30-day period.</p>
+              <h3>기간별 통계</h3>
+              <p>기본 조회 기간의 일별 위험 이벤트 추이</p>
             </div>
             <div id="period-buckets" class="chart-box wide-chart period-chart"></div>
           </article>

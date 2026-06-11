@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 
 from app.core.tokens import create_access_token
 from app.routes import dashboard_status
-from app.routes.auth import get_db_session, require_admin
+from app.routes.auth import get_db_session
 
 
 class _FakeSession:
@@ -91,8 +91,7 @@ def _client(
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="admin access required")
             return user
 
-        app.dependency_overrides[require_admin] = override_admin
-        app.dependency_overrides[dashboard_status.require_admin] = override_admin
+        app.dependency_overrides[dashboard_status.require_dashboard_admin_session] = override_admin
     return TestClient(app)
 
 
@@ -102,16 +101,22 @@ def test_dashboard_status_without_credentials_returns_401(monkeypatch) -> None:
     assert response.status_code == 401
 
 
+def test_dashboard_status_rejects_bearer_only_access(monkeypatch) -> None:
+    response = _client(monkeypatch).get("/dashboard/status", headers=_bearer_header(uuid4()))
+
+    assert response.status_code == 401
+
+
 def test_dashboard_status_with_user_role_returns_403(monkeypatch) -> None:
     user = _user(role="USER")
-    response = _client(monkeypatch, user=user).get("/dashboard/status", headers=_bearer_header(user.id))
+    response = _client(monkeypatch, user=user).get("/dashboard/status")
 
     assert response.status_code == 403
 
 
 def test_dashboard_status_with_admin_returns_flat_allowlist(monkeypatch) -> None:
     user = _user()
-    response = _client(monkeypatch, user=user).get("/dashboard/status", headers=_bearer_header(user.id))
+    response = _client(monkeypatch, user=user).get("/dashboard/status")
 
     body = response.json()
     assert response.status_code == 200
@@ -137,10 +142,7 @@ def test_dashboard_status_with_admin_returns_flat_allowlist(monkeypatch) -> None
 
 def test_dashboard_status_does_not_leak_raw_details(monkeypatch) -> None:
     user = _user()
-    response = _client(monkeypatch, user=user, fail_filter_rules=True).get(
-        "/dashboard/status",
-        headers=_bearer_header(user.id),
-    )
+    response = _client(monkeypatch, user=user, fail_filter_rules=True).get("/dashboard/status")
     encoded = json.dumps(response.json(), ensure_ascii=False).casefold()
 
     assert response.status_code == 503
@@ -172,10 +174,7 @@ def test_dashboard_status_does_not_leak_raw_details(monkeypatch) -> None:
 
 def test_dashboard_status_returns_503_when_required_dependency_unhealthy(monkeypatch) -> None:
     user = _user()
-    response = _client(monkeypatch, user=user, health_status="unhealthy").get(
-        "/dashboard/status",
-        headers=_bearer_header(user.id),
-    )
+    response = _client(monkeypatch, user=user, health_status="unhealthy").get("/dashboard/status")
 
     assert response.status_code == 503
     assert response.json()["status"] == "unhealthy"
@@ -183,10 +182,7 @@ def test_dashboard_status_returns_503_when_required_dependency_unhealthy(monkeyp
 
 def test_dashboard_status_generates_last_checked_when_health_timestamp_is_invalid(monkeypatch) -> None:
     user = _user()
-    response = _client(monkeypatch, user=user, checked_at="not-a-date").get(
-        "/dashboard/status",
-        headers=_bearer_header(user.id),
-    )
+    response = _client(monkeypatch, user=user, checked_at="not-a-date").get("/dashboard/status")
     body = response.json()
 
     assert response.status_code == 200
@@ -196,7 +192,7 @@ def test_dashboard_status_generates_last_checked_when_health_timestamp_is_invali
 
 def test_dashboard_status_values_are_limited_to_document_contract(monkeypatch) -> None:
     user = _user()
-    response = _client(monkeypatch, user=user).get("/dashboard/status", headers=_bearer_header(user.id))
+    response = _client(monkeypatch, user=user).get("/dashboard/status")
     body = response.json()
     allowed = {"healthy", "degraded", "unhealthy", "unknown"}
 
