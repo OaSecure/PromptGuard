@@ -23,8 +23,6 @@ type DashboardLoginResponse = {
   expires_at: string;
 };
 
-let csrfToken: string | null = null;
-
 function csrfTokenFromCookie(): string | null {
   const cookieName =
     document.documentElement.dataset.promptguardDashboardCsrfCookieName?.trim() ||
@@ -35,39 +33,80 @@ function csrfTokenFromCookie(): string | null {
   return value ? decodeURIComponent(value.slice(prefix.length)) : null;
 }
 
-export function getDashboardCsrfToken(): string | null {
-  return csrfToken ?? csrfTokenFromCookie();
-}
+type DashboardSessionRequest = <T>(
+  path: string,
+  options?: {
+    method?: "GET" | "POST" | "PATCH" | "DELETE";
+    body?: unknown;
+    csrfToken?: string | null;
+  },
+) => Promise<T>;
 
-export async function refreshDashboardCsrf(): Promise<string> {
-  const response = await dashboardRequest<DashboardCsrfResponse>("/dashboard/session/csrf");
-  csrfToken = response.csrf_token;
-  return csrfToken;
-}
+type DashboardSessionClientDeps = {
+  request: DashboardSessionRequest;
+  cookieToken: () => string | null;
+};
 
-export async function loginDashboardSession(loginId: string, password: string): Promise<DashboardUser> {
-  const token = csrfToken ?? (await refreshDashboardCsrf());
-  const response = await dashboardRequest<DashboardLoginResponse>("/dashboard/session/login", {
-    method: "POST",
-    csrfToken: token,
-    body: {
-      login_id: loginId,
-      password,
+export type DashboardSessionClient = {
+  getDashboardCsrfToken: () => string | null;
+  refreshDashboardCsrf: () => Promise<string>;
+  loginDashboardSession: (loginId: string, password: string) => Promise<DashboardUser>;
+  getDashboardSessionMe: () => Promise<DashboardUser>;
+  logoutDashboardSession: () => Promise<void>;
+};
+
+export function createDashboardSessionClient(deps: DashboardSessionClientDeps): DashboardSessionClient {
+  let csrfToken: string | null = null;
+
+  async function refreshDashboardCsrf(): Promise<string> {
+    const response = await deps.request<DashboardCsrfResponse>("/dashboard/session/csrf");
+    csrfToken = response.csrf_token;
+    return csrfToken;
+  }
+
+  return {
+    getDashboardCsrfToken(): string | null {
+      return csrfToken ?? deps.cookieToken();
     },
-  });
-  csrfToken = response.csrf_token;
-  return response.user;
+
+    refreshDashboardCsrf,
+
+    async loginDashboardSession(loginId: string, password: string): Promise<DashboardUser> {
+      const token = csrfToken ?? (await refreshDashboardCsrf());
+      const response = await deps.request<DashboardLoginResponse>("/dashboard/session/login", {
+        method: "POST",
+        csrfToken: token,
+        body: {
+          login_id: loginId,
+          password,
+        },
+      });
+      csrfToken = response.csrf_token;
+      return response.user;
+    },
+
+    async getDashboardSessionMe(): Promise<DashboardUser> {
+      return deps.request<DashboardUser>("/dashboard/session/me");
+    },
+
+    async logoutDashboardSession(): Promise<void> {
+      const token = csrfToken ?? (await refreshDashboardCsrf());
+      await deps.request<void>("/dashboard/session/logout", {
+        method: "POST",
+        csrfToken: token,
+      });
+      csrfToken = null;
+    },
+  };
 }
 
-export async function getDashboardSessionMe(): Promise<DashboardUser> {
-  return dashboardRequest<DashboardUser>("/dashboard/session/me");
-}
+const defaultSessionClient = createDashboardSessionClient({
+  request: dashboardRequest,
+  cookieToken: csrfTokenFromCookie,
+});
 
-export async function logoutDashboardSession(): Promise<void> {
-  const token = getDashboardCsrfToken() ?? (await refreshDashboardCsrf());
-  await dashboardRequest<void>("/dashboard/session/logout", {
-    method: "POST",
-    csrfToken: token,
-  });
-  csrfToken = null;
-}
+export const getDashboardCsrfToken = defaultSessionClient.getDashboardCsrfToken;
+export const refreshDashboardCsrf = defaultSessionClient.refreshDashboardCsrf;
+export const loginDashboardSession = defaultSessionClient.loginDashboardSession;
+export const getDashboardSessionMe = defaultSessionClient.getDashboardSessionMe;
+export const logoutDashboardSession = defaultSessionClient.logoutDashboardSession;

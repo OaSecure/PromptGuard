@@ -184,9 +184,23 @@ async def _load_dashboard_session(
 
 
 @router.get("/csrf", response_model=DashboardCsrfResponse)
-async def csrf(response: Response) -> DashboardCsrfResponse:
+async def csrf(
+    request: Request,
+    response: Response,
+    session: AsyncSession = Depends(get_db_session),
+) -> DashboardCsrfResponse:
     settings = get_settings()
-    csrf_token, _csrf_hash = create_dashboard_csrf_token()
+    csrf_token, csrf_hash = create_dashboard_csrf_token()
+    session_cookie = request.cookies.get(settings.dashboard_session_cookie_name)
+    if session_cookie:
+        try:
+            session_row, _user = await _load_dashboard_session(session_cookie=session_cookie, session=session)
+        except HTTPException:
+            session_row = None
+        if session_row is not None:
+            session_row.csrf_hash = csrf_hash
+            session_row.last_seen_at = utc_now()
+            await session.commit()
     _set_cookie(
         response,
         key=settings.dashboard_csrf_cookie_name,
