@@ -1,5 +1,6 @@
 import { DashboardApiError, dashboardRequest } from "./dashboardApi.js";
-import { buildFilterDryRunPayload, buildFilterMutationPayload, filterFieldVisibility, filterFormActionSpecs, filterHeaderNavItems, safeFilterMutationErrorMessage, } from "./filtersPageModel.js";
+import { runDashboardLogout } from "./dashboardSessionFlow.js";
+import { buildFilterDryRunPayload, buildFilterSavePlan, filterFieldVisibility, filterFormActionSpecs, filterHeaderNavItems, safeFilterMutationErrorMessage, } from "./filtersPageModel.js";
 import { logoutDashboardSession, refreshDashboardCsrf } from "./session.js";
 const root = document.querySelector("#filters-app");
 let rules = [];
@@ -88,16 +89,13 @@ async function loadRules() {
     render();
 }
 async function saveRule() {
-    const payload = buildFilterMutationPayload(formState);
-    if (formState.mode === "create") {
-        await apiRequest("/dashboard/filters", {
-            method: "POST",
-            body: payload,
-        });
+    const plan = buildFilterSavePlan(formState);
+    if (plan.kind === "validation_error") {
+        pageMessage = plan.errors[0]?.message ?? "입력값을 확인해 주세요.";
+        render();
+        return;
     }
-    else if (formState.id) {
-        await apiRequest(`/dashboard/filters/${formState.id}`, { method: "PATCH", body: payload });
-    }
+    await apiRequest(plan.path, { method: plan.method, body: plan.body });
     dryRunResult = null;
     await loadRules();
 }
@@ -194,8 +192,15 @@ function renderHeader() {
         if (item.requiresSessionLogout) {
             link.addEventListener("click", (event) => {
                 event.preventDefault();
-                void logoutDashboardSession().finally(() => {
-                    window.location.href = item.href;
+                void runDashboardLogout({
+                    logout: logoutDashboardSession,
+                    redirectToLogin: () => {
+                        window.location.href = item.href;
+                    },
+                    showError: (placement) => {
+                        pageMessage = placement.message;
+                        render();
+                    },
                 });
             });
         }

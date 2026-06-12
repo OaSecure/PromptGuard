@@ -1,4 +1,5 @@
 import { DashboardApiError, dashboardRequest } from "./dashboardApi.js";
+import { markProtectedDashboardReady, runDashboardLogout } from "./dashboardSessionFlow.js";
 import { getDashboardCsrfToken, logoutDashboardSession, refreshDashboardCsrf } from "./session.js";
 import { deriveUsersScreenState, loadingUsersScreenState, normalizeCreateUserPayload, normalizeRolePayload, normalizeStatusPayload, projectUserTableRows, safeUsersMutationErrorMessage, } from "./usersPageModel.js";
 import { buildCreateUserRequest, buildUpdateUserRoleRequest, buildUpdateUserStatusRequest, shouldRedirectUsersScreen, } from "./usersRequestModel.js";
@@ -87,6 +88,7 @@ function createSelectCell(currentValue, values, onCommit) {
     return cell;
 }
 function renderUsers(users) {
+    markProtectedDashboardReady(document.body);
     const rowViews = projectUserTableRows(users);
     usersTableBody.replaceChildren(...rowViews.map((rowView, index) => {
         const sourceUser = users[index];
@@ -147,6 +149,9 @@ async function loadUsers() {
         setMessage(screenState.message, screenState.kind);
     }
     catch (error) {
+        if (!(error instanceof DashboardApiError) || !shouldRedirectUsersScreen(error.status)) {
+            markProtectedDashboardReady(document.body);
+        }
         const screenState = deriveUsersScreenState([], true);
         setMessage(screenState.message, screenState.kind);
         if (error instanceof DashboardApiError && shouldRedirectUsersScreen(error.status)) {
@@ -190,12 +195,11 @@ createUserForm.addEventListener("submit", async (event) => {
 document.querySelectorAll(".logout-button").forEach((link) => {
     link.addEventListener("click", async (event) => {
         event.preventDefault();
-        try {
-            await logoutDashboardSession();
-        }
-        finally {
-            redirectToLogin();
-        }
+        await runDashboardLogout({
+            logout: logoutDashboardSession,
+            redirectToLogin,
+            showError: (placement) => setMessage(placement.message, "error"),
+        });
     });
 });
 void loadUsers();

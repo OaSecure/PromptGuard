@@ -57,12 +57,21 @@ type FilterActionSpec = {
   disabled: boolean;
 };
 
+export type FilterSavePlan =
+  | { kind: "validation_error"; errors: FilterValidationError[] }
+  | { kind: "request"; path: string; method: "POST" | "PATCH"; body: Record<string, unknown> };
+
 export type FilterFieldVisibility = {
   canEditIdentity: boolean;
   showPlaceholder: boolean;
   showKeywordFields: boolean;
   showRegexFields: boolean;
   showContextFields: boolean;
+};
+
+export type FilterValidationError = {
+  field: "label" | "keywords" | "pattern" | "contextGroups";
+  message: string;
 };
 
 export function filterFieldVisibility(state: FilterFormState): FilterFieldVisibility {
@@ -94,6 +103,34 @@ export function contextGroupConfig(value: string): Record<string, string[]> {
     if (name && items.length > 0) groups[name] = items;
   }
   return groups;
+}
+
+export function validateFilterFormState(state: FilterFormState): FilterValidationError[] {
+  if (!state.label.trim()) {
+    return [{ field: "label", message: "규칙 이름을 입력해 주세요." }];
+  }
+  if (state.kind === "keyword" && splitCsv(state.keywords).length === 0) {
+    return [{ field: "keywords", message: "키워드를 하나 이상 입력해 주세요." }];
+  }
+  if (state.kind === "regex" && !state.pattern.trim()) {
+    return [{ field: "pattern", message: "정규식 패턴을 입력해 주세요." }];
+  }
+  if (state.kind === "context_rule" && Object.keys(contextGroupConfig(state.contextGroups)).length === 0) {
+    return [{ field: "contextGroups", message: "업무 맥락 그룹을 '그룹명: 키워드1, 키워드2' 형식으로 입력해 주세요." }];
+  }
+  return [];
+}
+
+export function buildFilterSavePlan(state: FilterFormState): FilterSavePlan {
+  const errors = validateFilterFormState(state);
+  if (errors.length > 0) {
+    return { kind: "validation_error", errors };
+  }
+  const body = buildFilterMutationPayload(state);
+  if (state.mode === "edit" && state.id) {
+    return { kind: "request", path: `/dashboard/filters/${state.id}`, method: "PATCH", body };
+  }
+  return { kind: "request", path: "/dashboard/filters", method: "POST", body };
 }
 
 export function filterFormActionSpecs(canRunDryRun: boolean): FilterActionSpec[] {

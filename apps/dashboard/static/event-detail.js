@@ -1,4 +1,5 @@
 import { DashboardApiError, dashboardRequest } from "./dashboardApi.js";
+import { markProtectedDashboardReady, runDashboardLogout } from "./dashboardSessionFlow.js";
 import { logoutDashboardSession } from "./session.js";
 import { deriveEventDetailScreenState, parseEventIdFromLocationSearch, projectBusinessContextRows, projectDetectionRows, projectEventDetailSummary, projectInputRows, safeEventDetailErrorMessage, } from "./eventDetailPageModel.js";
 const detailTitle = requireElement("detail-title");
@@ -52,6 +53,7 @@ function renderEmptyRow(columns, message) {
     return tr;
 }
 function renderDetail(detail) {
+    markProtectedDashboardReady(document.body);
     const summary = projectEventDetailSummary(detail);
     detailTitle.textContent = `이벤트 상세보기 · ${summary.eventId}`;
     summaryGrid.replaceChildren();
@@ -103,6 +105,9 @@ async function loadEventDetail() {
     }
     catch (error) {
         const status = error instanceof DashboardApiError ? error.status : 500;
+        if (status !== 401 && status !== 403) {
+            markProtectedDashboardReady(document.body);
+        }
         const state = deriveEventDetailScreenState("error", false);
         setMessage(state.kind, safeEventDetailErrorMessage(status));
         if (status === 401 || status === 403) {
@@ -113,12 +118,11 @@ async function loadEventDetail() {
 document.querySelectorAll(".logout-button").forEach((link) => {
     link.addEventListener("click", async (event) => {
         event.preventDefault();
-        try {
-            await logoutDashboardSession();
-        }
-        finally {
-            redirectToLogin();
-        }
+        await runDashboardLogout({
+            logout: logoutDashboardSession,
+            redirectToLogin,
+            showError: (placement) => setMessage("error", placement.message),
+        });
     });
 });
 void loadEventDetail();

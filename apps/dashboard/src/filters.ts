@@ -1,7 +1,8 @@
 import { DashboardApiError, dashboardRequest } from "./dashboardApi.js";
+import { runDashboardLogout } from "./dashboardSessionFlow.js";
 import {
   buildFilterDryRunPayload,
-  buildFilterMutationPayload,
+  buildFilterSavePlan,
   filterFieldVisibility,
   filterFormActionSpecs,
   filterHeaderNavItems,
@@ -121,15 +122,13 @@ async function loadRules(): Promise<void> {
 }
 
 async function saveRule(): Promise<void> {
-  const payload = buildFilterMutationPayload(formState);
-  if (formState.mode === "create") {
-    await apiRequest<FilterRule>("/dashboard/filters", {
-      method: "POST",
-      body: payload,
-    });
-  } else if (formState.id) {
-    await apiRequest<FilterRule>(`/dashboard/filters/${formState.id}`, { method: "PATCH", body: payload });
+  const plan = buildFilterSavePlan(formState);
+  if (plan.kind === "validation_error") {
+    pageMessage = plan.errors[0]?.message ?? "입력값을 확인해 주세요.";
+    render();
+    return;
   }
+  await apiRequest<FilterRule>(plan.path, { method: plan.method, body: plan.body });
   dryRunResult = null;
   await loadRules();
 }
@@ -241,8 +240,15 @@ function renderHeader(): HTMLElement {
     if (item.requiresSessionLogout) {
       link.addEventListener("click", (event) => {
         event.preventDefault();
-        void logoutDashboardSession().finally(() => {
-          window.location.href = item.href;
+        void runDashboardLogout({
+          logout: logoutDashboardSession,
+          redirectToLogin: () => {
+            window.location.href = item.href;
+          },
+          showError: (placement) => {
+            pageMessage = placement.message;
+            render();
+          },
         });
       });
     }

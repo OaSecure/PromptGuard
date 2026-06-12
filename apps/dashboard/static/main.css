@@ -11,6 +11,11 @@ body {
   min-height: 100vh;
 }
 
+.dashboard-auth-pending .admin-header,
+.dashboard-auth-pending .dashboard {
+  visibility: hidden;
+}
+
 button,
 input {
   font: inherit;

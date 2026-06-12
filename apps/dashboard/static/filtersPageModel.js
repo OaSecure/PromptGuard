@@ -28,6 +28,32 @@ export function contextGroupConfig(value) {
     }
     return groups;
 }
+export function validateFilterFormState(state) {
+    if (!state.label.trim()) {
+        return [{ field: "label", message: "규칙 이름을 입력해 주세요." }];
+    }
+    if (state.kind === "keyword" && splitCsv(state.keywords).length === 0) {
+        return [{ field: "keywords", message: "키워드를 하나 이상 입력해 주세요." }];
+    }
+    if (state.kind === "regex" && !state.pattern.trim()) {
+        return [{ field: "pattern", message: "정규식 패턴을 입력해 주세요." }];
+    }
+    if (state.kind === "context_rule" && Object.keys(contextGroupConfig(state.contextGroups)).length === 0) {
+        return [{ field: "contextGroups", message: "업무 맥락 그룹을 '그룹명: 키워드1, 키워드2' 형식으로 입력해 주세요." }];
+    }
+    return [];
+}
+export function buildFilterSavePlan(state) {
+    const errors = validateFilterFormState(state);
+    if (errors.length > 0) {
+        return { kind: "validation_error", errors };
+    }
+    const body = buildFilterMutationPayload(state);
+    if (state.mode === "edit" && state.id) {
+        return { kind: "request", path: `/dashboard/filters/${state.id}`, method: "PATCH", body };
+    }
+    return { kind: "request", path: "/dashboard/filters", method: "POST", body };
+}
 export function filterFormActionSpecs(canRunDryRun) {
     return [
         { id: "save", label: "저장", type: "submit", disabled: false },

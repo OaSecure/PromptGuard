@@ -29,3 +29,14 @@ test("dashboard pages expose consistent Korean navigation including server statu
   assert.doesNotMatch(surfaces, /Filter Rules를 불러오는 중입니다|Status metadata could not be loaded safely/);
   assert.doesNotMatch(surfaces, /프롬프트 해시|prompt_hash|request_fingerprint/);
 });
+
+test("static protected dashboard pages hide usable content until session verification", () => {
+  for (const page of ["../overview.html", "../events.html", "../event-detail.html", "../users.html"]) {
+    const html = read(page);
+    assert.match(html, /<body class="dashboard-auth-pending">/, `${page} must start in auth-pending state`);
+  }
+
+  const css = read("../static/main.css");
+  assert.match(css, /\.dashboard-auth-pending\s+\.admin-header/);
+  assert.match(css, /\.dashboard-auth-pending\s+\.dashboard/);
+});

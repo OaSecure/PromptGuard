@@ -4,10 +4,12 @@ import assert from "node:assert/strict";
 const {
   buildFilterDryRunPayload,
   buildFilterMutationPayload,
+  buildFilterSavePlan,
   filterFieldVisibility,
   filterFormActionSpecs,
   filterHeaderNavItems,
   safeFilterMutationErrorMessage,
+  validateFilterFormState,
 } = await import("../static/filtersPageModel.js");
 
 const baseForm = {
@@ -198,4 +200,45 @@ test("safe filter mutation error message does not leak backend details", () => {
     safeFilterMutationErrorMessage(500, secretDetail),
     "요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.",
   );
+});
+
+test("filter form validation defines required field contract before API mutation", () => {
+  assert.deepEqual(validateFilterFormState({ ...baseForm, label: " " }), [
+    { field: "label", message: "규칙 이름을 입력해 주세요." },
+  ]);
+
+  assert.deepEqual(validateFilterFormState({ ...baseForm, kind: "keyword", keywords: " , " }), [
+    { field: "keywords", message: "키워드를 하나 이상 입력해 주세요." },
+  ]);
+
+  assert.deepEqual(validateFilterFormState({ ...baseForm, kind: "regex", pattern: " " }), [
+    { field: "pattern", message: "정규식 패턴을 입력해 주세요." },
+  ]);
+
+  assert.deepEqual(validateFilterFormState({ ...baseForm, kind: "context_rule", contextGroups: "broken line" }), [
+    { field: "contextGroups", message: "업무 맥락 그룹을 '그룹명: 키워드1, 키워드2' 형식으로 입력해 주세요." },
+  ]);
+});
+
+test("filter save plan never builds an API request for invalid form state", () => {
+  assert.deepEqual(buildFilterSavePlan({ ...baseForm, label: " " }), {
+    kind: "validation_error",
+    errors: [{ field: "label", message: "규칙 이름을 입력해 주세요." }],
+  });
+});
+
+test("filter save plan maps valid create and update states to documented API requests", () => {
+  assert.deepEqual(buildFilterSavePlan(baseForm), {
+    kind: "request",
+    path: "/dashboard/filters",
+    method: "POST",
+    body: buildFilterMutationPayload(baseForm),
+  });
+
+  assert.deepEqual(buildFilterSavePlan({ ...baseForm, mode: "edit", id: "rule-1" }), {
+    kind: "request",
+    path: "/dashboard/filters/rule-1",
+    method: "PATCH",
+    body: buildFilterMutationPayload({ ...baseForm, mode: "edit", id: "rule-1" }),
+  });
 });

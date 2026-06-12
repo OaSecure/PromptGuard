@@ -1,4 +1,5 @@
 import { DashboardApiError, dashboardRequest } from "./dashboardApi.js";
+import { runDashboardLogout } from "./dashboardSessionFlow.js";
 import { logoutDashboardSession } from "./session.js";
 
 type StatusValue = "healthy" | "degraded" | "unhealthy" | "unknown";
@@ -163,11 +164,13 @@ async function fetchStatus(): Promise<void> {
 }
 
 async function logoutAndRedirect(): Promise<void> {
-  try {
-    await logoutDashboardSession();
-  } finally {
-    window.location.href = "./login.html";
-  }
+  await runDashboardLogout({
+    logout: logoutDashboardSession,
+    redirectToLogin: () => {
+      window.location.href = "./login.html";
+    },
+    showError: () => renderUnavailable(403),
+  });
 }
 
 void fetchStatus();

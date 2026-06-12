@@ -1,4 +1,5 @@
 import { DashboardApiError, dashboardRequest } from "./dashboardApi.js";
+import { markProtectedDashboardReady, runDashboardLogout } from "./dashboardSessionFlow.js";
 import { logoutDashboardSession } from "./session.js";
 
 type CountRow<T extends string> = Record<T, string> & {
@@ -199,6 +200,7 @@ function renderPeriodBuckets(rows: PeriodBucket[]): void {
 }
 
 function renderOverview(data: DashboardOverview): void {
+  markProtectedDashboardReady(document.body);
   setMetric("event_count", formatNumber(data.event_count));
   setMetric("blocked_count", formatNumber(data.blocked_count));
   setMetric("masked_count", formatNumber(data.masked_count));
@@ -242,6 +244,9 @@ async function loadOverview(): Promise<void> {
     renderOverview(data);
   } catch (error) {
     cards.setAttribute("aria-busy", "false");
+    if (!(error instanceof DashboardApiError) || (error.status !== 401 && error.status !== 403)) {
+      markProtectedDashboardReady(document.body);
+    }
     setMessage(safeOverviewErrorMessage(error), "error");
     if (error instanceof DashboardApiError && (error.status === 401 || error.status === 403)) {
       window.setTimeout(redirectToLogin, 700);
@@ -252,11 +257,11 @@ async function loadOverview(): Promise<void> {
 document.querySelectorAll<HTMLAnchorElement>(".logout-button").forEach((link) => {
   link.addEventListener("click", async (event) => {
     event.preventDefault();
-    try {
-      await logoutDashboardSession();
-    } finally {
-      redirectToLogin();
-    }
+    await runDashboardLogout({
+      logout: logoutDashboardSession,
+      redirectToLogin,
+      showError: (placement) => setMessage(placement.message, "error"),
+    });
   });
 });
 
