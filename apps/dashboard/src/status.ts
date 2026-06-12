@@ -1,17 +1,9 @@
 import { DashboardApiError, dashboardRequest } from "./dashboardApi.js";
-import { runDashboardLogout } from "./dashboardSessionFlow.js";
+import { markProtectedDashboardReady, runDashboardLogout } from "./dashboardSessionFlow.js";
 import { logoutDashboardSession } from "./session.js";
+import { renderStatusPlan, type DashboardStatus, type StatusExtensionSetupPlan } from "./statusPageModel.js";
 
 type StatusValue = "healthy" | "degraded" | "unhealthy" | "unknown";
-
-type DashboardStatus = {
-  status: StatusValue;
-  last_checked: string;
-  api_status: StatusValue;
-  postgres_status: StatusValue;
-  migration_status: StatusValue;
-  filter_rules_status: StatusValue;
-};
 
 const root = document.querySelector<HTMLDivElement>("#status-app");
 
@@ -105,6 +97,22 @@ function dependencyCard(label: string, value: StatusValue): HTMLElement {
   return card;
 }
 
+function renderExtensionSetup(plan: StatusExtensionSetupPlan): HTMLElement {
+  const card = document.createElement("section");
+  card.className = "status-summary-card extension-setup-card";
+  const copy = document.createElement("div");
+  appendText(copy, "p", "운영 안내").className = "eyebrow";
+  appendText(copy, "h2", plan.title);
+  appendText(copy, "p", plan.description).className = "status-summary-copy";
+  const list = document.createElement("ol");
+  list.className = "status-setup-list";
+  for (const step of plan.steps) {
+    appendText(list, "li", step);
+  }
+  card.append(copy, list);
+  return card;
+}
+
 function renderLoading(): void {
   const card = document.createElement("section");
   card.className = "status-summary-card";
@@ -125,6 +133,7 @@ function renderUnavailable(statusCode?: number): void {
 }
 
 function renderStatus(payload: DashboardStatus): void {
+  const plan = renderStatusPlan(payload);
   const summary = document.createElement("section");
   summary.className = "status-summary-card";
   const copy = document.createElement("div");
@@ -151,7 +160,8 @@ function renderStatus(payload: DashboardStatus): void {
     dependencyCard("필터 규칙", payload.filter_rules_status)
   );
 
-  renderShell(summary, meta, dependencies);
+  renderShell(summary, meta, dependencies, renderExtensionSetup(plan.extensionSetup));
+  markProtectedDashboardReady(document.body);
 }
 
 async function fetchStatus(): Promise<void> {

@@ -1,5 +1,5 @@
 import { DashboardApiError, dashboardRequest } from "./dashboardApi.js";
-import { runDashboardLogout } from "./dashboardSessionFlow.js";
+import { markProtectedDashboardReady, runDashboardLogout } from "./dashboardSessionFlow.js";
 import {
   buildFilterDryRunPlan,
   buildFilterSavePlan,
@@ -117,6 +117,9 @@ async function loadRules(): Promise<void> {
   try {
     rules = await apiRequest<FilterRule[]>("/dashboard/filters");
     pageState = rules.length > 0 ? "loaded" : "empty";
+    render();
+    markProtectedDashboardReady(document.body);
+    return;
   } catch {
     rules = [];
     formState = blankForm();

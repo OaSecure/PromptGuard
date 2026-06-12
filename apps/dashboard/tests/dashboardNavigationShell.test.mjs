@@ -31,7 +31,7 @@ test("dashboard pages expose consistent Korean navigation including server statu
 });
 
 test("static protected dashboard pages hide usable content until session verification", () => {
-  for (const page of ["../overview.html", "../events.html", "../event-detail.html", "../users.html"]) {
+  for (const page of ["../overview.html", "../events.html", "../event-detail.html", "../users.html", "../filters.html", "../status.html"]) {
     const html = read(page);
     assert.match(html, /<body class="dashboard-auth-pending">/, `${page} must start in auth-pending state`);
   }

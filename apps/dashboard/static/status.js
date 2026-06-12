@@ -1,6 +1,7 @@
 import { DashboardApiError, dashboardRequest } from "./dashboardApi.js";
-import { runDashboardLogout } from "./dashboardSessionFlow.js";
+import { markProtectedDashboardReady, runDashboardLogout } from "./dashboardSessionFlow.js";
 import { logoutDashboardSession } from "./session.js";
+import { renderStatusPlan } from "./statusPageModel.js";
 const root = document.querySelector("#status-app");
 if (!root) {
     throw new Error("Status root element is missing.");
@@ -84,6 +85,21 @@ function dependencyCard(label, value) {
     card.append(row);
     return card;
 }
+function renderExtensionSetup(plan) {
+    const card = document.createElement("section");
+    card.className = "status-summary-card extension-setup-card";
+    const copy = document.createElement("div");
+    appendText(copy, "p", "운영 안내").className = "eyebrow";
+    appendText(copy, "h2", plan.title);
+    appendText(copy, "p", plan.description).className = "status-summary-copy";
+    const list = document.createElement("ol");
+    list.className = "status-setup-list";
+    for (const step of plan.steps) {
+        appendText(list, "li", step);
+    }
+    card.append(copy, list);
+    return card;
+}
 function renderLoading() {
     const card = document.createElement("section");
     card.className = "status-summary-card";
@@ -102,6 +118,7 @@ function renderUnavailable(statusCode) {
     renderShell(card);
 }
 function renderStatus(payload) {
+    const plan = renderStatusPlan(payload);
     const summary = document.createElement("section");
     summary.className = "status-summary-card";
     const copy = document.createElement("div");
@@ -120,7 +137,8 @@ function renderStatus(payload) {
     const dependencies = document.createElement("section");
     dependencies.className = "dependency-grid";
     dependencies.append(dependencyCard("API 서버", payload.api_status), dependencyCard("PostgreSQL", payload.postgres_status), dependencyCard("마이그레이션", payload.migration_status), dependencyCard("필터 규칙", payload.filter_rules_status));
-    renderShell(summary, meta, dependencies);
+    renderShell(summary, meta, dependencies, renderExtensionSetup(plan.extensionSetup));
+    markProtectedDashboardReady(document.body);
 }
 async function fetchStatus() {
     renderLoading();

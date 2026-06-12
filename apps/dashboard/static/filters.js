@@ -1,5 +1,5 @@
 import { DashboardApiError, dashboardRequest } from "./dashboardApi.js";
-import { runDashboardLogout } from "./dashboardSessionFlow.js";
+import { markProtectedDashboardReady, runDashboardLogout } from "./dashboardSessionFlow.js";
 import { buildFilterDryRunPlan, buildFilterSavePlan, filterActionOptions, filterDryRunHelpText, filterFieldVisibility, filterFormActionSpecs, filterHeaderNavItems, filterKindOptions, filterRegexHelpItems, filterSensitivityOptions, filterSeverityOptions, safeFilterMutationErrorMessage, } from "./filtersPageModel.js";
 import { logoutDashboardSession, refreshDashboardCsrf } from "./session.js";
 const root = document.querySelector("#filters-app");
@@ -80,6 +80,9 @@ async function loadRules() {
     try {
         rules = await apiRequest("/dashboard/filters");
         pageState = rules.length > 0 ? "loaded" : "empty";
+        render();
+        markProtectedDashboardReady(document.body);
+        return;
     }
     catch {
         rules = [];
