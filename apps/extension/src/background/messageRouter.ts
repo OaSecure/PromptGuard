@@ -1,6 +1,6 @@
 import { analyzeFiles } from "./fileAnalyzeClient";
 import { analyzePrompt } from "./promptAnalyzeClient";
-import { saveAuthTokens } from "./authStore";
+import { clearAuthState, getAuthState, saveAuthTokens } from "./authStore";
 import { getSettings, saveConfig } from "./configStore";
 import { mockAuthMe, mockConfig } from "./mockApi";
 import { getJsonWithAuthRefresh } from "./authenticatedApiClient";
@@ -25,6 +25,8 @@ export async function routeMessage(message: ExtensionMessage): Promise<unknown> 
       return authLogin(message.payload);
     case "AUTH_ME_REQUEST":
       return authMe();
+    case "AUTH_LOGOUT_REQUEST":
+      return authLogout();
     case "CONFIG_SYNC_REQUEST":
       return syncConfig();
     case "GET_CONFIG_REQUEST":
@@ -32,6 +34,29 @@ export async function routeMessage(message: ExtensionMessage): Promise<unknown> 
     default:
       return { code: "UNKNOWN_ERROR", message: "Unsupported extension message." } satisfies NormalizedError;
   }
+}
+
+async function authLogout(): Promise<{ ok: true } | NormalizedError> {
+  const settings = await getSettings();
+  const auth = await getAuthState();
+  if (settings.mockMode || !auth.accessToken?.trim() || !auth.refreshToken?.trim()) {
+    await clearAuthState();
+    return { ok: true };
+  }
+
+  const response = await postJson<{ refresh_token: string }, unknown>("/auth/logout", { refresh_token: auth.refreshToken }, {
+    baseUrl: settings.apiBaseUrl,
+    timeoutMs: settings.config.timeout_ms,
+    token: auth.accessToken
+  });
+  await clearAuthState();
+  if (isNormalizedError(response)) {
+    return response;
+  }
+  if (!isAuthLogoutResponse(response)) {
+    return { code: "VALIDATION_ERROR", message: "Logout response could not be processed." };
+  }
+  return { ok: true };
 }
 
 async function authLogin(payload: { login_id: string; password: string }): Promise<{ ok: true } | NormalizedError> {
@@ -69,6 +94,10 @@ async function authMe(): Promise<AuthMeResponse | NormalizedError> {
     baseUrl: settings.apiBaseUrl,
     timeoutMs: settings.config.timeout_ms
   });
+}
+
+function isAuthLogoutResponse(value: unknown): value is { ok: true } {
+  return typeof value === "object" && value !== null && (value as { ok?: unknown }).ok === true;
 }
 
 function isAuthLoginResponse(value: unknown): value is AuthLoginResponse {

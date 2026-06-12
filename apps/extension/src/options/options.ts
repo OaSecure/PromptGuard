@@ -10,6 +10,7 @@ const passwordInput = document.querySelector<HTMLInputElement>("#password");
 const saveSettingsButton = document.querySelector<HTMLButtonElement>("#saveSettings");
 const testConnectionButton = document.querySelector<HTMLButtonElement>("#testConnection");
 const syncConfigButton = document.querySelector<HTMLButtonElement>("#syncConfig");
+const logoutButton = document.querySelector<HTMLButtonElement>("#logoutButton");
 const connectionStatus = document.querySelector<HTMLElement>("#connectionStatus");
 const serverStatus = document.querySelector<HTMLElement>("#serverStatus");
 const modeStatus = document.querySelector<HTMLElement>("#modeStatus");
@@ -150,6 +151,26 @@ async function syncConfig(): Promise<void> {
   }
 }
 
+/** Signs out of the configured API and clears extension-local auth state. */
+async function logout(): Promise<void> {
+  setText(connectionStatus, "Logging out...");
+  setButtonBusy(logoutButton, true, "Logging out...");
+  try {
+    const response = (await chrome.runtime.sendMessage({ type: "AUTH_LOGOUT_REQUEST" })) as unknown;
+    if (isNormalizedError(response)) {
+      setText(connectionStatus, response.message);
+      setText(serverStatus, "Signed out");
+      return;
+    }
+    setText(connectionStatus, "Logged out");
+    setText(serverStatus, "Signed out");
+  } catch (error) {
+    setText(connectionStatus, errorMessage(error, "Logout failed."));
+  } finally {
+    setButtonBusy(logoutButton, false);
+  }
+}
+
 function renderModeStatus(mockMode: boolean): void {
   setText(modeStatus, mockMode ? "Mock API" : "Real API");
 }
@@ -224,5 +245,6 @@ function errorMessage(error: unknown, fallback: string): string {
 saveSettingsButton?.addEventListener("click", () => void saveSettings());
 testConnectionButton?.addEventListener("click", () => void testConnection());
 syncConfigButton?.addEventListener("click", () => void syncConfig());
+logoutButton?.addEventListener("click", () => void logout());
 
 void loadSettings();

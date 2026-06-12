@@ -209,6 +209,7 @@ export type ExtensionMessage =
   | { type: "FILES_ANALYZE_RESULT"; payload: AnalyzeResponse | NormalizedError }
   | { type: "AUTH_LOGIN_REQUEST"; payload: { login_id: string; password: string } }
   | { type: "AUTH_ME_REQUEST" }
+  | { type: "AUTH_LOGOUT_REQUEST" }
   | { type: "CONFIG_SYNC_REQUEST" }
   | { type: "CONFIG_SYNC_RESULT"; payload: ExtensionConfigResponse | NormalizedError }
   | { type: "GET_CONFIG_REQUEST" }
