@@ -107,6 +107,23 @@ def test_dashboard_csrf_sets_readable_csrf_cookie_without_session() -> None:
     assert "promptguard_dashboard_session" not in response.headers["set-cookie"]
 
 
+def test_dashboard_csrf_rotates_active_session_csrf_hash() -> None:
+    user = _user()
+    raw_session = "session-for-csrf-refresh"
+    row = _session_row(raw_session=raw_session, csrf_token="old-csrf-token", user=user)
+    fake_session = _FakeSession(dashboard_session_row=(row, user))
+    client = _client(fake_session)
+    client.cookies.set("promptguard_dashboard_session", raw_session)
+
+    response = client.get("/dashboard/session/csrf")
+    new_csrf = response.json()["csrf_token"]
+
+    assert response.status_code == 200
+    assert new_csrf != "old-csrf-token"
+    assert row.csrf_hash == hash_dashboard_csrf_token(new_csrf)
+    assert fake_session.commits == 1
+
+
 def test_admin_login_creates_hash_only_httponly_session() -> None:
     fake_session = _FakeSession(user=_user())
     client = _client(fake_session)

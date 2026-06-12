@@ -1,4 +1,5 @@
 import { DashboardApiError, dashboardRequest } from "./dashboardApi.js";
+import { markProtectedDashboardReady, runDashboardLogout } from "./dashboardSessionFlow.js";
 import { logoutDashboardSession } from "./session.js";
 import { deriveEventsScreenState, projectEventTableRows, safeEventsErrorMessage, } from "./eventsPageModel.js";
 const eventsMessage = requireElement("events-message");
@@ -48,6 +49,7 @@ function riskBadgeClass(riskLevel) {
     return "risk-badge risk-low";
 }
 function renderEvents(events) {
+    markProtectedDashboardReady(document.body);
     const rows = projectEventTableRows(events);
     renderOverviewCounts(events);
     eventsTableBody.replaceChildren(...rows.map((row) => {
@@ -96,6 +98,9 @@ async function loadEvents() {
     }
     catch (error) {
         const status = error instanceof DashboardApiError ? error.status : 500;
+        if (status !== 401 && status !== 403) {
+            markProtectedDashboardReady(document.body);
+        }
         const state = deriveEventsScreenState("error", 0);
         setMessage(state.kind, safeEventsErrorMessage(status));
         if (status === 401 || status === 403) {
@@ -106,12 +111,11 @@ async function loadEvents() {
 document.querySelectorAll(".logout-button").forEach((link) => {
     link.addEventListener("click", async (event) => {
         event.preventDefault();
-        try {
-            await logoutDashboardSession();
-        }
-        finally {
-            redirectToLogin();
-        }
+        await runDashboardLogout({
+            logout: logoutDashboardSession,
+            redirectToLogin,
+            showError: (placement) => setMessage("error", placement.message),
+        });
     });
 });
 void loadEvents();

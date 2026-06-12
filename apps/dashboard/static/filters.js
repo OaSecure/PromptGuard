@@ -1,13 +1,15 @@
-import { dashboardRequest } from "./dashboardApi.js";
-import { refreshDashboardCsrf } from "./session.js";
+import { DashboardApiError, dashboardRequest } from "./dashboardApi.js";
+import { runDashboardLogout } from "./dashboardSessionFlow.js";
+import { buildFilterDryRunPlan, buildFilterSavePlan, filterActionOptions, filterDryRunHelpText, filterFieldVisibility, filterFormActionSpecs, filterHeaderNavItems, filterKindOptions, filterRegexHelpItems, filterSensitivityOptions, filterSeverityOptions, safeFilterMutationErrorMessage, } from "./filtersPageModel.js";
+import { logoutDashboardSession, refreshDashboardCsrf } from "./session.js";
 const root = document.querySelector("#filters-app");
 let rules = [];
-let selectedRuleId = null;
 let formState = blankForm();
 let dryRunText = "";
 let dryRunResult = null;
 let pageState = "loading";
 let pageMessage = "";
+let formMessage = "";
 function blankForm() {
     return {
         mode: "create",
@@ -64,70 +66,6 @@ function formFromRule(rule) {
         sensitivity: config.sensitivity === "low" || config.sensitivity === "high" ? config.sensitivity : "medium",
     };
 }
-function splitCsv(value) {
-    return value
-        .split(",")
-        .map((item) => item.trim())
-        .filter(Boolean);
-}
-function contextGroupConfig(value) {
-    const groups = {};
-    for (const line of value.split("\n")) {
-        const [name, terms] = line.split(":");
-        if (!name || !terms)
-            continue;
-        const items = splitCsv(terms);
-        if (items.length > 0)
-            groups[name.trim()] = items;
-    }
-    return groups;
-}
-function configFromForm(state) {
-    if (state.kind === "keyword") {
-        return {
-            keywords: splitCsv(state.keywords),
-            exclusion_keywords: splitCsv(state.exclusionKeywords),
-        };
-    }
-    if (state.kind === "regex") {
-        return {
-            pattern: state.pattern.trim(),
-            exclusion_keywords: splitCsv(state.exclusionKeywords),
-        };
-    }
-    return {
-        keyword_groups: contextGroupConfig(state.contextGroups),
-        exclusion_keywords: splitCsv(state.exclusionKeywords),
-        window_size: Number(state.windowSize),
-        min_condition_count: Number(state.minConditionCount),
-        sensitivity: state.sensitivity,
-    };
-}
-function payloadFromForm(state) {
-    const config = configFromForm(state);
-    const payload = {
-        category: state.category.trim(),
-        label: state.label.trim(),
-        description: state.description.trim() || null,
-        placeholder: state.placeholder.trim() || null,
-        severity: state.severity,
-        action: state.action,
-        enabled: state.enabled,
-        config_json: config,
-    };
-    if (state.kind === "keyword") {
-        payload.kind = "keyword";
-        payload.keyword = splitCsv(state.keywords)[0] ?? "";
-    }
-    if (state.kind === "regex") {
-        payload.kind = "regex";
-        payload.pattern = state.pattern.trim();
-    }
-    if (state.kind === "context_rule") {
-        payload.kind = "context_rule";
-    }
-    return payload;
-}
 async function apiRequest(path, options = {}) {
     const csrfToken = options.method && options.method !== "GET" ? await refreshDashboardCsrf() : null;
     return dashboardRequest(path, {
@@ -142,14 +80,9 @@ async function loadRules() {
     try {
         rules = await apiRequest("/dashboard/filters");
         pageState = rules.length > 0 ? "loaded" : "empty";
-        if (!selectedRuleId && rules.length > 0) {
-            selectedRuleId = rules[0].id;
-            formState = formFromRule(rules[0]);
-        }
     }
     catch {
         rules = [];
-        selectedRuleId = null;
         formState = blankForm();
         pageState = "error";
         pageMessage = "필터 규칙 정보를 불러오지 못했습니다. 관리자 세션이 필요하거나 서버 연결을 확인해야 합니다.";
@@ -157,27 +90,15 @@ async function loadRules() {
     render();
 }
 async function saveRule() {
-    const payload = payloadFromForm(formState);
-    if (formState.mode === "create") {
-        await apiRequest("/dashboard/filters", {
-            method: "POST",
-            body: payload,
-        });
+    const plan = buildFilterSavePlan(formState);
+    if (plan.kind === "validation_error") {
+        formMessage = plan.errors[0]?.message ?? "입력값을 확인해 주세요.";
+        render();
+        return;
     }
-    else if (formState.id) {
-        const updatePayload = formState.origin === "built_in"
-            ? {
-                severity: formState.severity,
-                action: formState.action,
-                enabled: formState.enabled,
-            }
-            : payload;
-        await apiRequest(`/dashboard/filters/${formState.id}`, {
-            method: "PATCH",
-            body: updatePayload,
-        });
-    }
+    await apiRequest(plan.path, { method: plan.method, body: plan.body });
     dryRunResult = null;
+    formMessage = "필터 규칙을 저장했습니다.";
     await loadRules();
 }
 async function setRuleEnabled(rule, enabled) {
@@ -188,24 +109,22 @@ async function archiveRule(rule) {
     if (rule.origin === "built_in")
         return;
     await apiRequest(`/dashboard/filters/${rule.id}`, { method: "DELETE" });
-    selectedRuleId = null;
     formState = blankForm();
     await loadRules();
 }
 async function runDryRun() {
-    const payload = {
-        sample_text: dryRunText,
-    };
-    if (formState.mode === "edit" && formState.id) {
-        payload.rule_id = formState.id;
+    const plan = buildFilterDryRunPlan(formState, dryRunText);
+    if (plan.kind === "validation_error") {
+        formMessage = plan.errors[0]?.message ?? "입력값을 확인해 주세요.";
+        dryRunResult = null;
+        render();
+        return;
     }
-    else {
-        payload.draft_rule = payloadFromForm(formState);
-    }
-    dryRunResult = await apiRequest("/dashboard/filters/dry-run", {
-        method: "POST",
-        body: payload,
+    dryRunResult = await apiRequest(plan.path, {
+        method: plan.method,
+        body: plan.body,
     });
+    formMessage = "미리 실행 결과를 확인했습니다.";
     render();
 }
 function el(tag, className, text) {
@@ -216,12 +135,21 @@ function el(tag, className, text) {
         node.textContent = text;
     return node;
 }
-function button(label, className, onClick, disabled = false) {
+function apiStatus(error) {
+    return error instanceof DashboardApiError ? error.status : 0;
+}
+function button(label, className, onClick, disabled = false, type = "button") {
     const node = el("button", className, label);
-    node.type = "button";
+    node.type = type;
     node.disabled = disabled;
-    node.addEventListener("click", onClick);
+    if (onClick)
+        node.addEventListener("click", onClick);
     return node;
+}
+function stopButtonClick(event, action) {
+    event.preventDefault();
+    event.stopPropagation();
+    action();
 }
 function field(label, control) {
     const wrapper = el("label");
@@ -242,11 +170,20 @@ function textarea(value, onInput, disabled = false) {
     node.addEventListener("input", () => onInput(node.value));
     return node;
 }
+function helpList(items) {
+    const list = el("ul", "filter-help-list");
+    for (const item of items) {
+        list.append(el("li", undefined, item));
+    }
+    return list;
+}
 function select(value, values, onChange, disabled = false) {
     const node = el("select");
     for (const item of values) {
-        const option = el("option", undefined, item);
-        option.value = item;
+        const optionValue = typeof item === "string" ? item : item.value;
+        const optionLabel = typeof item === "string" ? item : item.label;
+        const option = el("option", undefined, optionLabel);
+        option.value = optionValue;
         node.append(option);
     }
     node.value = value;
@@ -267,19 +204,26 @@ function renderHeader() {
     const copy = el("div");
     copy.append(el("p", "eyebrow", "OASecure 필터 관리"), el("h1", undefined, "필터 관리"), el("p", "header-desc", "기본 탐지 규칙과 사용자 정의 규칙을 한 화면에서 관리합니다."));
     const nav = el("nav", "header-actions");
-    const overview = el("a", "nav-button", "대시보드");
-    overview.href = "overview.html";
-    const events = el("a", "nav-button", "이벤트 관리");
-    events.href = "events.html";
-    const users = el("a", "nav-button", "사용자 관리");
-    users.href = "users.html";
-    const filters = el("a", "nav-button active", "필터 관리");
-    filters.href = "filters.html";
-    const status = el("a", "nav-button", "서버 상태");
-    status.href = "status.html";
-    const logout = el("a", "logout-button", "로그아웃");
-    logout.href = "login.html";
-    nav.append(overview, events, users, filters, status, logout);
+    for (const item of filterHeaderNavItems()) {
+        const link = el("a", item.className, item.label);
+        link.href = item.href;
+        if (item.requiresSessionLogout) {
+            link.addEventListener("click", (event) => {
+                event.preventDefault();
+                void runDashboardLogout({
+                    logout: logoutDashboardSession,
+                    redirectToLogin: () => {
+                        window.location.href = item.href;
+                    },
+                    showError: (placement) => {
+                        pageMessage = placement.message;
+                        render();
+                    },
+                });
+            });
+        }
+        nav.append(link);
+    }
     header.append(copy, nav);
     return header;
 }
@@ -302,7 +246,6 @@ function renderRuleTable() {
         const row = el("tr");
         row.append(cellBadge(rule.origin, "source-badge"), el("td", undefined, rule.kind), ruleNameCell(rule), cellBadge(rule.severity, "severity-badge"), el("td", undefined, rule.action), el("td", undefined, rule.enabled ? "ON" : "OFF"), ruleActionCell(rule));
         row.addEventListener("click", () => {
-            selectedRuleId = rule.id;
             formState = formFromRule(rule);
             dryRunResult = null;
             render();
@@ -327,12 +270,33 @@ function cellBadge(value, className) {
 }
 function ruleActionCell(rule) {
     const cell = el("td");
-    cell.append(button("수정", "text-action", () => {
-        selectedRuleId = rule.id;
-        formState = formFromRule(rule);
-        dryRunResult = null;
-        render();
-    }), button(rule.enabled ? "비활성화" : "활성화", "text-action", () => void setRuleEnabled(rule, !rule.enabled)), button("보관", "text-action danger-text", () => void archiveRule(rule), rule.origin === "built_in"));
+    const edit = button("수정", "text-action");
+    edit.addEventListener("click", (event) => {
+        stopButtonClick(event, () => {
+            formState = formFromRule(rule);
+            dryRunResult = null;
+            render();
+        });
+    });
+    const toggle = button(rule.enabled ? "비활성화" : "활성화", "text-action");
+    toggle.addEventListener("click", (event) => {
+        stopButtonClick(event, () => {
+            void setRuleEnabled(rule, !rule.enabled).catch((error) => {
+                pageMessage = safeFilterMutationErrorMessage(apiStatus(error), error);
+                render();
+            });
+        });
+    });
+    const archive = button("보관", "text-action danger-text", undefined, rule.origin === "built_in");
+    archive.addEventListener("click", (event) => {
+        stopButtonClick(event, () => {
+            void archiveRule(rule).catch((error) => {
+                pageMessage = safeFilterMutationErrorMessage(apiStatus(error), error);
+                render();
+            });
+        });
+    });
+    cell.append(edit, toggle, archive);
     return cell;
 }
 function renderForm() {
@@ -340,41 +304,55 @@ function renderForm() {
     const header = el("div", "filter-card-header");
     const copy = el("div");
     copy.append(el("h2", undefined, formState.mode === "create" ? "사용자 정의 규칙 생성" : "규칙 수정"), el("p", undefined, "종류별 필드로 설정을 편집합니다."));
-    header.append(copy, button("New Custom", "nav-button", () => {
-        selectedRuleId = null;
+    header.append(copy, button("사용자 정의 새로 만들기", "nav-button", () => {
         formState = blankForm();
         dryRunResult = null;
+        formMessage = "";
         render();
     }));
     const form = el("form", "filter-form");
     form.addEventListener("submit", (event) => {
         event.preventDefault();
-        void saveRule().catch(() => {
-            pageMessage = "저장을 완료하지 못했습니다. 입력값과 관리자 권한을 확인하세요.";
+        void saveRule().catch((error) => {
+            pageMessage = safeFilterMutationErrorMessage(apiStatus(error), error);
             render();
         });
     });
-    const builtIn = formState.origin === "built_in";
-    const canEditMeta = !builtIn;
+    const visibility = filterFieldVisibility(formState);
     const row1 = el("div", "form-row three");
-    row1.append(field("종류", select(formState.kind, ["keyword", "regex", "context_rule"], (value) => {
+    row1.append(field("종류", select(formState.kind, filterKindOptions(), (value) => {
         formState.kind = value;
+        dryRunResult = null;
+        formMessage = "";
         render();
-    }, formState.mode === "edit")), field("카테고리", input(formState.category, (value) => { formState.category = value; }, !canEditMeta)), field("활성화", checkbox(formState.enabled, (value) => { formState.enabled = value; })));
+    }, formState.mode === "edit")), field("카테고리", input(formState.category, (value) => { formState.category = value; }, !visibility.canEditIdentity)), field("활성화", checkbox(formState.enabled, (value) => { formState.enabled = value; })));
     const row2 = el("div", "form-row");
-    row2.append(field("라벨", input(formState.label, (value) => { formState.label = value; }, !canEditMeta)), field("치환 표시", input(formState.placeholder, (value) => { formState.placeholder = value; }, !canEditMeta)));
+    row2.append(field("라벨", input(formState.label, (value) => { formState.label = value; }, !visibility.canEditIdentity)));
+    if (visibility.showPlaceholder) {
+        row2.append(field("마스킹 치환 표시", input(formState.placeholder, (value) => { formState.placeholder = value; })));
+    }
     const row3 = el("div", "form-row");
-    row3.append(field("심각도", select(formState.severity, ["low", "medium", "high", "critical"], (value) => { formState.severity = value; })), field("처리", select(formState.action, ["ALLOW", "WARN", "MASK", "BLOCK"], (value) => { formState.action = value; })));
-    form.append(header, row1, row2, row3, field("설명", textarea(formState.description, (value) => { formState.description = value; }, !canEditMeta)));
-    if (!builtIn) {
+    row3.append(field("심각도", select(formState.severity, filterSeverityOptions(), (value) => { formState.severity = value; })), field("처리", select(formState.action, filterActionOptions(), (value) => {
+        formState.action = value;
+        if (value !== "MASK")
+            formState.placeholder = "";
+        dryRunResult = null;
+        formMessage = "";
+        render();
+    })));
+    form.append(header, row1, row2, row3, el("p", "filter-subtext", "활성화는 규칙 실행 여부이고, 처리는 규칙이 탐지됐을 때 서버가 적용할 Allow/Warn/Mask/Block 결정입니다."), field("설명", textarea(formState.description, (value) => { formState.description = value; }, !visibility.canEditIdentity)));
+    if (visibility.canEditIdentity) {
         form.append(renderKindFields());
     }
     const actions = el("div", "form-actions");
-    actions.append(button("저장", "login-button", () => undefined), button("미리 실행", "nav-button", () => void runDryRun().catch(() => {
-        pageMessage = "미리 실행을 완료하지 못했습니다. 샘플과 규칙 설정을 확인하세요.";
-        render();
-    }), !dryRunText.trim()));
+    const [saveAction] = filterFormActionSpecs(Boolean(dryRunText.trim()));
+    actions.append(button(saveAction.label, "login-button", undefined, saveAction.disabled, saveAction.type));
     form.append(actions);
+    if (formMessage) {
+        const message = el("p", "privacy-note", formMessage);
+        message.setAttribute("role", formMessage.includes("했습니다") ? "status" : "alert");
+        form.append(message);
+    }
     card.append(form);
     return card;
 }
@@ -383,26 +361,37 @@ function renderKindFields() {
     if (formState.kind === "keyword") {
         const row = el("div", "form-row");
         row.append(field("키워드", input(formState.keywords, (value) => { formState.keywords = value; })), field("제외 키워드", input(formState.exclusionKeywords, (value) => { formState.exclusionKeywords = value; })));
-        box.append(el("h3", undefined, "키워드 설정"), row);
+        box.append(el("h3", undefined, "키워드 설정"), el("p", "filter-subtext", "쉼표로 여러 키워드를 입력합니다."), row);
     }
     else if (formState.kind === "regex") {
+        const pattern = input(formState.pattern, (value) => { formState.pattern = value; });
+        pattern.placeholder = "예: secret-[0-9]+";
         const row = el("div", "form-row");
-        row.append(field("패턴", input(formState.pattern, (value) => { formState.pattern = value; })), field("제외 키워드", input(formState.exclusionKeywords, (value) => { formState.exclusionKeywords = value; })));
-        box.append(el("h3", undefined, "정규식 설정"), row);
+        row.append(field("정규식 패턴", pattern), field("제외 키워드", input(formState.exclusionKeywords, (value) => { formState.exclusionKeywords = value; })));
+        box.append(el("h3", undefined, "정규식 설정"), helpList(filterRegexHelpItems()), row);
     }
     else {
         const row = el("div", "form-row three");
-        row.append(field("검사 범위", input(formState.windowSize, (value) => { formState.windowSize = value; })), field("최소 조건 수", input(formState.minConditionCount, (value) => { formState.minConditionCount = value; })), field("민감도", select(formState.sensitivity, ["low", "medium", "high"], (value) => { formState.sensitivity = value; })));
-        box.append(el("h3", undefined, "업무 맥락 규칙 설정"), field("키워드 그룹", textarea(formState.contextGroups, (value) => { formState.contextGroups = value; })), field("제외 키워드", input(formState.exclusionKeywords, (value) => { formState.exclusionKeywords = value; })), row);
+        row.append(field("검사 범위", input(formState.windowSize, (value) => { formState.windowSize = value; })), field("최소 조건 수", input(formState.minConditionCount, (value) => { formState.minConditionCount = value; })), field("민감도", select(formState.sensitivity, filterSensitivityOptions(), (value) => { formState.sensitivity = value; })));
+        box.append(el("h3", undefined, "업무 맥락 규칙 설정"), el("p", "filter-subtext", "그룹명: 키워드1, 키워드2 형식으로 줄마다 입력합니다."), field("키워드 그룹", textarea(formState.contextGroups, (value) => { formState.contextGroups = value; })), field("제외 키워드", input(formState.exclusionKeywords, (value) => { formState.exclusionKeywords = value; })), row);
     }
     return box;
 }
 function renderDryRun() {
-    const card = el("section", "filter-card dryrun-card");
-    card.append(el("h2", undefined, "미리 실행"), el("p", "filter-subtext", "샘플은 저장하지 않고 안전한 메타데이터만 표시합니다."));
-    const sample = textarea(dryRunText, (value) => { dryRunText = value; });
+    const card = el("section", "dryrun-card");
+    card.append(el("h3", undefined, "현재 규칙 미리 실행"), el("p", "filter-subtext", filterDryRunHelpText()));
+    const [, dryRunAction] = filterFormActionSpecs(Boolean(dryRunText.trim()));
+    const dryRunButton = button(dryRunAction.label, "nav-button", () => void runDryRun().catch((error) => {
+        pageMessage = safeFilterMutationErrorMessage(apiStatus(error), error);
+        render();
+    }), dryRunAction.disabled, dryRunAction.type);
+    const sample = textarea(dryRunText, (value) => {
+        dryRunText = value;
+        dryRunButton.disabled = !dryRunText.trim();
+    });
     sample.className = "dryrun-textarea";
     card.append(field("샘플", sample));
+    card.append(dryRunButton);
     const result = el("div", "dryrun-result");
     result.append(el("h3", undefined, "결과"));
     if (!dryRunResult) {
@@ -429,8 +418,11 @@ function renderDryRun() {
 }
 function renderMain() {
     const main = el("main", "dashboard filter-dashboard");
-    if (pageMessage)
-        main.append(el("p", "privacy-note", pageMessage));
+    if (pageMessage) {
+        const message = el("p", "privacy-note", pageMessage);
+        message.setAttribute("role", "alert");
+        main.append(message);
+    }
     if (pageState === "loading") {
         main.append(el("section", "filter-summary", "필터 규칙을 불러오는 중입니다."));
         return main;

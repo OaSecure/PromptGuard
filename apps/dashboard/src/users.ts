@@ -1,4 +1,5 @@
 import { DashboardApiError, dashboardRequest } from "./dashboardApi.js";
+import { markProtectedDashboardReady, runDashboardLogout } from "./dashboardSessionFlow.js";
 import { getDashboardCsrfToken, logoutDashboardSession, refreshDashboardCsrf } from "./session.js";
 import {
   type CreateUserPayload,
@@ -119,6 +120,7 @@ function createSelectCell<T extends string>(
 }
 
 function renderUsers(users: DashboardUserRow[]): void {
+  markProtectedDashboardReady(document.body);
   const rowViews = projectUserTableRows(users);
   usersTableBody.replaceChildren(
     ...rowViews.map((rowView, index) => {
@@ -190,6 +192,9 @@ async function loadUsers(): Promise<void> {
     const screenState = deriveUsersScreenState(users, false);
     setMessage(screenState.message, screenState.kind);
   } catch (error) {
+    if (!(error instanceof DashboardApiError) || !shouldRedirectUsersScreen(error.status)) {
+      markProtectedDashboardReady(document.body);
+    }
     const screenState = deriveUsersScreenState([], true);
     setMessage(screenState.message, screenState.kind);
     if (error instanceof DashboardApiError && shouldRedirectUsersScreen(error.status)) {
@@ -234,11 +239,11 @@ createUserForm.addEventListener("submit", async (event) => {
 document.querySelectorAll<HTMLAnchorElement>(".logout-button").forEach((link) => {
   link.addEventListener("click", async (event) => {
     event.preventDefault();
-    try {
-      await logoutDashboardSession();
-    } finally {
-      redirectToLogin();
-    }
+    await runDashboardLogout({
+      logout: logoutDashboardSession,
+      redirectToLogin,
+      showError: (placement) => setMessage(placement.message, "error"),
+    });
   });
 });
 

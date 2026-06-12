@@ -1,4 +1,5 @@
 import { DashboardApiError, dashboardRequest } from "./dashboardApi.js";
+import { markProtectedDashboardReady, runDashboardLogout } from "./dashboardSessionFlow.js";
 import { logoutDashboardSession } from "./session.js";
 import {
   type DashboardEventDetail,
@@ -69,6 +70,7 @@ function renderEmptyRow(columns: number, message: string): HTMLTableRowElement {
 }
 
 function renderDetail(detail: DashboardEventDetail): void {
+  markProtectedDashboardReady(document.body);
   const summary = projectEventDetailSummary(detail);
   detailTitle.textContent = `이벤트 상세보기 · ${summary.eventId}`;
   summaryGrid.replaceChildren();
@@ -147,6 +149,9 @@ async function loadEventDetail(): Promise<void> {
     setMessage(state.kind, state.message);
   } catch (error) {
     const status = error instanceof DashboardApiError ? error.status : 500;
+    if (status !== 401 && status !== 403) {
+      markProtectedDashboardReady(document.body);
+    }
     const state = deriveEventDetailScreenState("error", false);
     setMessage(state.kind, safeEventDetailErrorMessage(status));
     if (status === 401 || status === 403) {
@@ -158,11 +163,11 @@ async function loadEventDetail(): Promise<void> {
 document.querySelectorAll<HTMLAnchorElement>(".logout-button").forEach((link) => {
   link.addEventListener("click", async (event) => {
     event.preventDefault();
-    try {
-      await logoutDashboardSession();
-    } finally {
-      redirectToLogin();
-    }
+    await runDashboardLogout({
+      logout: logoutDashboardSession,
+      redirectToLogin,
+      showError: (placement) => setMessage("error", placement.message),
+    });
   });
 });
 

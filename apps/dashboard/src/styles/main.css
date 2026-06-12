@@ -11,6 +11,11 @@ body {
   min-height: 100vh;
 }
 
+.dashboard-auth-pending .admin-header,
+.dashboard-auth-pending .dashboard {
+  visibility: hidden;
+}
+
 button,
 input {
   font: inherit;
@@ -746,8 +751,13 @@ input {
   }
 
   .chart-grid,
-  .detail-grid {
+  .detail-grid,
+  .filter-grid {
     grid-template-columns: 1fr;
+  }
+
+  .dryrun-card {
+    position: static;
   }
 
   .chart-card.wide {
@@ -819,11 +829,26 @@ input {
   line-height: 1.6;
 }
 
+.filter-help-list {
+  color: #5b78a0;
+  display: grid;
+  font-size: 14px;
+  font-weight: 750;
+  gap: 8px;
+  line-height: 1.55;
+  margin: 0;
+  padding-left: 20px;
+}
+
+.filter-help-list li {
+  padding-left: 2px;
+}
+
 .filter-grid {
   align-items: start;
   display: grid;
   gap: 24px;
-  grid-template-columns: 1.35fr 0.9fr;
+  grid-template-columns: minmax(0, 1.45fr) minmax(360px, 0.8fr);
   margin-bottom: 34px;
 }
 
@@ -897,6 +922,15 @@ input {
 .dryrun-card {
   display: grid;
   gap: 18px;
+}
+
+.dryrun-card {
+  background: #f8fcff;
+  border: 1px solid #d8ecfb;
+  border-radius: 18px;
+  padding: 20px;
+  position: sticky;
+  top: 18px;
 }
 
 .filter-form label,

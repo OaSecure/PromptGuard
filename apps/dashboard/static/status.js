@@ -1,4 +1,5 @@
 import { DashboardApiError, dashboardRequest } from "./dashboardApi.js";
+import { runDashboardLogout } from "./dashboardSessionFlow.js";
 import { logoutDashboardSession } from "./session.js";
 const root = document.querySelector("#status-app");
 if (!root) {
@@ -131,11 +132,12 @@ async function fetchStatus() {
     }
 }
 async function logoutAndRedirect() {
-    try {
-        await logoutDashboardSession();
-    }
-    finally {
-        window.location.href = "./login.html";
-    }
+    await runDashboardLogout({
+        logout: logoutDashboardSession,
+        redirectToLogin: () => {
+            window.location.href = "./login.html";
+        },
+        showError: () => renderUnavailable(403),
+    });
 }
 void fetchStatus();
