@@ -1,4 +1,5 @@
 import { DashboardApiError, dashboardRequest } from "./dashboardApi.js";
+import { dashboardFallbackMessage } from "./dashboardFallback.js";
 import { markProtectedDashboardReady, runDashboardLogout } from "./dashboardSessionFlow.js";
 import { buildFilterDryRunPlan, buildFilterSavePlan, filterActionOptions, filterDryRunHelpText, filterFieldVisibility, filterFormActionSpecs, filterHeaderNavItems, filterKindOptions, filterRegexHelpItems, filterSensitivityOptions, filterSeverityOptions, safeFilterMutationErrorMessage, } from "./filtersPageModel.js";
 import { logoutDashboardSession, refreshDashboardCsrf } from "./session.js";
@@ -88,7 +89,7 @@ async function loadRules() {
         rules = [];
         formState = blankForm();
         pageState = "error";
-        pageMessage = "필터 규칙 정보를 불러오지 못했습니다. 관리자 세션이 필요하거나 서버 연결을 확인해야 합니다.";
+        pageMessage = dashboardFallbackMessage("error");
     }
     render();
 }
@@ -427,11 +428,11 @@ function renderMain() {
         main.append(message);
     }
     if (pageState === "loading") {
-        main.append(el("section", "filter-summary", "필터 규칙을 불러오는 중입니다."));
+        main.append(el("section", "filter-summary", dashboardFallbackMessage("loading")));
         return main;
     }
     if (pageState === "error") {
-        main.append(el("section", "filter-summary", "안전한 fallback 상태입니다. 서버 연결 후 다시 시도하세요."));
+        main.append(el("section", "filter-summary", dashboardFallbackMessage("error")));
         return main;
     }
     main.append(renderSummary());
@@ -439,7 +440,7 @@ function renderMain() {
     grid.append(renderForm(), renderDryRun());
     main.append(grid);
     if (pageState === "empty") {
-        main.append(el("section", "table-card empty-state", "표시할 필터 규칙이 없습니다."));
+        main.append(el("section", "table-card empty-state", dashboardFallbackMessage("empty")));
     }
     else {
         main.append(renderRuleTable());

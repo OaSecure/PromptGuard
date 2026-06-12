@@ -80,11 +80,11 @@ test("normalize role and status payloads fail closed to documented enums", () =>
 test("deriveUsersScreenState returns empty and error states safely", () => {
   assert.deepEqual(deriveUsersScreenState([], false), {
     kind: "empty",
-    message: "등록된 사용자가 없습니다.",
+    message: "표시할 데이터가 없습니다.",
   });
   assert.deepEqual(deriveUsersScreenState([], true), {
     kind: "error",
-    message: "사용자 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.",
+    message: "데이터를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.",
   });
 });
 

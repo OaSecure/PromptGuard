@@ -1,4 +1,5 @@
 import { DashboardApiError, dashboardRequest } from "./dashboardApi.js";
+import { dashboardFallbackMessage, dashboardFallbackRole } from "./dashboardFallback.js";
 import { markProtectedDashboardReady, runDashboardLogout } from "./dashboardSessionFlow.js";
 import { logoutDashboardSession } from "./session.js";
 const message = requireElement("overview-message");
@@ -22,8 +23,9 @@ function requireElement(id) {
 function setMessage(text, kind) {
     message.textContent = text;
     message.hidden = kind === "ready";
-    message.setAttribute("role", kind === "error" ? "alert" : "status");
-    message.setAttribute("aria-live", kind === "error" ? "assertive" : "polite");
+    const role = dashboardFallbackRole(kind);
+    message.setAttribute("role", role);
+    message.setAttribute("aria-live", role === "alert" ? "assertive" : "polite");
 }
 function setMetric(key, value) {
     const target = valueTargets.get(key);
@@ -155,7 +157,7 @@ function renderOverview(data) {
     renderPeriodBuckets(data.period_buckets);
     cards.setAttribute("aria-busy", "false");
     if (data.event_count === 0) {
-        setMessage("현재 조회 기간에 표시할 이벤트가 없습니다.", "empty");
+        setMessage(dashboardFallbackMessage("empty"), "empty");
     }
     else {
         setMessage("", "ready");
@@ -166,16 +168,13 @@ function redirectToLogin() {
 }
 function safeOverviewErrorMessage(error) {
     if (error instanceof DashboardApiError) {
-        if (error.status === 401 || error.status === 403)
-            return "대시보드 로그인이 필요합니다.";
-        if (error.status === 0)
-            return "대시보드 API에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.";
+        return dashboardFallbackMessage("error", error.status);
     }
-    return "대시보드 요약을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.";
+    return dashboardFallbackMessage("error");
 }
 async function loadOverview() {
     cards.setAttribute("aria-busy", "true");
-    setMessage("대시보드 요약을 불러오는 중입니다.", "loading");
+    setMessage(dashboardFallbackMessage("loading"), "loading");
     try {
         const data = await dashboardRequest("/dashboard/overview");
         renderOverview(data);

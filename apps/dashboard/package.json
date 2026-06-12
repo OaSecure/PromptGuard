@@ -7,7 +7,7 @@
     "dev": "tsc -p tsconfig.json --watch",
     "typecheck": "tsc --noEmit",
     "build": "tsc -p tsconfig.json",
-    "test:overview": "npm run build && node --test tests/overviewScreenShell.test.mjs tests/dashboardNavigationShell.test.mjs tests/statusScreenShell.test.mjs",
+    "test:overview": "npm run build && node --test tests/overviewScreenShell.test.mjs tests/dashboardNavigationShell.test.mjs tests/statusScreenShell.test.mjs tests/dashboardFallback.test.mjs",
     "test:users": "npm run build && node --test tests/usersPageModel.test.mjs tests/usersRequestModel.test.mjs",
     "test:events": "npm run build && node --test tests/eventsPageModel.test.mjs tests/eventDetailPageModel.test.mjs tests/eventsScreenShell.test.mjs",
     "test:filters": "npm run build && node --test tests/filtersPageModel.test.mjs tests/filtersScreenLayout.test.mjs tests/dashboardSessionFlow.test.mjs tests/session.test.mjs"

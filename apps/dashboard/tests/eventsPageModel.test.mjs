@@ -91,11 +91,11 @@ test("buildEventDetailHref encodes event ids safely", () => {
 test("deriveEventsScreenState returns loading, empty, ready, and error states", () => {
   assert.deepEqual(deriveEventsScreenState("loading", 0), {
     kind: "loading",
-    message: "이벤트 목록을 불러오는 중입니다.",
+    message: "데이터를 불러오는 중입니다.",
   });
   assert.deepEqual(deriveEventsScreenState("ready", 0), {
     kind: "empty",
-    message: "표시할 이벤트가 없습니다.",
+    message: "표시할 데이터가 없습니다.",
   });
   assert.deepEqual(deriveEventsScreenState("ready", 2), {
     kind: "ready",
@@ -103,13 +103,13 @@ test("deriveEventsScreenState returns loading, empty, ready, and error states", 
   });
   assert.deepEqual(deriveEventsScreenState("error", 0), {
     kind: "error",
-    message: "이벤트 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.",
+    message: "데이터를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.",
   });
 });
 
 test("safeEventsErrorMessage stays generic and does not leak backend details", () => {
   assert.equal(safeEventsErrorMessage(401), "대시보드 로그인이 필요합니다.");
-  assert.equal(safeEventsErrorMessage(403), "대시보드 접근 권한을 확인할 수 없습니다.");
-  assert.equal(safeEventsErrorMessage(0), "대시보드 API에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.");
-  assert.equal(safeEventsErrorMessage(500), "이벤트 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
+  assert.equal(safeEventsErrorMessage(403), "대시보드 로그인이 필요합니다.");
+  assert.equal(safeEventsErrorMessage(0), "서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.");
+  assert.equal(safeEventsErrorMessage(500), "데이터를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
 });

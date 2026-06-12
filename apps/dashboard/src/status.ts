@@ -1,4 +1,5 @@
 import { DashboardApiError, dashboardRequest } from "./dashboardApi.js";
+import { dashboardFallbackMessage } from "./dashboardFallback.js";
 import { markProtectedDashboardReady, runDashboardLogout } from "./dashboardSessionFlow.js";
 import { logoutDashboardSession } from "./session.js";
 import { renderStatusPlan, type DashboardStatus, type StatusExtensionSetupPlan } from "./statusPageModel.js";
@@ -116,7 +117,7 @@ function renderExtensionSetup(plan: StatusExtensionSetupPlan): HTMLElement {
 function renderLoading(): void {
   const card = document.createElement("section");
   card.className = "status-summary-card";
-  appendText(card, "p", "서버 상태 정보를 불러오는 중입니다.");
+  appendText(card, "p", dashboardFallbackMessage("loading"));
   renderShell(card);
 }
 
@@ -126,7 +127,7 @@ function renderUnavailable(statusCode?: number): void {
   const copy = document.createElement("div");
   appendText(copy, "p", "상태 확인 불가").className = "eyebrow";
   appendText(copy, "h2", statusCode === 401 || statusCode === 403 ? "로그인이 필요합니다" : "상태 확인 불가");
-  appendText(copy, "p", "안전한 서버 상태 메타데이터를 불러오지 못했습니다. ADMIN 대시보드 세션으로 다시 시도해 주세요.").className =
+  appendText(copy, "p", dashboardFallbackMessage("error", statusCode)).className =
     "status-summary-copy";
   card.append(copy, badge("unknown"));
   renderShell(card);
