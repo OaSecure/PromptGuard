@@ -86,7 +86,15 @@ export type FilterValidationError = {
 const MAX_REGEX_PATTERN_LENGTH = 1000;
 
 export function filterRegexHelpText(): string {
-  return "Python 정규식 패턴만 입력합니다. 예: secret-[0-9]+, api[_-]?key. 슬래시(/.../)는 쓰지 않고 저장 또는 미리 실행 시 서버가 문법을 검증합니다.";
+  return [
+    "정규식은 글자 모양의 규칙을 적는 방식입니다.",
+    "그대로 찾을 단어는 그대로 입력합니다. 예: secret",
+    "숫자가 1개 이상 이어지는 부분은 [0-9]+처럼 씁니다. 예: secret-[0-9]+",
+    "중간의 밑줄 또는 하이픈을 허용하려면 [_-]?처럼 씁니다. 예: api[_-]?key",
+    "마침표, 괄호, 별표, 물음표 같은 문자를 글자 그대로 찾으려면 앞에 역슬래시를 붙여야 할 수 있습니다.",
+    "슬래시(/.../)로 감싸지 말고 패턴만 입력합니다.",
+    "저장 또는 미리 실행 시 서버가 검사하므로, 실제 동작은 서버 결과를 기준으로 확인합니다.",
+  ].join(" ");
 }
 
 export function filterDryRunHelpText(): string {

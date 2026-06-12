@@ -96,8 +96,11 @@ test("filter select options expose Korean labels while preserving API enum value
 test("filter guidance makes server dry-run oracle and regex semantics explicit", () => {
   assert.match(filterDryRunHelpText(), /서버의 실제 필터 엔진/);
   assert.match(filterDryRunHelpText(), /샘플은 저장하지 않고/);
-  assert.match(filterRegexHelpText(), /Python 정규식/);
-  assert.match(filterRegexHelpText(), /서버가 문법을 검증/);
+  assert.match(filterRegexHelpText(), /정규식은 글자 모양의 규칙/);
+  assert.match(filterRegexHelpText(), /그대로 찾을 단어는 그대로 입력/);
+  assert.match(filterRegexHelpText(), /\[0-9\]\+/);
+  assert.match(filterRegexHelpText(), /마침표, 괄호, 별표, 물음표/);
+  assert.match(filterRegexHelpText(), /저장 또는 미리 실행 시 서버가 검사/);
 });
 
 test("filter field visibility follows rule kind and action semantics", () => {
