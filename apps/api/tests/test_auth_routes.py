@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -33,6 +33,9 @@ class _ScalarResult:
     def scalar_one_or_none(self):
         return self.user
 
+    def scalars(self):
+        return iter([self.user])
+
 
 class _RowResult:
     def __init__(self, row):
@@ -59,7 +62,17 @@ class _FakeSession:
         self.added.append(item)
 
 
-def _build_app(fake_session: _FakeSession) -> FastAPI:
+class _RefreshTokenSession(_FakeSession):
+    def __init__(self, *, current_user=None, refresh_token=None):
+        super().__init__(current_user)
+        self.refresh_token = refresh_token
+
+    async def execute(self, statement):
+        self.statements.append(str(statement))
+        return _ScalarResult(self.refresh_token)
+
+
+def _build_app(fake_session: _FakeSession, *, current_user=None) -> FastAPI:
     app = FastAPI()
     app.include_router(auth_routes.router)
 
@@ -67,6 +80,11 @@ def _build_app(fake_session: _FakeSession) -> FastAPI:
         yield fake_session
 
     app.dependency_overrides[auth_routes.get_db_session] = override_session
+    if current_user is not None:
+        async def override_current_user():
+            return current_user
+
+        app.dependency_overrides[auth_routes.require_active_user] = override_current_user
     return app
 
 
@@ -83,6 +101,18 @@ def _user(status: str = "ACTIVE"):
         status=status,
         password_hash=hash_password("ConfiguredAdminPassword!456"),
         last_login_at=None,
+    )
+
+
+def _refresh_token(*, user_id: uuid.UUID, revoked_at=None, expires_at=None, idle_expires_at=None):
+    return SimpleNamespace(
+        id=uuid.uuid4(),
+        user_id=user_id,
+        login_id="admin",
+        token_hash="stored-hash",
+        revoked_at=revoked_at,
+        expires_at=expires_at or datetime(2099, 1, 1, tzinfo=timezone.utc),
+        idle_expires_at=idle_expires_at or datetime(2099, 1, 1, tzinfo=timezone.utc),
     )
 
 
@@ -174,3 +204,94 @@ def test_refresh_route_returns_429_after_rate_limit(monkeypatch) -> None:
 
     assert first_response.status_code == 401
     assert second_response.status_code == 429
+
+
+def test_logout_requires_bearer_user_before_revoking_refresh_token() -> None:
+    refresh_token = _refresh_token(user_id=uuid.uuid4())
+    fake_session = _RefreshTokenSession(refresh_token=refresh_token)
+    client = TestClient(_build_app(fake_session))
+
+    response = client.post("/auth/logout", json={"refresh_token": "refresh-token"})
+
+    assert response.status_code == 401
+    assert refresh_token.revoked_at is None
+
+
+def test_logout_revokes_only_current_users_refresh_token() -> None:
+    current_user = _user()
+    refresh_token = _refresh_token(user_id=current_user.id)
+    fake_session = _RefreshTokenSession(current_user=current_user, refresh_token=refresh_token)
+    client = TestClient(_build_app(fake_session, current_user=current_user))
+
+    response = client.post("/auth/logout", json={"refresh_token": "refresh-token"})
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": True}
+    assert refresh_token.revoked_at is not None
+
+
+def test_logout_rejects_other_users_refresh_token_without_revoking() -> None:
+    current_user = _user()
+    other_user_refresh = _refresh_token(user_id=uuid.uuid4())
+    fake_session = _RefreshTokenSession(current_user=current_user, refresh_token=other_user_refresh)
+    client = TestClient(_build_app(fake_session, current_user=current_user))
+
+    response = client.post("/auth/logout", json={"refresh_token": "other-user-refresh-token"})
+
+    assert response.status_code == 401
+    assert other_user_refresh.revoked_at is None
+
+
+def test_logout_rejects_stale_refresh_token_without_raw_token_leak() -> None:
+    current_user = _user()
+    stale_refresh = _refresh_token(user_id=current_user.id, revoked_at=datetime(2026, 1, 1))
+    fake_session = _RefreshTokenSession(current_user=current_user, refresh_token=stale_refresh)
+    client = TestClient(_build_app(fake_session, current_user=current_user))
+
+    response = client.post("/auth/logout", json={"refresh_token": "stale-secret-refresh-token"})
+    encoded = response.text
+
+    assert response.status_code == 401
+    assert stale_refresh.revoked_at == datetime(2026, 1, 1)
+    assert "stale-secret-refresh-token" not in encoded
+
+
+def test_logout_rejects_unknown_refresh_token_without_raw_token_leak() -> None:
+    current_user = _user()
+    fake_session = _RefreshTokenSession(current_user=current_user, refresh_token=None)
+    client = TestClient(_build_app(fake_session, current_user=current_user))
+
+    response = client.post("/auth/logout", json={"refresh_token": "unknown-secret-refresh-token"})
+
+    assert response.status_code == 401
+    assert "unknown-secret-refresh-token" not in response.text
+
+
+def test_logout_rejects_expired_refresh_token_without_revoking_again() -> None:
+    current_user = _user()
+    expired_refresh = _refresh_token(
+        user_id=current_user.id,
+        expires_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+    fake_session = _RefreshTokenSession(current_user=current_user, refresh_token=expired_refresh)
+    client = TestClient(_build_app(fake_session, current_user=current_user))
+
+    response = client.post("/auth/logout", json={"refresh_token": "expired-refresh-token"})
+
+    assert response.status_code == 401
+    assert expired_refresh.revoked_at is None
+
+
+def test_logout_rejects_idle_expired_refresh_token_without_revoking_again() -> None:
+    current_user = _user()
+    idle_expired_refresh = _refresh_token(
+        user_id=current_user.id,
+        idle_expires_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+    fake_session = _RefreshTokenSession(current_user=current_user, refresh_token=idle_expired_refresh)
+    client = TestClient(_build_app(fake_session, current_user=current_user))
+
+    response = client.post("/auth/logout", json={"refresh_token": "idle-expired-refresh-token"})
+
+    assert response.status_code == 401
+    assert idle_expired_refresh.revoked_at is None

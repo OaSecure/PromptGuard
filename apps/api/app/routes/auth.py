@@ -218,15 +218,31 @@ async def refresh(
     )
 
 
+def is_refresh_token_usable_for_user(refresh_token: RefreshToken, user: User, now: datetime) -> bool:
+    if refresh_token.user_id != user.id:
+        return False
+    if refresh_token.revoked_at is not None or refresh_token.expires_at <= now:
+        return False
+    if refresh_token.idle_expires_at is not None and refresh_token.idle_expires_at <= now:
+        return False
+    return True
+
+
 @router.post("/logout", response_model=LogoutResponse)
-async def logout(payload: LogoutRequest, session: AsyncSession = Depends(get_db_session)) -> LogoutResponse:
+async def logout(
+    payload: LogoutRequest,
+    current_user: User = Depends(require_active_user),
+    session: AsyncSession = Depends(get_db_session),
+) -> LogoutResponse:
     token_hash = hash_refresh_token(payload.refresh_token)
 
     async with session.begin():
         result = await session.execute(select(RefreshToken).where(RefreshToken.token_hash == token_hash))
         refresh_token = result.scalar_one_or_none()
-        if refresh_token is not None and refresh_token.revoked_at is None:
-            refresh_token.revoked_at = utc_now()
+        now = utc_now()
+        if refresh_token is None or not is_refresh_token_usable_for_user(refresh_token, current_user, now):
+            raise invalid_credentials()
+        refresh_token.revoked_at = now
 
     return LogoutResponse(ok=True)
 
