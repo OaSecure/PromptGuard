@@ -479,14 +479,18 @@ function renderKindFields(): HTMLElement {
 function renderDryRun(): HTMLElement {
   const card = el("section", "dryrun-card");
   card.append(el("h3", undefined, "현재 규칙 미리 실행"), el("p", "filter-subtext", filterDryRunHelpText()));
-  const sample = textarea(dryRunText, (value) => { dryRunText = value; });
-  sample.className = "dryrun-textarea";
-  card.append(field("샘플", sample));
   const [, dryRunAction] = filterFormActionSpecs(Boolean(dryRunText.trim()));
-  card.append(button(dryRunAction.label, "nav-button", () => void runDryRun().catch((error: unknown) => {
+  const dryRunButton = button(dryRunAction.label, "nav-button", () => void runDryRun().catch((error: unknown) => {
     pageMessage = safeFilterMutationErrorMessage(apiStatus(error), error);
     render();
-  }), dryRunAction.disabled, dryRunAction.type));
+  }), dryRunAction.disabled, dryRunAction.type);
+  const sample = textarea(dryRunText, (value) => {
+    dryRunText = value;
+    dryRunButton.disabled = !dryRunText.trim();
+  });
+  sample.className = "dryrun-textarea";
+  card.append(field("샘플", sample));
+  card.append(dryRunButton);
   const result = el("div", "dryrun-result");
   result.append(el("h3", undefined, "결과"));
   if (!dryRunResult) {
