@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db_session
 from app.models.auth import User
-from app.models.events import AnalysisEvent, EventDetection
+from app.models.events import AnalysisEvent, EventDetection, EventInput
 from app.routes.dashboard_session import require_dashboard_admin_session
 from app.routes.stats import ACTIONS, RISK_LEVELS, date_window, event_date, utc_today
 
@@ -78,6 +78,7 @@ def dashboard_overview_response(
     events: list[AnalysisEvent],
     login_ids_by_event_id: dict[uuid.UUID, str],
     detections: list[EventDetection],
+    event_inputs: list[EventInput] | None = None,
     days: int,
     as_of: date | None = None,
 ) -> DashboardOverviewResponse:
@@ -94,6 +95,11 @@ def dashboard_overview_response(
     for detection in detections:
         if detection.event_id in event_ids:
             detector_categories[detection.category] += detection.count
+    unavailable_event_ids = {
+        event_input.event_id
+        for event_input in event_inputs or []
+        if event_input.event_id in event_ids and not event_input.content_included
+    }
 
     events_by_date: dict[date, list[AnalysisEvent]] = defaultdict(list)
     for event in events_in_window:
@@ -129,8 +135,7 @@ def dashboard_overview_response(
                 if event.id in login_ids_by_event_id
             }
         ),
-        # Input-level overview aggregation is handled separately from Analyze persistence.
-        content_unavailable_event_count=0,
+        content_unavailable_event_count=len(unavailable_event_ids),
         last_event_at=max((event.created_at for event in events_in_window), default=None),
         action_counts=_action_counts(actions),
         risk_level_counts=_risk_level_counts(risk_levels),
@@ -163,11 +168,16 @@ async def dashboard_overview(
     if event_ids:
         detections_result = await session.execute(select(EventDetection).where(EventDetection.event_id.in_(event_ids)))
         detections = list(detections_result.scalars().all())
+        inputs_result = await session.execute(select(EventInput).where(EventInput.event_id.in_(event_ids)))
+        event_inputs = list(inputs_result.scalars().all())
+    else:
+        event_inputs = []
 
     return dashboard_overview_response(
         events=events,
         login_ids_by_event_id=login_ids_by_event_id,
         detections=detections,
+        event_inputs=event_inputs,
         days=days,
         as_of=as_of,
     )

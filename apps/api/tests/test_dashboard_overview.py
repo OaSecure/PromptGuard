@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from fastapi import FastAPI, HTTPException, status
 from fastapi.testclient import TestClient
 
-from app.models.events import AnalysisEvent, EventDetection
+from app.models.events import AnalysisEvent, EventDetection, EventInput
 from app.routes import dashboard_overview
 
 
@@ -35,9 +35,10 @@ class _RowsResult:
 
 
 class _FakeSession:
-    def __init__(self, *, events=None, detections=None, users=None):
+    def __init__(self, *, events=None, detections=None, event_inputs=None, users=None):
         self.events = list(events or [])
         self.detections = list(detections or [])
+        self.event_inputs = list(event_inputs or [])
         self.users = list(users or [])
         self.statements = []
 
@@ -57,6 +58,8 @@ class _FakeSession:
             return _ExecuteResult(self.events)
         if "FROM event_detections" in statement_text:
             return _ExecuteResult(self.detections)
+        if "FROM event_inputs" in statement_text:
+            return _ExecuteResult(self.event_inputs)
         return _ExecuteResult([])
 
 
@@ -102,6 +105,29 @@ def _detection(event: AnalysisEvent, *, count: int = 1) -> EventDetection:
         reason_code="PII_EMAIL_DETECTED",
         match_count=count,
         safe_evidence={"value_lengths": [16] * count},
+    )
+
+
+def _event_input(
+    event: AnalysisEvent,
+    *,
+    input_index: int,
+    content_included: bool,
+    decision_basis: str,
+    reason: str | None = None,
+) -> EventInput:
+    return EventInput(
+        id=uuid.uuid4(),
+        event_id=event.id,
+        input_id=f"input-{input_index}",
+        input_index=input_index,
+        kind="text",
+        source="composer",
+        size_bytes=0,
+        content_included=content_included,
+        content_scanned=content_included,
+        decision_basis=decision_basis,
+        content_unavailable_reason=reason,
     )
 
 
@@ -272,6 +298,85 @@ def test_dashboard_overview_aggregates_30_day_summary(monkeypatch) -> None:
     assert body["period_buckets"][-2]["masked_count"] == 0
     assert body["period_buckets"][-2]["warned_count"] == 1
     assert "analysis_events.created_at" in fake_session.statements[0]
+
+
+def test_dashboard_overview_counts_distinct_events_with_unavailable_inputs(monkeypatch) -> None:
+    monkeypatch.setattr(dashboard_overview, "utc_today", lambda: date(2026, 5, 30))
+    user_id = uuid.uuid4()
+    unavailable_once = _event(
+        user_id=user_id,
+        action="WARN",
+        risk_level="medium",
+        risk_score=50,
+        created_at=datetime(2026, 5, 30, 10, 0, tzinfo=timezone.utc),
+    )
+    unavailable_twice = _event(
+        user_id=user_id,
+        action="BLOCK",
+        risk_level="high",
+        risk_score=80,
+        created_at=datetime(2026, 5, 29, 10, 0, tzinfo=timezone.utc),
+    )
+    fully_scanned = _event(
+        user_id=user_id,
+        action="ALLOW",
+        risk_level="low",
+        risk_score=5,
+        created_at=datetime(2026, 5, 28, 10, 0, tzinfo=timezone.utc),
+    )
+    outside_window = _event(
+        user_id=user_id,
+        action="WARN",
+        risk_level="medium",
+        risk_score=50,
+        created_at=datetime(2026, 4, 30, 10, 0, tzinfo=timezone.utc),
+    )
+    fake_session = _FakeSession(
+        events=[unavailable_once, unavailable_twice, fully_scanned, outside_window],
+        event_inputs=[
+            _event_input(
+                unavailable_once,
+                input_index=0,
+                content_included=False,
+                decision_basis="content_unavailable",
+                reason="file_too_large",
+            ),
+            _event_input(
+                unavailable_twice,
+                input_index=0,
+                content_included=False,
+                decision_basis="content_unavailable",
+                reason="unsupported_type",
+            ),
+            _event_input(
+                unavailable_twice,
+                input_index=1,
+                content_included=False,
+                decision_basis="content_unavailable",
+                reason="file_too_large",
+            ),
+            _event_input(
+                fully_scanned,
+                input_index=0,
+                content_included=True,
+                decision_basis="no_detection",
+            ),
+            _event_input(
+                outside_window,
+                input_index=0,
+                content_included=False,
+                decision_basis="content_unavailable",
+                reason="file_too_large",
+            ),
+        ],
+        users=[_user(user_id=user_id, login_id="member01")],
+    )
+
+    response = _client(fake_session).get("/dashboard/overview")
+    body = response.json()
+
+    assert response.status_code == 200
+    assert body["content_unavailable_event_count"] == 2
 
 
 def test_dashboard_overview_response_excludes_private_values(monkeypatch) -> None:
