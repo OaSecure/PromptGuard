@@ -9,7 +9,7 @@ import {
   filterFormActionSpecs,
   filterHeaderNavItems,
   filterKindOptions,
-  filterRegexHelpText,
+  filterRegexHelpItems,
   filterSensitivityOptions,
   filterSeverityOptions,
   safeFilterMutationErrorMessage,
@@ -220,6 +220,14 @@ function textarea(value: string, onInput: (value: string) => void, disabled = fa
   return node;
 }
 
+function helpList(items: string[]): HTMLUListElement {
+  const list = el("ul", "filter-help-list");
+  for (const item of items) {
+    list.append(el("li", undefined, item));
+  }
+  return list;
+}
+
 function select<T extends string>(value: T, values: T[] | FilterSelectOption<T>[], onChange: (value: T) => void, disabled = false): HTMLSelectElement {
   const node = el("select");
   for (const item of values) {
@@ -426,7 +434,6 @@ function renderForm(): HTMLElement {
     button(saveAction.label, "login-button", undefined, saveAction.disabled, saveAction.type),
   );
   form.append(actions);
-  form.append(renderDryRun());
   if (formMessage) {
     const message = el("p", "privacy-note", formMessage);
     message.setAttribute("role", formMessage.includes("했습니다") ? "status" : "alert");
@@ -455,7 +462,7 @@ function renderKindFields(): HTMLElement {
     );
     box.append(
       el("h3", undefined, "정규식 설정"),
-      el("p", "filter-subtext", filterRegexHelpText()),
+      helpList(filterRegexHelpItems()),
       row,
     );
   } else {
@@ -532,7 +539,7 @@ function renderMain(): HTMLElement {
   }
   main.append(renderSummary());
   const grid = el("section", "filter-grid");
-  grid.append(renderForm());
+  grid.append(renderForm(), renderDryRun());
   main.append(grid);
   if (pageState === "empty") {
     main.append(el("section", "table-card empty-state", "표시할 필터 규칙이 없습니다."));

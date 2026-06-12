@@ -12,6 +12,7 @@ const {
   filterFormActionSpecs,
   filterHeaderNavItems,
   filterKindOptions,
+  filterRegexHelpItems,
   filterRegexHelpText,
   filterSensitivityOptions,
   filterSeverityOptions,
@@ -94,10 +95,15 @@ test("filter select options expose Korean labels while preserving API enum value
 });
 
 test("filter guidance makes server dry-run oracle and regex semantics explicit", () => {
+  const regexHelpItems = filterRegexHelpItems();
+
   assert.match(filterDryRunHelpText(), /서버의 실제 필터 엔진/);
   assert.match(filterDryRunHelpText(), /샘플은 저장하지 않고/);
-  assert.match(filterRegexHelpText(), /정규식은 글자 모양의 규칙/);
-  assert.match(filterRegexHelpText(), /그대로 찾을 단어는 그대로 입력/);
+  assert.ok(regexHelpItems.length >= 10);
+  assert.ok(regexHelpItems.every((item) => item.length <= 100));
+  assert.equal(filterRegexHelpText(), regexHelpItems.join(" "));
+  assert.match(regexHelpItems[0], /정규식은 글자 모양의 규칙/);
+  assert.match(regexHelpItems[1], /그대로 찾을 단어는 그대로 입력/);
   assert.match(filterRegexHelpText(), /\[0-9\]는 숫자 한 글자/);
   assert.match(filterRegexHelpText(), /\+는 바로 앞 규칙이 1번 이상 반복/);
   assert.match(filterRegexHelpText(), /\[abc\]는 a, b, c 중 한 글자/);

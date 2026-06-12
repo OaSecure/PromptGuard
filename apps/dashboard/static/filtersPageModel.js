@@ -1,9 +1,10 @@
 const MAX_REGEX_PATTERN_LENGTH = 1000;
-export function filterRegexHelpText() {
+export function filterRegexHelpItems() {
     return [
         "정규식은 글자 모양의 규칙을 적는 방식입니다.",
         "그대로 찾을 단어는 그대로 입력합니다. 예: secret",
-        "[0-9]는 숫자 한 글자를 뜻하고, +는 바로 앞 규칙이 1번 이상 반복된다는 뜻입니다. 예: secret-[0-9]+ 는 secret- 뒤에 숫자가 1개 이상 있는 값을 찾습니다.",
+        "[0-9]는 숫자 한 글자를 뜻합니다.",
+        "+는 바로 앞 규칙이 1번 이상 반복된다는 뜻입니다. 예: secret-[0-9]+ 는 secret- 뒤에 숫자가 1개 이상 있는 값을 찾습니다.",
         "[abc]는 a, b, c 중 한 글자를 뜻합니다. 예를 들어 [_-]는 밑줄 또는 하이픈 한 글자를 뜻합니다.",
         "?는 바로 앞 규칙이 없어도 되고 1번 있어도 된다는 뜻입니다. 예: api[_-]?key 는 apikey, api_key, api-key를 모두 찾습니다.",
         "*는 0번 이상 반복, {3}은 정확히 3번 반복, {2,5}는 2번부터 5번까지 반복을 뜻합니다.",
@@ -13,7 +14,10 @@ export function filterRegexHelpText() {
         "마침표, 괄호, 별표, 물음표 같은 문자를 글자 그대로 찾으려면 앞에 역슬래시를 붙여야 할 수 있습니다.",
         "슬래시(/.../)로 감싸지 말고 패턴만 입력합니다.",
         "저장 또는 미리 실행 시 서버가 검사하므로, 실제 동작은 서버 결과를 기준으로 확인합니다.",
-    ].join(" ");
+    ];
+}
+export function filterRegexHelpText() {
+    return filterRegexHelpItems().join(" ");
 }
 export function filterDryRunHelpText() {
     return "현재 작성 중인 규칙을 서버의 실제 필터 엔진으로 실행합니다. 샘플은 저장하지 않고 일치 여부, 예상 처리, 예상 심각도 같은 안전한 메타데이터만 반환합니다.";

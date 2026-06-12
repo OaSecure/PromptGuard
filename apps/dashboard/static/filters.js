@@ -1,6 +1,6 @@
 import { DashboardApiError, dashboardRequest } from "./dashboardApi.js";
 import { runDashboardLogout } from "./dashboardSessionFlow.js";
-import { buildFilterDryRunPlan, buildFilterSavePlan, filterActionOptions, filterDryRunHelpText, filterFieldVisibility, filterFormActionSpecs, filterHeaderNavItems, filterKindOptions, filterRegexHelpText, filterSensitivityOptions, filterSeverityOptions, safeFilterMutationErrorMessage, } from "./filtersPageModel.js";
+import { buildFilterDryRunPlan, buildFilterSavePlan, filterActionOptions, filterDryRunHelpText, filterFieldVisibility, filterFormActionSpecs, filterHeaderNavItems, filterKindOptions, filterRegexHelpItems, filterSensitivityOptions, filterSeverityOptions, safeFilterMutationErrorMessage, } from "./filtersPageModel.js";
 import { logoutDashboardSession, refreshDashboardCsrf } from "./session.js";
 const root = document.querySelector("#filters-app");
 let rules = [];
@@ -169,6 +169,13 @@ function textarea(value, onInput, disabled = false) {
     node.disabled = disabled;
     node.addEventListener("input", () => onInput(node.value));
     return node;
+}
+function helpList(items) {
+    const list = el("ul", "filter-help-list");
+    for (const item of items) {
+        list.append(el("li", undefined, item));
+    }
+    return list;
 }
 function select(value, values, onChange, disabled = false) {
     const node = el("select");
@@ -341,7 +348,6 @@ function renderForm() {
     const [saveAction] = filterFormActionSpecs(Boolean(dryRunText.trim()));
     actions.append(button(saveAction.label, "login-button", undefined, saveAction.disabled, saveAction.type));
     form.append(actions);
-    form.append(renderDryRun());
     if (formMessage) {
         const message = el("p", "privacy-note", formMessage);
         message.setAttribute("role", formMessage.includes("했습니다") ? "status" : "alert");
@@ -362,7 +368,7 @@ function renderKindFields() {
         pattern.placeholder = "예: secret-[0-9]+";
         const row = el("div", "form-row");
         row.append(field("정규식 패턴", pattern), field("제외 키워드", input(formState.exclusionKeywords, (value) => { formState.exclusionKeywords = value; })));
-        box.append(el("h3", undefined, "정규식 설정"), el("p", "filter-subtext", filterRegexHelpText()), row);
+        box.append(el("h3", undefined, "정규식 설정"), helpList(filterRegexHelpItems()), row);
     }
     else {
         const row = el("div", "form-row three");
@@ -427,7 +433,7 @@ function renderMain() {
     }
     main.append(renderSummary());
     const grid = el("section", "filter-grid");
-    grid.append(renderForm());
+    grid.append(renderForm(), renderDryRun());
     main.append(grid);
     if (pageState === "empty") {
         main.append(el("section", "table-card empty-state", "표시할 필터 규칙이 없습니다."));

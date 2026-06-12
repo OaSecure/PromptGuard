@@ -10,7 +10,7 @@
     "test:overview": "npm run build && node --test tests/overviewScreenShell.test.mjs tests/dashboardNavigationShell.test.mjs",
     "test:users": "npm run build && node --test tests/usersPageModel.test.mjs tests/usersRequestModel.test.mjs",
     "test:events": "npm run build && node --test tests/eventsPageModel.test.mjs tests/eventDetailPageModel.test.mjs tests/eventsScreenShell.test.mjs",
-    "test:filters": "npm run build && node --test tests/filtersPageModel.test.mjs tests/dashboardSessionFlow.test.mjs tests/session.test.mjs"
+    "test:filters": "npm run build && node --test tests/filtersPageModel.test.mjs tests/filtersScreenLayout.test.mjs tests/dashboardSessionFlow.test.mjs tests/session.test.mjs"
   },
   "devDependencies": {
     "typescript": "^5.8.3"
