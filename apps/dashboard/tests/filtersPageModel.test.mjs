@@ -102,6 +102,14 @@ test("filter guidance makes server dry-run oracle and regex semantics explicit",
   assert.match(filterRegexHelpText(), /\+는 바로 앞 규칙이 1번 이상 반복/);
   assert.match(filterRegexHelpText(), /\[abc\]는 a, b, c 중 한 글자/);
   assert.match(filterRegexHelpText(), /\?는 바로 앞 규칙이 없어도 되고 1번 있어도 된다는 뜻/);
+  assert.match(filterRegexHelpText(), /\*는 0번 이상 반복/);
+  assert.match(filterRegexHelpText(), /\{3\}은 정확히 3번/);
+  assert.match(filterRegexHelpText(), /\^는 문장 시작/);
+  assert.match(filterRegexHelpText(), /\$는 문장 끝/);
+  assert.match(filterRegexHelpText(), /\\d는 숫자/);
+  assert.match(filterRegexHelpText(), /\\s는 공백/);
+  assert.match(filterRegexHelpText(), /\\w는 영문자, 숫자, 밑줄/);
+  assert.match(filterRegexHelpText(), /괄호\(\)는 여러 글자를 하나의 묶음/);
   assert.match(filterRegexHelpText(), /마침표, 괄호, 별표, 물음표/);
   assert.match(filterRegexHelpText(), /저장 또는 미리 실행 시 서버가 검사/);
 });
