@@ -57,9 +57,18 @@ type FilterActionSpec = {
   disabled: boolean;
 };
 
+export type FilterSelectOption<TValue extends string> = {
+  value: TValue;
+  label: string;
+};
+
 export type FilterSavePlan =
   | { kind: "validation_error"; errors: FilterValidationError[] }
   | { kind: "request"; path: string; method: "POST" | "PATCH"; body: Record<string, unknown> };
+
+export type FilterDryRunPlan =
+  | { kind: "validation_error"; errors: FilterValidationError[] }
+  | { kind: "request"; path: "/dashboard/filters/dry-run"; method: "POST"; body: Record<string, unknown> };
 
 export type FilterFieldVisibility = {
   canEditIdentity: boolean;
@@ -70,9 +79,45 @@ export type FilterFieldVisibility = {
 };
 
 export type FilterValidationError = {
-  field: "label" | "keywords" | "pattern" | "contextGroups";
+  field: "label" | "keywords" | "pattern" | "contextGroups" | "sampleText" | "windowSize" | "minConditionCount";
   message: string;
 };
+
+const MAX_REGEX_PATTERN_LENGTH = 1000;
+
+export function filterKindOptions(): FilterSelectOption<RuleKind>[] {
+  return [
+    { value: "keyword", label: "키워드" },
+    { value: "regex", label: "정규식" },
+    { value: "context_rule", label: "업무 맥락" },
+  ];
+}
+
+export function filterSeverityOptions(): FilterSelectOption<RuleSeverity>[] {
+  return [
+    { value: "low", label: "낮음" },
+    { value: "medium", label: "보통" },
+    { value: "high", label: "높음" },
+    { value: "critical", label: "심각" },
+  ];
+}
+
+export function filterActionOptions(): FilterSelectOption<RuleAction>[] {
+  return [
+    { value: "ALLOW", label: "허용" },
+    { value: "WARN", label: "경고" },
+    { value: "MASK", label: "마스킹" },
+    { value: "BLOCK", label: "차단" },
+  ];
+}
+
+export function filterSensitivityOptions(): FilterSelectOption<"low" | "medium" | "high">[] {
+  return [
+    { value: "low", label: "낮음" },
+    { value: "medium", label: "보통" },
+    { value: "high", label: "높음" },
+  ];
+}
 
 export function filterFieldVisibility(state: FilterFormState): FilterFieldVisibility {
   const canEditIdentity = state.origin !== "built_in";
@@ -115,8 +160,17 @@ export function validateFilterFormState(state: FilterFormState): FilterValidatio
   if (state.kind === "regex" && !state.pattern.trim()) {
     return [{ field: "pattern", message: "정규식 패턴을 입력해 주세요." }];
   }
+  if (state.kind === "regex" && state.pattern.trim().length > MAX_REGEX_PATTERN_LENGTH) {
+    return [{ field: "pattern", message: "정규식 패턴은 1000자 이하로 입력해 주세요." }];
+  }
   if (state.kind === "context_rule" && Object.keys(contextGroupConfig(state.contextGroups)).length === 0) {
     return [{ field: "contextGroups", message: "업무 맥락 그룹을 '그룹명: 키워드1, 키워드2' 형식으로 입력해 주세요." }];
+  }
+  if (state.kind === "context_rule" && !isPositiveInteger(state.windowSize)) {
+    return [{ field: "windowSize", message: "검사 범위는 1 이상의 정수로 입력해 주세요." }];
+  }
+  if (state.kind === "context_rule" && !isPositiveInteger(state.minConditionCount)) {
+    return [{ field: "minConditionCount", message: "최소 조건 수는 1 이상의 정수로 입력해 주세요." }];
   }
   return [];
 }
@@ -197,6 +251,25 @@ export function buildFilterDryRunPayload(state: FilterFormState, sampleText: str
   return payload;
 }
 
+export function buildFilterDryRunPlan(state: FilterFormState, sampleText: string): FilterDryRunPlan {
+  if (!sampleText.trim()) {
+    return {
+      kind: "validation_error",
+      errors: [{ field: "sampleText", message: "미리 실행할 샘플을 입력해 주세요." }],
+    };
+  }
+  const errors = validateFilterFormState(state);
+  if (errors.length > 0) {
+    return { kind: "validation_error", errors };
+  }
+  return {
+    kind: "request",
+    path: "/dashboard/filters/dry-run",
+    method: "POST",
+    body: buildFilterDryRunPayload(state, sampleText),
+  };
+}
+
 export function safeFilterMutationErrorMessage(status: number, _detail?: unknown): string {
   if (status === 400 || status === 422) return "입력값을 확인해 주세요.";
   if (status === 401 || status === 403) return "대시보드 권한 또는 보안 토큰을 확인할 수 없습니다. 다시 로그인해 주세요.";
@@ -223,4 +296,9 @@ function configFromForm(state: FilterFormState): Record<string, unknown> {
     min_condition_count: Number(state.minConditionCount),
     sensitivity: state.sensitivity,
   };
+}
+
+function isPositiveInteger(value: string): boolean {
+  if (!/^[0-9]+$/.test(value.trim())) return false;
+  return Number(value) > 0;
 }

@@ -1,6 +1,6 @@
 import { DashboardApiError, dashboardRequest } from "./dashboardApi.js";
 import { runDashboardLogout } from "./dashboardSessionFlow.js";
-import { buildFilterDryRunPayload, buildFilterSavePlan, filterFieldVisibility, filterFormActionSpecs, filterHeaderNavItems, safeFilterMutationErrorMessage, } from "./filtersPageModel.js";
+import { buildFilterDryRunPlan, buildFilterSavePlan, filterActionOptions, filterFieldVisibility, filterFormActionSpecs, filterHeaderNavItems, filterKindOptions, filterSensitivityOptions, filterSeverityOptions, safeFilterMutationErrorMessage, } from "./filtersPageModel.js";
 import { logoutDashboardSession, refreshDashboardCsrf } from "./session.js";
 const root = document.querySelector("#filters-app");
 let rules = [];
@@ -9,6 +9,7 @@ let dryRunText = "";
 let dryRunResult = null;
 let pageState = "loading";
 let pageMessage = "";
+let formMessage = "";
 function blankForm() {
     return {
         mode: "create",
@@ -91,12 +92,13 @@ async function loadRules() {
 async function saveRule() {
     const plan = buildFilterSavePlan(formState);
     if (plan.kind === "validation_error") {
-        pageMessage = plan.errors[0]?.message ?? "입력값을 확인해 주세요.";
+        formMessage = plan.errors[0]?.message ?? "입력값을 확인해 주세요.";
         render();
         return;
     }
     await apiRequest(plan.path, { method: plan.method, body: plan.body });
     dryRunResult = null;
+    formMessage = "필터 규칙을 저장했습니다.";
     await loadRules();
 }
 async function setRuleEnabled(rule, enabled) {
@@ -111,11 +113,18 @@ async function archiveRule(rule) {
     await loadRules();
 }
 async function runDryRun() {
-    const payload = buildFilterDryRunPayload(formState, dryRunText);
-    dryRunResult = await apiRequest("/dashboard/filters/dry-run", {
-        method: "POST",
-        body: payload,
+    const plan = buildFilterDryRunPlan(formState, dryRunText);
+    if (plan.kind === "validation_error") {
+        formMessage = plan.errors[0]?.message ?? "입력값을 확인해 주세요.";
+        dryRunResult = null;
+        render();
+        return;
+    }
+    dryRunResult = await apiRequest(plan.path, {
+        method: plan.method,
+        body: plan.body,
     });
+    formMessage = "미리 실행 결과를 확인했습니다.";
     render();
 }
 function el(tag, className, text) {
@@ -164,8 +173,10 @@ function textarea(value, onInput, disabled = false) {
 function select(value, values, onChange, disabled = false) {
     const node = el("select");
     for (const item of values) {
-        const option = el("option", undefined, item);
-        option.value = item;
+        const optionValue = typeof item === "string" ? item : item.value;
+        const optionLabel = typeof item === "string" ? item : item.label;
+        const option = el("option", undefined, optionLabel);
+        option.value = optionValue;
         node.append(option);
     }
     node.value = value;
@@ -289,6 +300,7 @@ function renderForm() {
     header.append(copy, button("사용자 정의 새로 만들기", "nav-button", () => {
         formState = blankForm();
         dryRunResult = null;
+        formMessage = "";
         render();
     }));
     const form = el("form", "filter-form");
@@ -301,9 +313,10 @@ function renderForm() {
     });
     const visibility = filterFieldVisibility(formState);
     const row1 = el("div", "form-row three");
-    row1.append(field("종류", select(formState.kind, ["keyword", "regex", "context_rule"], (value) => {
+    row1.append(field("종류", select(formState.kind, filterKindOptions(), (value) => {
         formState.kind = value;
         dryRunResult = null;
+        formMessage = "";
         render();
     }, formState.mode === "edit")), field("카테고리", input(formState.category, (value) => { formState.category = value; }, !visibility.canEditIdentity)), field("활성화", checkbox(formState.enabled, (value) => { formState.enabled = value; })));
     const row2 = el("div", "form-row");
@@ -312,14 +325,15 @@ function renderForm() {
         row2.append(field("마스킹 치환 표시", input(formState.placeholder, (value) => { formState.placeholder = value; })));
     }
     const row3 = el("div", "form-row");
-    row3.append(field("심각도", select(formState.severity, ["low", "medium", "high", "critical"], (value) => { formState.severity = value; })), field("처리", select(formState.action, ["ALLOW", "WARN", "MASK", "BLOCK"], (value) => {
+    row3.append(field("심각도", select(formState.severity, filterSeverityOptions(), (value) => { formState.severity = value; })), field("처리", select(formState.action, filterActionOptions(), (value) => {
         formState.action = value;
         if (value !== "MASK")
             formState.placeholder = "";
         dryRunResult = null;
+        formMessage = "";
         render();
     })));
-    form.append(header, row1, row2, row3, field("설명", textarea(formState.description, (value) => { formState.description = value; }, !visibility.canEditIdentity)));
+    form.append(header, row1, row2, row3, el("p", "filter-subtext", "활성화는 규칙 실행 여부이고, 처리는 규칙이 탐지됐을 때 서버가 적용할 Allow/Warn/Mask/Block 결정입니다."), field("설명", textarea(formState.description, (value) => { formState.description = value; }, !visibility.canEditIdentity)));
     if (visibility.canEditIdentity) {
         form.append(renderKindFields());
     }
@@ -327,6 +341,11 @@ function renderForm() {
     const [saveAction] = filterFormActionSpecs(Boolean(dryRunText.trim()));
     actions.append(button(saveAction.label, "login-button", undefined, saveAction.disabled, saveAction.type));
     form.append(actions);
+    if (formMessage) {
+        const message = el("p", "privacy-note", formMessage);
+        message.setAttribute("role", formMessage.includes("했습니다") ? "status" : "alert");
+        form.append(message);
+    }
     card.append(form);
     return card;
 }
@@ -342,11 +361,11 @@ function renderKindFields() {
         pattern.placeholder = "예: secret-[0-9]+";
         const row = el("div", "form-row");
         row.append(field("정규식 패턴", pattern), field("제외 키워드", input(formState.exclusionKeywords, (value) => { formState.exclusionKeywords = value; })));
-        box.append(el("h3", undefined, "정규식 설정"), el("p", "filter-subtext", "서버가 저장 전에 정규식 문법과 길이를 검증합니다."), row);
+        box.append(el("h3", undefined, "정규식 설정"), el("p", "filter-subtext", "Python 정규식 패턴만 입력합니다. 예: secret-[0-9]+, api[_-]?key. 슬래시(/.../)는 쓰지 않고 저장 전 서버가 문법을 검증합니다."), row);
     }
     else {
         const row = el("div", "form-row three");
-        row.append(field("검사 범위", input(formState.windowSize, (value) => { formState.windowSize = value; })), field("최소 조건 수", input(formState.minConditionCount, (value) => { formState.minConditionCount = value; })), field("민감도", select(formState.sensitivity, ["low", "medium", "high"], (value) => { formState.sensitivity = value; })));
+        row.append(field("검사 범위", input(formState.windowSize, (value) => { formState.windowSize = value; })), field("최소 조건 수", input(formState.minConditionCount, (value) => { formState.minConditionCount = value; })), field("민감도", select(formState.sensitivity, filterSensitivityOptions(), (value) => { formState.sensitivity = value; })));
         box.append(el("h3", undefined, "업무 맥락 규칙 설정"), el("p", "filter-subtext", "그룹명: 키워드1, 키워드2 형식으로 줄마다 입력합니다."), field("키워드 그룹", textarea(formState.contextGroups, (value) => { formState.contextGroups = value; })), field("제외 키워드", input(formState.exclusionKeywords, (value) => { formState.exclusionKeywords = value; })), row);
     }
     return box;
@@ -388,8 +407,11 @@ function renderDryRun() {
 }
 function renderMain() {
     const main = el("main", "dashboard filter-dashboard");
-    if (pageMessage)
-        main.append(el("p", "privacy-note", pageMessage));
+    if (pageMessage) {
+        const message = el("p", "privacy-note", pageMessage);
+        message.setAttribute("role", "alert");
+        main.append(message);
+    }
     if (pageState === "loading") {
         main.append(el("section", "filter-summary", "필터 규칙을 불러오는 중입니다."));
         return main;

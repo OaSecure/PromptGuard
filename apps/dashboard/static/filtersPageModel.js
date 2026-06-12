@@ -1,3 +1,34 @@
+const MAX_REGEX_PATTERN_LENGTH = 1000;
+export function filterKindOptions() {
+    return [
+        { value: "keyword", label: "키워드" },
+        { value: "regex", label: "정규식" },
+        { value: "context_rule", label: "업무 맥락" },
+    ];
+}
+export function filterSeverityOptions() {
+    return [
+        { value: "low", label: "낮음" },
+        { value: "medium", label: "보통" },
+        { value: "high", label: "높음" },
+        { value: "critical", label: "심각" },
+    ];
+}
+export function filterActionOptions() {
+    return [
+        { value: "ALLOW", label: "허용" },
+        { value: "WARN", label: "경고" },
+        { value: "MASK", label: "마스킹" },
+        { value: "BLOCK", label: "차단" },
+    ];
+}
+export function filterSensitivityOptions() {
+    return [
+        { value: "low", label: "낮음" },
+        { value: "medium", label: "보통" },
+        { value: "high", label: "높음" },
+    ];
+}
 export function filterFieldVisibility(state) {
     const canEditIdentity = state.origin !== "built_in";
     return {
@@ -38,8 +69,17 @@ export function validateFilterFormState(state) {
     if (state.kind === "regex" && !state.pattern.trim()) {
         return [{ field: "pattern", message: "정규식 패턴을 입력해 주세요." }];
     }
+    if (state.kind === "regex" && state.pattern.trim().length > MAX_REGEX_PATTERN_LENGTH) {
+        return [{ field: "pattern", message: "정규식 패턴은 1000자 이하로 입력해 주세요." }];
+    }
     if (state.kind === "context_rule" && Object.keys(contextGroupConfig(state.contextGroups)).length === 0) {
         return [{ field: "contextGroups", message: "업무 맥락 그룹을 '그룹명: 키워드1, 키워드2' 형식으로 입력해 주세요." }];
+    }
+    if (state.kind === "context_rule" && !isPositiveInteger(state.windowSize)) {
+        return [{ field: "windowSize", message: "검사 범위는 1 이상의 정수로 입력해 주세요." }];
+    }
+    if (state.kind === "context_rule" && !isPositiveInteger(state.minConditionCount)) {
+        return [{ field: "minConditionCount", message: "최소 조건 수는 1 이상의 정수로 입력해 주세요." }];
     }
     return [];
 }
@@ -114,6 +154,24 @@ export function buildFilterDryRunPayload(state, sampleText) {
     }
     return payload;
 }
+export function buildFilterDryRunPlan(state, sampleText) {
+    if (!sampleText.trim()) {
+        return {
+            kind: "validation_error",
+            errors: [{ field: "sampleText", message: "미리 실행할 샘플을 입력해 주세요." }],
+        };
+    }
+    const errors = validateFilterFormState(state);
+    if (errors.length > 0) {
+        return { kind: "validation_error", errors };
+    }
+    return {
+        kind: "request",
+        path: "/dashboard/filters/dry-run",
+        method: "POST",
+        body: buildFilterDryRunPayload(state, sampleText),
+    };
+}
 export function safeFilterMutationErrorMessage(status, _detail) {
     if (status === 400 || status === 422)
         return "입력값을 확인해 주세요.";
@@ -141,4 +199,9 @@ function configFromForm(state) {
         min_condition_count: Number(state.minConditionCount),
         sensitivity: state.sensitivity,
     };
+}
+function isPositiveInteger(value) {
+    if (!/^[0-9]+$/.test(value.trim()))
+        return false;
+    return Number(value) > 0;
 }

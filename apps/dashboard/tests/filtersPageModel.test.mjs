@@ -3,11 +3,16 @@ import assert from "node:assert/strict";
 
 const {
   buildFilterDryRunPayload,
+  buildFilterDryRunPlan,
   buildFilterMutationPayload,
   buildFilterSavePlan,
+  filterActionOptions,
   filterFieldVisibility,
   filterFormActionSpecs,
   filterHeaderNavItems,
+  filterKindOptions,
+  filterSensitivityOptions,
+  filterSeverityOptions,
   safeFilterMutationErrorMessage,
   validateFilterFormState,
 } = await import("../static/filtersPageModel.js");
@@ -59,6 +64,31 @@ test("custom keyword create payload preserves documented keyword contract", () =
     kind: "keyword",
     keyword: "alpha",
   });
+});
+
+test("filter select options expose Korean labels while preserving API enum values", () => {
+  assert.deepEqual(filterKindOptions(), [
+    { value: "keyword", label: "키워드" },
+    { value: "regex", label: "정규식" },
+    { value: "context_rule", label: "업무 맥락" },
+  ]);
+  assert.deepEqual(filterSeverityOptions(), [
+    { value: "low", label: "낮음" },
+    { value: "medium", label: "보통" },
+    { value: "high", label: "높음" },
+    { value: "critical", label: "심각" },
+  ]);
+  assert.deepEqual(filterActionOptions(), [
+    { value: "ALLOW", label: "허용" },
+    { value: "WARN", label: "경고" },
+    { value: "MASK", label: "마스킹" },
+    { value: "BLOCK", label: "차단" },
+  ]);
+  assert.deepEqual(filterSensitivityOptions(), [
+    { value: "low", label: "낮음" },
+    { value: "medium", label: "보통" },
+    { value: "high", label: "높음" },
+  ]);
 });
 
 test("filter field visibility follows rule kind and action semantics", () => {
@@ -215,8 +245,20 @@ test("filter form validation defines required field contract before API mutation
     { field: "pattern", message: "정규식 패턴을 입력해 주세요." },
   ]);
 
+  assert.deepEqual(validateFilterFormState({ ...baseForm, kind: "regex", pattern: "x".repeat(1001) }), [
+    { field: "pattern", message: "정규식 패턴은 1000자 이하로 입력해 주세요." },
+  ]);
+
   assert.deepEqual(validateFilterFormState({ ...baseForm, kind: "context_rule", contextGroups: "broken line" }), [
     { field: "contextGroups", message: "업무 맥락 그룹을 '그룹명: 키워드1, 키워드2' 형식으로 입력해 주세요." },
+  ]);
+
+  assert.deepEqual(validateFilterFormState({ ...baseForm, kind: "context_rule", windowSize: "0" }), [
+    { field: "windowSize", message: "검사 범위는 1 이상의 정수로 입력해 주세요." },
+  ]);
+
+  assert.deepEqual(validateFilterFormState({ ...baseForm, kind: "context_rule", minConditionCount: "1.5" }), [
+    { field: "minConditionCount", message: "최소 조건 수는 1 이상의 정수로 입력해 주세요." },
   ]);
 });
 
@@ -241,4 +283,22 @@ test("filter save plan maps valid create and update states to documented API req
     method: "PATCH",
     body: buildFilterMutationPayload({ ...baseForm, mode: "edit", id: "rule-1" }),
   });
+});
+
+test("dry-run plan validates sample and draft rule before calling API", () => {
+  assert.deepEqual(buildFilterDryRunPlan(baseForm, " "), {
+    kind: "validation_error",
+    errors: [{ field: "sampleText", message: "미리 실행할 샘플을 입력해 주세요." }],
+  });
+
+  assert.deepEqual(buildFilterDryRunPlan({ ...baseForm, label: " " }, "sample"), {
+    kind: "validation_error",
+    errors: [{ field: "label", message: "규칙 이름을 입력해 주세요." }],
+  });
+
+  const plan = buildFilterDryRunPlan(baseForm, "alpha sample");
+  assert.equal(plan.kind, "request");
+  assert.equal(plan.path, "/dashboard/filters/dry-run");
+  assert.equal(plan.method, "POST");
+  assert.deepEqual(plan.body, buildFilterDryRunPayload(baseForm, "alpha sample"));
 });
