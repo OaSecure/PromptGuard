@@ -70,6 +70,52 @@ describe("message router API auth boundary", () => {
     expect(JSON.stringify(response)).not.toContain("test-password");
   });
 
+  it("logs out through the real API with bearer and refresh ownership then clears auth state", async () => {
+    const storage = createStorage({
+      [STORAGE_KEYS.apiBaseUrl]: "https://api.promptguard.test",
+      [STORAGE_KEYS.mockMode]: false,
+      [STORAGE_KEYS.accessToken]: "test-access-token",
+      [STORAGE_KEYS.refreshToken]: "stored-refresh-token"
+    });
+    const fetchMock = vi.fn(async () => jsonResponse({ ok: true }));
+    vi.stubGlobal("chrome", { storage: { local: storage } });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await routeMessage({ type: "AUTH_LOGOUT_REQUEST" });
+
+    expect(response).toEqual({ ok: true });
+    expect(fetchMock).toHaveBeenCalledWith("https://api.promptguard.test/auth/logout", expect.objectContaining({
+      method: "POST",
+      headers: expect.objectContaining({
+        Authorization: "Bearer test-access-token",
+        "X-PromptGuard-Client": "chrome-extension"
+      }),
+      body: JSON.stringify({ refresh_token: "stored-refresh-token" })
+    }));
+    expect(storage.snapshot()[STORAGE_KEYS.accessToken]).toBeUndefined();
+    expect(storage.snapshot()[STORAGE_KEYS.refreshToken]).toBeUndefined();
+  });
+
+  it("clears local auth state on logout even when the server rejects the stale refresh token", async () => {
+    const storage = createStorage({
+      [STORAGE_KEYS.apiBaseUrl]: "https://api.promptguard.test",
+      [STORAGE_KEYS.mockMode]: false,
+      [STORAGE_KEYS.accessToken]: "expired-access-token",
+      [STORAGE_KEYS.refreshToken]: "stored-refresh-token"
+    });
+    const fetchMock = vi.fn(async () => statusResponse(401, { error: "raw server body with stored-refresh-token" }));
+    vi.stubGlobal("chrome", { storage: { local: storage } });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await routeMessage({ type: "AUTH_LOGOUT_REQUEST" });
+
+    expect(response).toEqual({ code: "UNAUTHORIZED", message: "Login expired. Sign in again." });
+    expect(JSON.stringify(response)).not.toContain("stored-refresh-token");
+    expect(JSON.stringify(response)).not.toContain("raw server body");
+    expect(storage.snapshot()[STORAGE_KEYS.accessToken]).toBeUndefined();
+    expect(storage.snapshot()[STORAGE_KEYS.refreshToken]).toBeUndefined();
+  });
+
   it("refreshes once after real auth check returns 401 and retries with the new access token", async () => {
     const storage = createStorage({
       [STORAGE_KEYS.apiBaseUrl]: "https://api.promptguard.test",

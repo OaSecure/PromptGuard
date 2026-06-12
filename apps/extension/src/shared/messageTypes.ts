@@ -26,6 +26,7 @@ export function isExtensionMessage(value: unknown): value is ExtensionMessage {
     case "AUTH_LOGIN_REQUEST":
       return isRecord(value.payload) && isNonEmptyString(value.payload.login_id) && isNonEmptyString(value.payload.password);
     case "AUTH_ME_REQUEST":
+    case "AUTH_LOGOUT_REQUEST":
     case "CONFIG_SYNC_REQUEST":
     case "GET_CONFIG_REQUEST":
       return true;
