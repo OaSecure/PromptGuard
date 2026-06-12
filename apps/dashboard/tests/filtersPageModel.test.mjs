@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 const {
   buildFilterDryRunPayload,
   buildFilterMutationPayload,
+  filterFieldVisibility,
   filterFormActionSpecs,
   filterHeaderNavItems,
   safeFilterMutationErrorMessage,
@@ -56,6 +57,47 @@ test("custom keyword create payload preserves documented keyword contract", () =
     kind: "keyword",
     keyword: "alpha",
   });
+});
+
+test("filter field visibility follows rule kind and action semantics", () => {
+  assert.deepEqual(filterFieldVisibility(baseForm), {
+    canEditIdentity: true,
+    showPlaceholder: true,
+    showKeywordFields: true,
+    showRegexFields: false,
+    showContextFields: false,
+  });
+
+  assert.deepEqual(filterFieldVisibility({ ...baseForm, kind: "regex", action: "WARN" }), {
+    canEditIdentity: true,
+    showPlaceholder: false,
+    showKeywordFields: false,
+    showRegexFields: true,
+    showContextFields: false,
+  });
+
+  assert.deepEqual(filterFieldVisibility({ ...baseForm, kind: "context_rule", action: "BLOCK" }), {
+    canEditIdentity: true,
+    showPlaceholder: false,
+    showKeywordFields: false,
+    showRegexFields: false,
+    showContextFields: true,
+  });
+
+  assert.deepEqual(filterFieldVisibility({ ...baseForm, mode: "edit", origin: "built_in", kind: "detector" }), {
+    canEditIdentity: false,
+    showPlaceholder: false,
+    showKeywordFields: false,
+    showRegexFields: false,
+    showContextFields: false,
+  });
+});
+
+test("non-mask actions do not send masking placeholder", () => {
+  for (const action of ["ALLOW", "WARN", "BLOCK"]) {
+    const payload = buildFilterMutationPayload({ ...baseForm, action, placeholder: "SHOULD_NOT_SEND" });
+    assert.equal(payload.placeholder, null);
+  }
 });
 
 test("built-in update payload keeps allowed fields and drops forbidden metadata under normal mutation path", () => {

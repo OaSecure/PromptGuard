@@ -57,6 +57,25 @@ type FilterActionSpec = {
   disabled: boolean;
 };
 
+export type FilterFieldVisibility = {
+  canEditIdentity: boolean;
+  showPlaceholder: boolean;
+  showKeywordFields: boolean;
+  showRegexFields: boolean;
+  showContextFields: boolean;
+};
+
+export function filterFieldVisibility(state: FilterFormState): FilterFieldVisibility {
+  const canEditIdentity = state.origin !== "built_in";
+  return {
+    canEditIdentity,
+    showPlaceholder: canEditIdentity && state.action === "MASK",
+    showKeywordFields: canEditIdentity && state.kind === "keyword",
+    showRegexFields: canEditIdentity && state.kind === "regex",
+    showContextFields: canEditIdentity && state.kind === "context_rule",
+  };
+}
+
 export function splitCsv(value: string): string[] {
   return value
     .split(",")
@@ -109,7 +128,7 @@ export function buildFilterMutationPayload(state: FilterFormState): Record<strin
     category: state.category.trim(),
     label: state.label.trim(),
     description: state.description.trim() || null,
-    placeholder: state.placeholder.trim() || null,
+    placeholder: state.action === "MASK" ? state.placeholder.trim() || null : null,
     severity: state.severity,
     action: state.action,
     enabled: state.enabled,
