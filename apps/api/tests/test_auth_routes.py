@@ -58,6 +58,11 @@ class _FakeSession:
         self.statements.append(str(statement))
         return _ScalarResult(self.user)
 
+    async def get(self, model, item_id):
+        if self.user is not None and self.user.id == item_id:
+            return self.user
+        return None
+
     def add(self, item):
         self.added.append(item)
 
@@ -240,6 +245,24 @@ def test_logout_rejects_other_users_refresh_token_without_revoking() -> None:
 
     assert response.status_code == 401
     assert other_user_refresh.revoked_at is None
+
+
+def test_logout_rejects_disabled_bearer_user_without_revoking_refresh_token() -> None:
+    disabled_user = _user(status="DISABLED")
+    refresh_token = _refresh_token(user_id=disabled_user.id)
+    access_token, _ = auth_routes.create_access_token(disabled_user.id)
+    fake_session = _RefreshTokenSession(current_user=disabled_user, refresh_token=refresh_token)
+    client = TestClient(_build_app(fake_session))
+
+    response = client.post(
+        "/auth/logout",
+        headers={"Authorization": f"Bearer {access_token}"},
+        json={"refresh_token": "disabled-user-refresh-token"},
+    )
+
+    assert response.status_code == 403
+    assert refresh_token.revoked_at is None
+    assert "disabled-user-refresh-token" not in response.text
 
 
 def test_logout_rejects_stale_refresh_token_without_raw_token_leak() -> None:
