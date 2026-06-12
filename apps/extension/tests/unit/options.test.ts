@@ -13,6 +13,7 @@ describe("options page", () => {
       <button id="saveSettings">Save</button>
       <button id="testConnection">Test connection</button>
       <button id="syncConfig">Sync config</button>
+      <button id="logoutButton">Logout</button>
       <div id="connectionStatus"></div>
       <div id="serverStatus"></div>
       <div id="modeStatus"></div>
@@ -187,6 +188,29 @@ describe("options page", () => {
     expect(button.textContent).toBe("Sync config");
     expect(chromeMock.storage.local.snapshot()[STORAGE_KEYS.mockMode]).toBe(false);
     expect(chromeMock.storage.local.snapshot()[STORAGE_KEYS.apiBaseUrl]).toBe("https://api.promptguard.test/api/v1");
+  });
+
+  it("logout click requests background logout and renders a signed-out state", async () => {
+    const chromeMock = createChromeMock(
+      {
+        [STORAGE_KEYS.mockMode]: false
+      },
+      async (message) => (message.type === "AUTH_LOGOUT_REQUEST" ? { ok: true } : { ok: true })
+    );
+    vi.stubGlobal("chrome", chromeMock);
+    await import("../../src/options/options");
+
+    await waitFor(() => inputValue("#apiBaseUrl") === DEFAULT_CONFIG.api_base_url);
+    const button = document.querySelector<HTMLButtonElement>("#logoutButton")!;
+    button.click();
+
+    expect(button.disabled).toBe(true);
+    expect(button.textContent).toBe("Logging out...");
+    await waitFor(() => textValue("#connectionStatus") === "Logged out");
+    expect(chromeMock.runtime.sendMessage).toHaveBeenCalledWith({ type: "AUTH_LOGOUT_REQUEST" });
+    expect(textValue("#serverStatus")).toBe("Signed out");
+    expect(button.disabled).toBe(false);
+    expect(button.textContent).toBe("Logout");
   });
 });
 

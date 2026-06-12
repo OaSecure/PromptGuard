@@ -7,6 +7,7 @@ describe("extension message guard", () => {
   it("accepts known messages with the minimum required payload shape", () => {
     expect(isExtensionMessage({ type: "GET_CONFIG_REQUEST" })).toBe(true);
     expect(isExtensionMessage({ type: "AUTH_ME_REQUEST" })).toBe(true);
+    expect(isExtensionMessage({ type: "AUTH_LOGOUT_REQUEST" })).toBe(true);
     expect(isExtensionMessage({ type: "AUTH_LOGIN_REQUEST", payload: { login_id: "member@example.com", password: "test-password" } })).toBe(true);
     expect(isExtensionMessage({ type: "PROMPT_ANALYZE_REQUEST", payload: promptAnalyzeRequest() })).toBe(true);
     expect(isExtensionMessage({ type: "FILES_ANALYZE_REQUEST", payload: filesAnalyzeRequest() })).toBe(true);
