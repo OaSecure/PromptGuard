@@ -825,10 +825,7 @@ input {
 }
 
 .filter-grid {
-  align-items: start;
-  display: grid;
-  gap: 24px;
-  grid-template-columns: 1.35fr 0.9fr;
+  display: block;
   margin-bottom: 34px;
 }
 
@@ -902,6 +899,14 @@ input {
 .dryrun-card {
   display: grid;
   gap: 18px;
+}
+
+.dryrun-card {
+  background: #f8fcff;
+  border: 1px solid #d8ecfb;
+  border-radius: 18px;
+  margin-top: 8px;
+  padding: 20px;
 }
 
 .filter-form label,

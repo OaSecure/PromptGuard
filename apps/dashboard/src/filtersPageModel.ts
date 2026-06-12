@@ -85,6 +85,14 @@ export type FilterValidationError = {
 
 const MAX_REGEX_PATTERN_LENGTH = 1000;
 
+export function filterRegexHelpText(): string {
+  return "Python 정규식 패턴만 입력합니다. 예: secret-[0-9]+, api[_-]?key. 슬래시(/.../)는 쓰지 않고 저장 또는 미리 실행 시 서버가 문법을 검증합니다.";
+}
+
+export function filterDryRunHelpText(): string {
+  return "현재 작성 중인 규칙을 서버의 실제 필터 엔진으로 실행합니다. 샘플은 저장하지 않고 일치 여부, 예상 처리, 예상 심각도 같은 안전한 메타데이터만 반환합니다.";
+}
+
 export function filterKindOptions(): FilterSelectOption<RuleKind>[] {
   return [
     { value: "keyword", label: "키워드" },

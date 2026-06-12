@@ -4,10 +4,12 @@ import {
   buildFilterDryRunPlan,
   buildFilterSavePlan,
   filterActionOptions,
+  filterDryRunHelpText,
   filterFieldVisibility,
   filterFormActionSpecs,
   filterHeaderNavItems,
   filterKindOptions,
+  filterRegexHelpText,
   filterSensitivityOptions,
   filterSeverityOptions,
   safeFilterMutationErrorMessage,
@@ -424,6 +426,7 @@ function renderForm(): HTMLElement {
     button(saveAction.label, "login-button", undefined, saveAction.disabled, saveAction.type),
   );
   form.append(actions);
+  form.append(renderDryRun());
   if (formMessage) {
     const message = el("p", "privacy-note", formMessage);
     message.setAttribute("role", formMessage.includes("했습니다") ? "status" : "alert");
@@ -452,7 +455,7 @@ function renderKindFields(): HTMLElement {
     );
     box.append(
       el("h3", undefined, "정규식 설정"),
-      el("p", "filter-subtext", "Python 정규식 패턴만 입력합니다. 예: secret-[0-9]+, api[_-]?key. 슬래시(/.../)는 쓰지 않고 저장 전 서버가 문법을 검증합니다."),
+      el("p", "filter-subtext", filterRegexHelpText()),
       row,
     );
   } else {
@@ -474,8 +477,8 @@ function renderKindFields(): HTMLElement {
 }
 
 function renderDryRun(): HTMLElement {
-  const card = el("section", "filter-card dryrun-card");
-  card.append(el("h2", undefined, "미리 실행"), el("p", "filter-subtext", "샘플은 저장하지 않고 안전한 메타데이터만 표시합니다."));
+  const card = el("section", "dryrun-card");
+  card.append(el("h3", undefined, "현재 규칙 미리 실행"), el("p", "filter-subtext", filterDryRunHelpText()));
   const sample = textarea(dryRunText, (value) => { dryRunText = value; });
   sample.className = "dryrun-textarea";
   card.append(field("샘플", sample));
@@ -525,7 +528,7 @@ function renderMain(): HTMLElement {
   }
   main.append(renderSummary());
   const grid = el("section", "filter-grid");
-  grid.append(renderForm(), renderDryRun());
+  grid.append(renderForm());
   main.append(grid);
   if (pageState === "empty") {
     main.append(el("section", "table-card empty-state", "표시할 필터 규칙이 없습니다."));

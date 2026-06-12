@@ -7,10 +7,12 @@ const {
   buildFilterMutationPayload,
   buildFilterSavePlan,
   filterActionOptions,
+  filterDryRunHelpText,
   filterFieldVisibility,
   filterFormActionSpecs,
   filterHeaderNavItems,
   filterKindOptions,
+  filterRegexHelpText,
   filterSensitivityOptions,
   filterSeverityOptions,
   safeFilterMutationErrorMessage,
@@ -89,6 +91,13 @@ test("filter select options expose Korean labels while preserving API enum value
     { value: "medium", label: "보통" },
     { value: "high", label: "높음" },
   ]);
+});
+
+test("filter guidance makes server dry-run oracle and regex semantics explicit", () => {
+  assert.match(filterDryRunHelpText(), /서버의 실제 필터 엔진/);
+  assert.match(filterDryRunHelpText(), /샘플은 저장하지 않고/);
+  assert.match(filterRegexHelpText(), /Python 정규식/);
+  assert.match(filterRegexHelpText(), /서버가 문법을 검증/);
 });
 
 test("filter field visibility follows rule kind and action semantics", () => {
