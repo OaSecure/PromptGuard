@@ -1,3 +1,5 @@
+import { dashboardFallbackMessage } from "./dashboardFallback.js";
+
 export type DashboardEventListItem = {
   event_id: string;
   created_at: string;
@@ -86,20 +88,17 @@ export function deriveEventsScreenState(
   rowCount: number,
 ): EventsScreenState {
   if (phase === "loading") {
-    return { kind: "loading", message: "이벤트 목록을 불러오는 중입니다." };
+    return { kind: "loading", message: dashboardFallbackMessage("loading") };
   }
   if (phase === "error") {
-    return { kind: "error", message: "이벤트 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요." };
+    return { kind: "error", message: dashboardFallbackMessage("error") };
   }
   if (rowCount === 0) {
-    return { kind: "empty", message: "표시할 이벤트가 없습니다." };
+    return { kind: "empty", message: dashboardFallbackMessage("empty") };
   }
   return { kind: "ready", message: "" };
 }
 
 export function safeEventsErrorMessage(status: number): string {
-  if (status === 401) return "대시보드 로그인이 필요합니다.";
-  if (status === 403) return "대시보드 접근 권한을 확인할 수 없습니다.";
-  if (status === 0) return "대시보드 API에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.";
-  return "이벤트 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.";
+  return dashboardFallbackMessage("error", status);
 }

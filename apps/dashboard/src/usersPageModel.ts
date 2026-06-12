@@ -1,3 +1,5 @@
+import { dashboardFallbackMessage } from "./dashboardFallback.js";
+
 export type DashboardUserRow = {
   login_id: string;
   username: string;
@@ -131,16 +133,16 @@ export function projectUserTableRows(users: DashboardUserRow[]): UserTableRowVie
 
 export function deriveUsersScreenState(users: DashboardUserRow[], hadError: boolean): UsersScreenState {
   if (hadError) {
-    return { kind: "error", message: "사용자 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요." };
+    return { kind: "error", message: dashboardFallbackMessage("error") };
   }
   if (users.length === 0) {
-    return { kind: "empty", message: "등록된 사용자가 없습니다." };
+    return { kind: "empty", message: dashboardFallbackMessage("empty") };
   }
   return { kind: "ready", message: "" };
 }
 
 export function loadingUsersScreenState(): UsersScreenState {
-  return { kind: "loading", message: "사용자 정보를 불러오는 중입니다." };
+  return { kind: "loading", message: dashboardFallbackMessage("loading") };
 }
 
 export function safeUsersMutationErrorMessage(status: number): string {
@@ -154,7 +156,7 @@ export function safeUsersMutationErrorMessage(status: number): string {
     return "대상 사용자를 찾을 수 없습니다.";
   }
   if (status === 0) {
-    return "서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.";
+    return dashboardFallbackMessage("error", status);
   }
   return "요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.";
 }

@@ -1,3 +1,4 @@
+import { dashboardFallbackMessage } from "./dashboardFallback.js";
 function formatDateTime(value) {
     const date = new Date(value);
     if (Number.isNaN(date.getTime()))
@@ -64,26 +65,16 @@ export function projectBusinessContextRows(rows) {
 }
 export function deriveEventDetailScreenState(phase, hasDetail) {
     if (phase === "loading") {
-        return { kind: "loading", message: "이벤트 상세 정보를 불러오는 중입니다." };
+        return { kind: "loading", message: dashboardFallbackMessage("loading") };
     }
     if (phase === "error") {
-        return { kind: "error", message: "이벤트 상세 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요." };
+        return { kind: "error", message: dashboardFallbackMessage("error") };
     }
     if (!hasDetail) {
-        return { kind: "empty", message: "표시할 이벤트 상세 정보가 없습니다." };
+        return { kind: "empty", message: dashboardFallbackMessage("empty") };
     }
     return { kind: "ready", message: "" };
 }
 export function safeEventDetailErrorMessage(status) {
-    if (status === 400)
-        return "이벤트 요청을 확인해 주세요.";
-    if (status === 401)
-        return "대시보드 로그인이 필요합니다.";
-    if (status === 403)
-        return "대시보드 접근 권한을 확인할 수 없습니다.";
-    if (status === 404)
-        return "요청한 이벤트를 찾을 수 없습니다.";
-    if (status === 0)
-        return "대시보드 API에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.";
-    return "이벤트 상세 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.";
+    return dashboardFallbackMessage("error", status);
 }

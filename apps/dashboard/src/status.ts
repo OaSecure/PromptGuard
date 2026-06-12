@@ -1,17 +1,10 @@
 import { DashboardApiError, dashboardRequest } from "./dashboardApi.js";
-import { runDashboardLogout } from "./dashboardSessionFlow.js";
+import { dashboardFallbackMessage } from "./dashboardFallback.js";
+import { markProtectedDashboardReady, runDashboardLogout } from "./dashboardSessionFlow.js";
 import { logoutDashboardSession } from "./session.js";
+import { renderStatusPlan, type DashboardStatus, type StatusExtensionSetupPlan } from "./statusPageModel.js";
 
 type StatusValue = "healthy" | "degraded" | "unhealthy" | "unknown";
-
-type DashboardStatus = {
-  status: StatusValue;
-  last_checked: string;
-  api_status: StatusValue;
-  postgres_status: StatusValue;
-  migration_status: StatusValue;
-  filter_rules_status: StatusValue;
-};
 
 const root = document.querySelector<HTMLDivElement>("#status-app");
 
@@ -105,10 +98,26 @@ function dependencyCard(label: string, value: StatusValue): HTMLElement {
   return card;
 }
 
+function renderExtensionSetup(plan: StatusExtensionSetupPlan): HTMLElement {
+  const card = document.createElement("section");
+  card.className = "status-summary-card extension-setup-card";
+  const copy = document.createElement("div");
+  appendText(copy, "p", "운영 안내").className = "eyebrow";
+  appendText(copy, "h2", plan.title);
+  appendText(copy, "p", plan.description).className = "status-summary-copy";
+  const list = document.createElement("ol");
+  list.className = "status-setup-list";
+  for (const step of plan.steps) {
+    appendText(list, "li", step);
+  }
+  card.append(copy, list);
+  return card;
+}
+
 function renderLoading(): void {
   const card = document.createElement("section");
   card.className = "status-summary-card";
-  appendText(card, "p", "서버 상태 정보를 불러오는 중입니다.");
+  appendText(card, "p", dashboardFallbackMessage("loading"));
   renderShell(card);
 }
 
@@ -118,13 +127,14 @@ function renderUnavailable(statusCode?: number): void {
   const copy = document.createElement("div");
   appendText(copy, "p", "상태 확인 불가").className = "eyebrow";
   appendText(copy, "h2", statusCode === 401 || statusCode === 403 ? "로그인이 필요합니다" : "상태 확인 불가");
-  appendText(copy, "p", "안전한 서버 상태 메타데이터를 불러오지 못했습니다. ADMIN 대시보드 세션으로 다시 시도해 주세요.").className =
+  appendText(copy, "p", dashboardFallbackMessage("error", statusCode)).className =
     "status-summary-copy";
   card.append(copy, badge("unknown"));
   renderShell(card);
 }
 
 function renderStatus(payload: DashboardStatus): void {
+  const plan = renderStatusPlan(payload);
   const summary = document.createElement("section");
   summary.className = "status-summary-card";
   const copy = document.createElement("div");
@@ -151,7 +161,8 @@ function renderStatus(payload: DashboardStatus): void {
     dependencyCard("필터 규칙", payload.filter_rules_status)
   );
 
-  renderShell(summary, meta, dependencies);
+  renderShell(summary, meta, dependencies, renderExtensionSetup(plan.extensionSetup));
+  markProtectedDashboardReady(document.body);
 }
 
 async function fetchStatus(): Promise<void> {

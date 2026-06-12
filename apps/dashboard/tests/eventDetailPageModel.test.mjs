@@ -105,11 +105,11 @@ test("projection helpers keep metadata-only values and safe fallbacks", () => {
 test("deriveEventDetailScreenState returns loading, empty, ready, and error states", () => {
   assert.deepEqual(deriveEventDetailScreenState("loading", false), {
     kind: "loading",
-    message: "이벤트 상세 정보를 불러오는 중입니다.",
+    message: "데이터를 불러오는 중입니다.",
   });
   assert.deepEqual(deriveEventDetailScreenState("ready", false), {
     kind: "empty",
-    message: "표시할 이벤트 상세 정보가 없습니다.",
+    message: "표시할 데이터가 없습니다.",
   });
   assert.deepEqual(deriveEventDetailScreenState("ready", true), {
     kind: "ready",
@@ -117,14 +117,14 @@ test("deriveEventDetailScreenState returns loading, empty, ready, and error stat
   });
   assert.deepEqual(deriveEventDetailScreenState("error", false), {
     kind: "error",
-    message: "이벤트 상세 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.",
+    message: "데이터를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.",
   });
 });
 
 test("safeEventDetailErrorMessage stays generic and fail-closed", () => {
-  assert.equal(safeEventDetailErrorMessage(400), "이벤트 요청을 확인해 주세요.");
+  assert.equal(safeEventDetailErrorMessage(400), "데이터를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
   assert.equal(safeEventDetailErrorMessage(401), "대시보드 로그인이 필요합니다.");
-  assert.equal(safeEventDetailErrorMessage(403), "대시보드 접근 권한을 확인할 수 없습니다.");
-  assert.equal(safeEventDetailErrorMessage(404), "요청한 이벤트를 찾을 수 없습니다.");
-  assert.equal(safeEventDetailErrorMessage(0), "대시보드 API에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.");
+  assert.equal(safeEventDetailErrorMessage(403), "대시보드 로그인이 필요합니다.");
+  assert.equal(safeEventDetailErrorMessage(404), "데이터를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
+  assert.equal(safeEventDetailErrorMessage(0), "서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.");
 });
