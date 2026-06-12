@@ -370,6 +370,23 @@ def test_dashboard_filter_dry_run_oversized_sample_returns_safe_413() -> None:
     assert "sample_text" not in encoded
 
 
+def test_dashboard_filter_dry_run_accepts_max_length_sample_boundary() -> None:
+    rule = _rule()
+    raw_sample = ("x" * (20_000 - len(" internal strategy"))) + " internal strategy"
+    response = _client(_FakeSession([rule])).post(
+        "/dashboard/filters/dry-run",
+        json={"rule_id": str(rule.id), "sample_text": raw_sample},
+    )
+    encoded = json.dumps(response.json(), ensure_ascii=False)
+
+    assert len(raw_sample) == 20_000
+    assert response.status_code == 200
+    assert response.json()["matched"] is True
+    assert response.json()["sample_persisted"] is False
+    assert "internal strategy" in response.json()["matched_keywords"]
+    assert raw_sample not in encoded
+
+
 def test_dashboard_filter_dry_run_supports_draft_rule_without_persisting() -> None:
     fake_session = _FakeSession()
     response = _client(fake_session).post(
@@ -392,6 +409,80 @@ def test_dashboard_filter_dry_run_supports_draft_rule_without_persisting() -> No
     assert response.json()["matched"] is True
     assert response.json()["sample_persisted"] is False
     assert not any(isinstance(item, FilterRule) for item in fake_session.added)
+
+
+def test_dashboard_filter_dry_run_uses_python_regex_server_oracle_for_draft_rule() -> None:
+    response = _client(_FakeSession()).post(
+        "/dashboard/filters/dry-run",
+        json={
+            "sample_text": "ticket 1234 repeats 1234",
+            "draft_rule": {
+                "kind": "regex",
+                "category": "Custom",
+                "label": "Repeated Number",
+                "placeholder": "REPEATED_NUMBER",
+                "severity": "high",
+                "action": "WARN",
+                "pattern": r"(?P<code>\d{4})\s+repeats\s+(?P=code)",
+                "config_json": {"pattern": r"(?P<code>\d{4})\s+repeats\s+(?P=code)", "exclusion_keywords": []},
+            },
+        },
+    )
+    body = response.json()
+
+    assert response.status_code == 200
+    assert body["matched"] is True
+    assert body["expected_action"] == "WARN"
+    assert body["expected_severity"] == "high"
+    assert body["match_count"] == 1
+    assert body["matched_keywords"] == []
+    assert body["sample_persisted"] is False
+
+
+def test_dashboard_filter_dry_run_regex_false_positive_and_invalid_draft_are_safe() -> None:
+    false_positive = _client(_FakeSession()).post(
+        "/dashboard/filters/dry-run",
+        json={
+            "sample_text": "the team discussed api key rotation without a concrete credential",
+            "draft_rule": {
+                "kind": "regex",
+                "category": "Custom",
+                "label": "Concrete API Key",
+                "placeholder": "API_KEY",
+                "severity": "critical",
+                "action": "BLOCK",
+                "pattern": r"API[_-]?KEY=[A-Z0-9]{8}",
+                "config_json": {"pattern": r"API[_-]?KEY=[A-Z0-9]{8}", "exclusion_keywords": []},
+            },
+        },
+    )
+    invalid = _client(_FakeSession()).post(
+        "/dashboard/filters/dry-run",
+        json={
+            "sample_text": "SECRET-INVALID-REGEX-SAMPLE",
+            "draft_rule": {
+                "kind": "regex",
+                "category": "Custom",
+                "label": "Invalid Regex",
+                "placeholder": "BAD_REGEX",
+                "severity": "medium",
+                "action": "WARN",
+                "pattern": "[",
+                "config_json": {"pattern": "[", "exclusion_keywords": []},
+            },
+        },
+    )
+    invalid_encoded = json.dumps(invalid.json(), ensure_ascii=False)
+
+    assert false_positive.status_code == 200
+    assert false_positive.json()["matched"] is False
+    assert false_positive.json()["expected_action"] == "ALLOW"
+    assert false_positive.json()["match_count"] == 0
+    assert false_positive.json()["sample_persisted"] is False
+
+    assert invalid.status_code == 422
+    assert "SECRET-INVALID-REGEX-SAMPLE" not in invalid_encoded
+    assert "sample_text" not in invalid_encoded
 
 
 def test_dashboard_filters_router_uses_dashboard_session_and_csrf_guards() -> None:
