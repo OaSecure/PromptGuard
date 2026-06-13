@@ -44,6 +44,9 @@ function appendKeyValue(container: HTMLElement, labelText: string, valueText: st
   const wrapper = document.createElement("div");
   const label = document.createElement("span");
   const value = document.createElement("strong");
+  wrapper.className = "event-summary-item";
+  label.className = "event-summary-label";
+  value.className = "event-summary-value";
   label.textContent = labelText;
   value.textContent = valueText;
   wrapper.append(label, value);

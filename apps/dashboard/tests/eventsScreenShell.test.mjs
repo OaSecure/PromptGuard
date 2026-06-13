@@ -8,6 +8,15 @@ test("events and event detail shells remove static mock internals and use module
 
   assert.match(eventsHtml, /id="events-table-body"/);
   assert.match(detailHtml, /id="detail-summary-grid"/);
+  const detailScript = readFileSync(new URL("../static/event-detail.js", import.meta.url), "utf-8");
+  const detailCss = readFileSync(new URL("../static/main.css", import.meta.url), "utf-8");
+
+  assert.match(detailScript, /event-summary-item/);
+  assert.match(detailScript, /event-summary-label/);
+  assert.match(detailScript, /event-summary-value/);
+  assert.match(detailCss, /\.event-summary-item/);
+  assert.match(detailCss, /\.event-summary-label/);
+  assert.match(detailCss, /\.event-summary-value/);
   assert.match(eventsHtml, />서버 상태<\/a>/);
   assert.match(detailHtml, />서버 상태<\/a>/);
   assert.match(eventsHtml, /<h2>이벤트 요약<\/h2>/);

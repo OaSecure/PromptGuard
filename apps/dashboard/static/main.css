@@ -539,6 +539,32 @@ input {
   margin-bottom: 34px;
 }
 
+.event-summary-item {
+  background: #ffffff;
+  border: 1px solid rgba(216, 236, 251, 0.85);
+  border-radius: 18px;
+  box-shadow: 0 12px 28px rgba(47, 128, 237, 0.08);
+  min-width: 0;
+  padding: 20px 22px;
+}
+
+.event-summary-label {
+  color: #5270a3;
+  display: block;
+  font-size: 14px;
+  font-weight: 800;
+  margin-bottom: 10px;
+}
+
+.event-summary-value {
+  color: #10284a;
+  display: block;
+  font-size: 24px;
+  font-weight: 900;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
 .detail-grid {
   display: grid;
   gap: 22px;
