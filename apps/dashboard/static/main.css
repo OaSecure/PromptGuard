@@ -1260,6 +1260,236 @@ input {
   line-height: 1.6;
 }
 
+.extension-setup-card {
+  align-items: stretch;
+  flex-direction: column;
+}
+
+.status-setup-values {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: 100%;
+}
+
+.status-setup-value-card {
+  background: #f6fbff;
+  border: 1px solid #d6eaff;
+  border-radius: 16px;
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+}
+
+.status-setup-value-card span {
+  color: #5b78a0;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.status-setup-value-card strong {
+  color: #10284a;
+  font-size: 18px;
+  font-weight: 900;
+  overflow-wrap: anywhere;
+}
+
+.status-setup-value-card p {
+  color: #5b78a0;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.status-setup-list {
+  color: #496b97;
+  display: grid;
+  font-size: 14px;
+  font-weight: 800;
+  gap: 10px;
+  line-height: 1.55;
+  margin: 0;
+  padding-left: 22px;
+}
+
+.status-setup-list > li > strong {
+  color: #10284a;
+  display: block;
+  font-size: 15px;
+  margin-bottom: 8px;
+}
+
+.status-help-step-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.status-url-builder {
+  background: #f6fbff;
+  border: 1px solid #d6eaff;
+  border-radius: 16px;
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+
+.status-url-builder h3,
+.status-url-builder h4 {
+  color: #10284a;
+  font-weight: 900;
+  margin: 0;
+}
+
+.status-url-builder h3 {
+  font-size: 18px;
+}
+
+.status-url-builder h4 {
+  font-size: 15px;
+}
+
+.status-url-builder p {
+  color: #5b78a0;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.status-url-builder-mode {
+  display: flex;
+  gap: 8px;
+}
+
+.status-url-builder-mode button {
+  background: #e8f4ff;
+  border: 1px solid #bedbfa;
+  border-radius: 12px;
+  color: #2f75dc;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 900;
+  padding: 10px 14px;
+}
+
+.status-url-builder-mode button.active {
+  background: #347fde;
+  border-color: #347fde;
+  color: #ffffff;
+}
+
+.status-url-builder-panel {
+  background: #ffffff;
+  border: 1px solid #d8ecfb;
+  border-radius: 14px;
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+}
+
+.status-url-builder-panel[hidden] {
+  display: none;
+}
+
+.status-url-builder label {
+  color: #496b97;
+  display: grid;
+  font-size: 13px;
+  font-weight: 900;
+  gap: 6px;
+}
+
+.status-url-builder input {
+  border: 1px solid #bedbfa;
+  border-radius: 10px;
+  color: #10284a;
+  font-size: 14px;
+  font-weight: 800;
+  min-width: 0;
+  padding: 10px 12px;
+}
+
+.status-url-builder-output input {
+  background: #eef7ff;
+}
+
+.status-url-builder-check {
+  align-items: center;
+  display: flex !important;
+  gap: 8px !important;
+}
+
+.status-url-builder-check input {
+  width: auto;
+}
+
+.status-url-builder-notice {
+  color: #8a5f00 !important;
+}
+
+.status-setup-actions {
+  display: flex;
+  justify-content: flex-end;
+  width: 100%;
+}
+
+.status-help-button {
+  min-width: 180px;
+}
+
+.status-help-backdrop {
+  align-items: center;
+  background: rgba(16, 40, 74, 0.42);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 24px;
+  position: fixed;
+  z-index: 20;
+}
+
+.status-help-dialog {
+  background: #ffffff;
+  border: 1px solid rgba(216, 236, 251, 0.95);
+  border-radius: 22px;
+  box-shadow: 0 24px 60px rgba(16, 40, 74, 0.22);
+  display: grid;
+  gap: 18px;
+  max-height: calc(100vh - 48px);
+  max-width: 920px;
+  overflow-y: auto;
+  padding: 26px;
+  width: min(100%, 920px);
+}
+
+.status-help-header {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+}
+
+.status-help-header h2 {
+  color: #10284a;
+  font-size: 24px;
+  font-weight: 900;
+}
+
+.status-help-close {
+  background: #e8f4ff;
+  border: 1px solid #b8dcff;
+  border-radius: 12px;
+  color: #1c7ed6;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 900;
+  min-height: 40px;
+  padding: 0 14px;
+}
+
 .status-meta-grid {
   display: grid;
   gap: 18px;
@@ -1352,5 +1582,13 @@ input {
 
   .dependency-grid {
     grid-template-columns: 1fr;
+  }
+
+  .status-setup-values {
+    grid-template-columns: 1fr;
+  }
+
+  .status-url-builder-mode {
+    flex-direction: column;
   }
 }
