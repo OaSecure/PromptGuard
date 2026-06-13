@@ -55,6 +55,18 @@ test("status screen includes safe Chrome extension setup guidance", () => {
   assert.doesNotMatch(encoded, /1234|access[_ -]?token|refresh[_ -]?token|secret|DB URL|DATABASE_URL|stack trace|selector/i);
 });
 
+test("status page renders API URL help in a dialog instead of crowding the card", async () => {
+  const fs = await import("node:fs/promises");
+  const statusJs = await fs.readFile(new URL("../static/status.js", import.meta.url), "utf8");
+
+  assert.match(statusJs, /API URL 확인 방법/);
+  assert.match(statusJs, /status-help-dialog/);
+  assert.match(statusJs, /aria-modal/);
+  assert.match(statusJs, /닫기/);
+  assert.doesNotMatch(statusJs, /card\.append\(copy, settings, list\)/);
+  assert.match(statusJs, /card\.append\(copy, settings, actions\)/);
+});
+
 test("status screen derives extension API URL from dashboard origin and documents port forwarding", () => {
   const payload = {
     status: "healthy",

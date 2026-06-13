@@ -106,13 +106,51 @@ function renderExtensionSetup(plan) {
         appendText(entry, "p", item.description);
         settings.append(entry);
     }
+    const actions = document.createElement("div");
+    actions.className = "status-setup-actions";
+    const helpButton = document.createElement("button");
+    helpButton.className = "users-primary-button status-help-button";
+    helpButton.type = "button";
+    helpButton.textContent = "API URL 확인 방법";
+    helpButton.addEventListener("click", () => openExtensionSetupDialog(plan));
+    actions.append(helpButton);
+    card.append(copy, settings, actions);
+    return card;
+}
+function openExtensionSetupDialog(plan) {
+    const existing = document.querySelector(".status-help-backdrop");
+    existing?.remove();
+    const backdrop = document.createElement("div");
+    backdrop.className = "status-help-backdrop";
+    const dialog = document.createElement("section");
+    dialog.className = "status-help-dialog";
+    dialog.setAttribute("role", "dialog");
+    dialog.setAttribute("aria-modal", "true");
+    dialog.setAttribute("aria-labelledby", "status-help-title");
+    const header = document.createElement("div");
+    header.className = "status-help-header";
+    const title = appendText(header, "h2", "API URL 확인 방법");
+    title.id = "status-help-title";
+    const close = document.createElement("button");
+    close.className = "status-help-close";
+    close.type = "button";
+    close.textContent = "닫기";
+    close.addEventListener("click", () => backdrop.remove());
+    header.append(close);
     const list = document.createElement("ol");
     list.className = "status-setup-list";
     for (const step of plan.steps) {
         appendText(list, "li", step);
     }
-    card.append(copy, settings, list);
-    return card;
+    backdrop.addEventListener("click", (event) => {
+        if (event.target === backdrop) {
+            backdrop.remove();
+        }
+    });
+    dialog.append(header, list);
+    backdrop.append(dialog);
+    document.body.append(backdrop);
+    close.focus();
 }
 function renderLoading() {
     const card = document.createElement("section");

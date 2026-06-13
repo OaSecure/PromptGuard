@@ -1313,6 +1313,64 @@ input {
   padding-left: 22px;
 }
 
+.status-setup-actions {
+  display: flex;
+  justify-content: flex-end;
+  width: 100%;
+}
+
+.status-help-button {
+  min-width: 180px;
+}
+
+.status-help-backdrop {
+  align-items: center;
+  background: rgba(16, 40, 74, 0.42);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 24px;
+  position: fixed;
+  z-index: 20;
+}
+
+.status-help-dialog {
+  background: #ffffff;
+  border: 1px solid rgba(216, 236, 251, 0.95);
+  border-radius: 22px;
+  box-shadow: 0 24px 60px rgba(16, 40, 74, 0.22);
+  display: grid;
+  gap: 18px;
+  max-width: 680px;
+  padding: 26px;
+  width: min(100%, 680px);
+}
+
+.status-help-header {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+}
+
+.status-help-header h2 {
+  color: #10284a;
+  font-size: 24px;
+  font-weight: 900;
+}
+
+.status-help-close {
+  background: #e8f4ff;
+  border: 1px solid #b8dcff;
+  border-radius: 12px;
+  color: #1c7ed6;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 900;
+  min-height: 40px;
+  padding: 0 14px;
+}
+
 .status-meta-grid {
   display: grid;
   gap: 18px;
