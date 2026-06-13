@@ -36,7 +36,7 @@ function isLocalHost(hostname: string): boolean {
   return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
 }
 
-export function inferExtensionApiOrigin(dashboardOrigin?: string): string {
+function inferAdminLocalApiOrigin(dashboardOrigin?: string): string {
   if (!dashboardOrigin) return fallbackApiOrigin();
   try {
     const url = new URL(dashboardOrigin);
@@ -50,8 +50,22 @@ export function inferExtensionApiOrigin(dashboardOrigin?: string): string {
   }
 }
 
+export function inferExtensionApiOrigin(dashboardOrigin?: string): string {
+  if (!dashboardOrigin) return "서버 PC의 LAN IP, 도메인, 또는 포트포워딩 주소를 확인하세요.";
+  try {
+    const url = new URL(dashboardOrigin);
+    if (isLocalHost(url.hostname)) {
+      return "다른 PC 사용자에게는 서버 PC의 LAN IP, 도메인, 또는 포트포워딩 주소를 안내합니다.";
+    }
+    return url.origin;
+  } catch {
+    return "서버 PC의 LAN IP, 도메인, 또는 포트포워딩 주소를 확인하세요.";
+  }
+}
+
 export function extensionSetupPlan(dashboardOrigin?: string): StatusExtensionSetupPlan {
   const apiOrigin = inferExtensionApiOrigin(dashboardOrigin);
+  const adminLocalApiOrigin = inferAdminLocalApiOrigin(dashboardOrigin);
   return {
     title: "Chrome 확장프로그램 연동",
     description: "확장프로그램 옵션 화면에 입력할 로컬 서버 연결값입니다.",
@@ -59,7 +73,12 @@ export function extensionSetupPlan(dashboardOrigin?: string): StatusExtensionSet
       {
         label: "API URL",
         value: apiOrigin,
-        description: "Chrome 확장프로그램이 이 주소에 /auth/login, /config/extension, /prompts/analyze 요청을 보냅니다. 서버 배포자는 사용자 브라우저에서 접근 가능한 백엔드 API 주소를 알려줘야 합니다.",
+        description: "Chrome 확장프로그램은 이 주소에 /auth/login, /config/extension, /prompts/analyze 요청을 보냅니다. localhost는 서버 관리자 PC에서만 유효합니다.",
+      },
+      {
+        label: "관리자 로컬 확인용",
+        value: adminLocalApiOrigin,
+        description: "서버를 띄운 같은 컴퓨터에서만 확인할 때 쓰는 주소입니다. 다른 사용자에게 이 값을 그대로 전달하지 않습니다.",
       },
       {
         label: "Mock API",
@@ -78,8 +97,8 @@ export function extensionSetupPlan(dashboardOrigin?: string): StatusExtensionSet
       },
     ],
     steps: [
-      "서버 배포자는 Chrome 확장프로그램 사용자가 접속할 수 있는 백엔드 API origin을 확인합니다.",
-      "포트포워딩을 쓰면 내부 컨테이너 주소가 아니라 외부로 열린 host/IP/domain과 포트를 API URL로 안내합니다.",
+      "서버 배포자는 Chrome 확장프로그램 사용자의 컴퓨터에서 접속할 수 있는 백엔드 API origin을 확인합니다.",
+      "다른 PC 사용자는 localhost가 아니라 서버 PC의 LAN IP, 도메인, 또는 외부로 열린 포트포워딩 주소를 API URL로 입력해야 합니다.",
       "옵션에서 Save를 눌러 API URL과 Mock API 설정을 저장합니다.",
       "Login ID와 Password로 확장프로그램 로그인을 실행합니다.",
       "Sync config를 눌러 서버의 확장 설정을 가져옵니다.",
