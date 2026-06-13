@@ -7,20 +7,23 @@ function read(relativePath) {
 }
 
 test("dashboard pages expose consistent Korean navigation including server status", () => {
-  const surfaces = [
-    read("../admin.html"),
-    read("../overview.html"),
-    read("../events.html"),
-    read("../event-detail.html"),
-    read("../users.html"),
-    read("../static/status.js"),
-    read("../static/filters.js"),
-  ].join("\n");
+  const expectedLabels = ["대시보드", "이벤트 관리", "사용자 관리", "필터 관리", "서버 상태", "로그아웃"];
+  const protectedPages = [
+    ["overview", read("../overview.html")],
+    ["events", read("../events.html")],
+    ["event detail", read("../event-detail.html")],
+    ["users", read("../users.html")],
+    ["status", read("../static/status.js")],
+    ["filters", `${read("../static/filters.js")}\n${read("../static/filtersPageModel.js")}`],
+  ];
 
-  for (const label of ["대시보드", "이벤트 관리", "사용자 관리", "필터 관리", "서버 상태", "로그아웃"]) {
-    assert.match(surfaces, new RegExp(label));
+  for (const [pageName, pageSource] of protectedPages) {
+    for (const label of expectedLabels) {
+      assert.match(pageSource, new RegExp(label), `${pageName} navigation must include ${label}`);
+    }
   }
 
+  const surfaces = [read("../admin.html"), ...protectedPages.map(([, pageSource]) => pageSource)].join("\n");
   assert.doesNotMatch(surfaces, />Overview<\/a>|>Events<\/a>|>Users<\/a>|>Filters<\/a>|>Server Status<\/a>|>Logout<\/a>/);
   assert.doesNotMatch(surfaces, /href\s*=\s*["'](?:\.\/)?admin\.html["']/);
   assert.doesNotMatch(surfaces, /href\s*=\s*["'](?:\.\/)?index\.html["']/);
