@@ -1,12 +1,36 @@
-export function extensionSetupPlan() {
+const LOCAL_DASHBOARD_PORT = "3000";
+const LOCAL_API_PORT = "8000";
+function fallbackApiOrigin() {
+    return "http://localhost:8000";
+}
+function isLocalHost(hostname) {
+    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+}
+export function inferExtensionApiOrigin(dashboardOrigin) {
+    if (!dashboardOrigin)
+        return fallbackApiOrigin();
+    try {
+        const url = new URL(dashboardOrigin);
+        if (isLocalHost(url.hostname) && url.port === LOCAL_DASHBOARD_PORT) {
+            url.port = LOCAL_API_PORT;
+            return url.origin;
+        }
+        return url.origin;
+    }
+    catch {
+        return fallbackApiOrigin();
+    }
+}
+export function extensionSetupPlan(dashboardOrigin) {
+    const apiOrigin = inferExtensionApiOrigin(dashboardOrigin);
     return {
         title: "Chrome 확장프로그램 연동",
         description: "확장프로그램 옵션 화면에 입력할 로컬 서버 연결값입니다.",
         settings: [
             {
                 label: "API URL",
-                value: "http://localhost:8000",
-                description: "확장프로그램 옵션의 API URL 입력칸에 그대로 입력합니다.",
+                value: apiOrigin,
+                description: "현재 대시보드 주소에서 추정한 로컬 API 주소입니다. 포트포워딩이나 리버스 프록시를 쓰면 브라우저에서 접근 가능한 외부 API 주소를 입력합니다.",
             },
             {
                 label: "Mock API",
@@ -32,9 +56,9 @@ export function extensionSetupPlan() {
         ],
     };
 }
-export function renderStatusPlan(payload) {
+export function renderStatusPlan(payload, dashboardOrigin) {
     return {
         payload,
-        extensionSetup: extensionSetupPlan(),
+        extensionSetup: extensionSetupPlan(dashboardOrigin),
     };
 }

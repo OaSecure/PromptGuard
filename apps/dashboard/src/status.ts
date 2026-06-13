@@ -149,7 +149,7 @@ function renderUnavailable(statusCode?: number): void {
 }
 
 function renderStatus(payload: DashboardStatus): void {
-  const plan = renderStatusPlan(payload);
+  const plan = renderStatusPlan(payload, window.location.origin);
   const summary = document.createElement("section");
   summary.className = "status-summary-card";
   const copy = document.createElement("div");

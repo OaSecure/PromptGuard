@@ -4,21 +4,22 @@ import assert from "node:assert/strict";
 const { renderStatusPlan } = await import("../static/statusPageModel.js");
 
 test("status screen includes safe Chrome extension setup guidance", () => {
-  const plan = renderStatusPlan({
+  const payload = {
     status: "healthy",
     last_checked: "2026-06-12T09:00:00Z",
     api_status: "healthy",
     postgres_status: "healthy",
     migration_status: "healthy",
     filter_rules_status: "healthy",
-  });
+  };
+  const plan = renderStatusPlan(payload, "http://localhost:3000");
 
   assert.equal(plan.extensionSetup.title, "Chrome 확장프로그램 연동");
   assert.deepEqual(plan.extensionSetup.settings, [
     {
       label: "API URL",
       value: "http://localhost:8000",
-      description: "확장프로그램 옵션의 API URL 입력칸에 그대로 입력합니다.",
+      description: "현재 대시보드 주소에서 추정한 로컬 API 주소입니다. 포트포워딩이나 리버스 프록시를 쓰면 브라우저에서 접근 가능한 외부 API 주소를 입력합니다.",
     },
     {
       label: "Mock API",
@@ -45,4 +46,25 @@ test("status screen includes safe Chrome extension setup guidance", () => {
 
   const encoded = JSON.stringify(plan);
   assert.doesNotMatch(encoded, /1234|access[_ -]?token|refresh[_ -]?token|secret|DB URL|DATABASE_URL|stack trace|selector/i);
+});
+
+test("status screen derives extension API URL from dashboard origin and documents port forwarding", () => {
+  const payload = {
+    status: "healthy",
+    last_checked: "2026-06-12T09:00:00Z",
+    api_status: "healthy",
+    postgres_status: "healthy",
+    migration_status: "healthy",
+    filter_rules_status: "healthy",
+  };
+
+  const localPlan = renderStatusPlan(payload, "http://127.0.0.1:3000");
+  assert.equal(localPlan.extensionSetup.settings[0].value, "http://127.0.0.1:8000");
+
+  const forwardedPlan = renderStatusPlan(payload, "https://promptguard.example.com");
+  assert.equal(forwardedPlan.extensionSetup.settings[0].value, "https://promptguard.example.com");
+
+  const encoded = JSON.stringify(forwardedPlan);
+  assert.match(encoded, /포트포워딩|리버스 프록시|외부 API 주소/);
+  assert.doesNotMatch(encoded, /http:\/\/localhost:8000/);
 });
