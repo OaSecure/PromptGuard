@@ -1099,6 +1099,7 @@ MVP에서는 여러 rule이 동시에 복잡하게 충돌하는 고급 conflict 
 | `build_sha`        | build 식별자                           |
 | `python_version`   | Python runtime version              |
 | `postgres_version` | PostgreSQL version 또는 major version |
+| `extension_connection` | Chrome 확장프로그램 사용자가 백엔드 API URL로 입력할 수 있는 내부망 origin 후보, 포트포워딩/프록시 origin, API 포트 metadata |
 
 `GET /dashboard/status`는 `/healthz`와 같은 상태 정보를 대시보드 표시용으로 정리해 반환한다. 단, DB 연결 문자열, secret, token, 상세 env 값, stack trace, 내부 exception text는 반환하지 않는다.
 
@@ -1588,6 +1589,7 @@ Server Status:
 - `GET /dashboard/status` API를 호출한다
 - 8.8의 필수 상태 항목인 API, PostgreSQL, Migration, Filter Rules, Last Checked를 표시한다
 - 선택 상태 항목은 8.8의 선택 반환값을 따른다
+- Chrome 확장프로그램 연동 안내가 있으면 정적 계정값이나 mock 값을 보여주지 않고, 서버가 반환한 내부망 origin 후보, 외부/포트포워딩 origin, API 포트 metadata와 OS별 확인 절차를 안전하게 표시한다
 - 상태: `healthy`, `degraded`, `unhealthy`, `disabled`, `unknown`
 - `disabled`는 optional feature에만 적용하고 API/PostgreSQL/Migration에는 적용하지 않는다
 - Filter Rule 상세 설정, 환경변수 상세값, DB URL, secret, token, stack trace는 표시하지 않는다
