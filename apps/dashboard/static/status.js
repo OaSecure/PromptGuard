@@ -2,7 +2,7 @@ import { DashboardApiError, dashboardRequest } from "./dashboardApi.js";
 import { dashboardFallbackMessage } from "./dashboardFallback.js";
 import { markProtectedDashboardReady, runDashboardLogout } from "./dashboardSessionFlow.js";
 import { logoutDashboardSession } from "./session.js";
-import { renderStatusPlan } from "./statusPageModel.js";
+import { buildExternalApiOrigin, buildLanApiOrigin, renderStatusPlan } from "./statusPageModel.js";
 const root = document.querySelector("#status-app");
 if (!root) {
     throw new Error("Status root element is missing.");
@@ -155,10 +155,84 @@ function openExtensionSetupDialog(plan) {
             backdrop.remove();
         }
     });
-    dialog.append(header, list);
+    dialog.append(header, renderApiUrlBuilder(plan), list);
     backdrop.append(dialog);
     document.body.append(backdrop);
     close.focus();
+}
+function renderReadonlyOutput(label) {
+    const root = document.createElement("label");
+    root.className = "status-url-builder-output";
+    appendText(root, "span", label);
+    const output = document.createElement("input");
+    output.readOnly = true;
+    output.value = "값을 입력하면 API URL이 생성됩니다.";
+    root.append(output);
+    return { root, output };
+}
+function renderApiUrlBuilder(plan) {
+    const builder = document.createElement("section");
+    builder.className = "status-url-builder";
+    appendText(builder, "h3", "API URL 만들기");
+    appendText(builder, "p", "환경변수 없이 서버 PC 주소 또는 외부 주소를 입력하면 Chrome 확장프로그램에 넣을 API URL을 만듭니다.");
+    const grid = document.createElement("div");
+    grid.className = "status-url-builder-grid";
+    const lan = document.createElement("article");
+    lan.className = "status-url-builder-panel";
+    appendText(lan, "h4", "같은 사무실/공유기에서 사용");
+    appendText(lan, "p", "서버 PC의 실제 IPv4 주소를 입력합니다. Docker 컨테이너 내부 주소는 사용하지 않습니다.");
+    const lanLabel = document.createElement("label");
+    appendText(lanLabel, "span", "서버 PC IPv4 주소");
+    const lanInput = document.createElement("input");
+    lanInput.placeholder = "예: 192.168.0.10";
+    lanLabel.append(lanInput);
+    const lanResult = renderReadonlyOutput("생성된 내부망 API URL");
+    lan.append(lanLabel, lanResult.root);
+    const external = document.createElement("article");
+    external.className = "status-url-builder-panel";
+    appendText(external, "h4", "외부/다른 네트워크에서 사용");
+    appendText(external, "p", "포트포워딩이나 도메인 연결 후 외부에서 접속 가능한 주소와 외부 포트를 입력합니다.");
+    const hostLabel = document.createElement("label");
+    appendText(hostLabel, "span", "공인 IP 또는 도메인");
+    const hostInput = document.createElement("input");
+    hostInput.placeholder = "예: promptguard.example.com";
+    hostLabel.append(hostInput);
+    const portLabel = document.createElement("label");
+    appendText(portLabel, "span", "외부 포트");
+    const portInput = document.createElement("input");
+    portInput.inputMode = "numeric";
+    portInput.placeholder = plan.urlBuilder.apiPort;
+    portInput.value = plan.urlBuilder.apiPort;
+    portLabel.append(portInput);
+    const httpsLabel = document.createElement("label");
+    httpsLabel.className = "status-url-builder-check";
+    const httpsInput = document.createElement("input");
+    httpsInput.type = "checkbox";
+    httpsLabel.append(httpsInput, document.createTextNode(" HTTPS 사용"));
+    const externalResult = renderReadonlyOutput("생성된 외부 API URL");
+    external.append(hostLabel, portLabel, httpsLabel, externalResult.root);
+    const updateLan = () => {
+        lanResult.output.value = buildLanApiOrigin(lanInput.value, plan.urlBuilder.apiPort) ?? "서버 PC의 실제 IPv4 주소를 입력하세요.";
+    };
+    const updateExternal = () => {
+        externalResult.output.value =
+            buildExternalApiOrigin(hostInput.value, portInput.value, httpsInput.checked) ?? "공인 IP/도메인과 1-65535 포트를 입력하세요.";
+    };
+    lanInput.addEventListener("input", updateLan);
+    hostInput.addEventListener("input", updateExternal);
+    portInput.addEventListener("input", updateExternal);
+    httpsInput.addEventListener("change", updateExternal);
+    updateLan();
+    updateExternal();
+    grid.append(lan, external);
+    builder.append(grid);
+    if (plan.urlBuilder.excludedOrigins.length > 0) {
+        const notice = document.createElement("p");
+        notice.className = "status-url-builder-notice";
+        notice.textContent = `컨테이너 내부 주소는 제외됨: ${plan.urlBuilder.excludedOrigins.join(", ")}`;
+        builder.append(notice);
+    }
+    return builder;
 }
 function renderLoading() {
     const card = document.createElement("section");

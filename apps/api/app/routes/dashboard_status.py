@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 import ipaddress
+from pathlib import Path
 import socket
 from typing import Literal
 
@@ -21,6 +22,7 @@ StatusValue = Literal["healthy", "degraded", "unhealthy", "unknown"]
 
 class ExtensionConnectionInfo(BaseModel):
     internal_api_origins: list[str]
+    excluded_internal_api_origins: list[str]
     admin_local_api_origin: str
     external_api_origin: str | None
     api_port: str
@@ -94,6 +96,26 @@ def collect_server_ipv4_addresses() -> list[str]:
     return sorted(candidates)
 
 
+def is_running_in_container() -> bool:
+    if Path("/.dockerenv").exists():
+        return True
+    try:
+        cgroup = Path("/proc/1/cgroup").read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return False
+    return "docker" in cgroup or "kubepods" in cgroup or "containerd" in cgroup
+
+
+def is_container_bridge_address(address: str) -> bool:
+    if not is_running_in_container():
+        return False
+    try:
+        parsed = ipaddress.ip_address(address)
+    except ValueError:
+        return False
+    return parsed in ipaddress.ip_network("172.16.0.0/12")
+
+
 def request_origin(request: Request) -> str:
     scheme = request.url.scheme
     host = request.headers.get("host") or request.url.netloc
@@ -124,9 +146,17 @@ def forwarded_origin(request: Request) -> str | None:
 def build_extension_connection_info(request: Request) -> ExtensionConnectionInfo:
     port = request_port(request)
     scheme = request.url.scheme
-    internal_origins = [f"{scheme}://{address}:{port}" for address in collect_server_ipv4_addresses()]
+    internal_origins: list[str] = []
+    excluded_origins: list[str] = []
+    for address in collect_server_ipv4_addresses():
+        origin = f"{scheme}://{address}:{port}"
+        if is_container_bridge_address(address):
+            excluded_origins.append(origin)
+        else:
+            internal_origins.append(origin)
     return ExtensionConnectionInfo(
         internal_api_origins=internal_origins,
+        excluded_internal_api_origins=excluded_origins,
         admin_local_api_origin=request_origin(request),
         external_api_origin=forwarded_origin(request),
         api_port=port,

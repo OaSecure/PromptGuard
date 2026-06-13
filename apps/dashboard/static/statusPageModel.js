@@ -16,6 +16,76 @@ function externalOriginDescription(connection) {
     }
     return "자동으로 확인하지 못했습니다. 외부 접속이 필요하면 API URL 확인 방법을 열어 외부 주소 확인 절차를 진행하세요.";
 }
+function dockerBridgeNotice(connection) {
+    if (connection.excluded_internal_api_origins.length === 0) {
+        return [];
+    }
+    return [
+        `컨테이너 내부 주소는 제외됨: ${connection.excluded_internal_api_origins.join(", ")}`,
+        "이 주소는 Docker 내부 네트워크용이라 Chrome 확장프로그램 API URL로 사용하지 않습니다.",
+    ];
+}
+function parsePort(value) {
+    if (!/^[0-9]+$/.test(value.trim())) {
+        return null;
+    }
+    const port = Number(value);
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+        return null;
+    }
+    return port;
+}
+function normalizeIpv4(value) {
+    const trimmed = value.trim();
+    const parts = trimmed.split(".");
+    if (parts.length !== 4 || trimmed.toLowerCase() === "localhost") {
+        return null;
+    }
+    for (const part of parts) {
+        if (!/^[0-9]+$/.test(part)) {
+            return null;
+        }
+        const octet = Number(part);
+        if (!Number.isInteger(octet) || octet < 0 || octet > 255) {
+            return null;
+        }
+    }
+    return trimmed;
+}
+function normalizeHost(value) {
+    const trimmed = value.trim();
+    if (!trimmed || /\s/.test(trimmed)) {
+        return null;
+    }
+    try {
+        const parsed = new URL(trimmed.includes("://") ? trimmed : `http://${trimmed}`);
+        if (!parsed.hostname || parsed.username || parsed.password) {
+            return null;
+        }
+        return parsed.hostname;
+    }
+    catch {
+        return null;
+    }
+}
+export function buildLanApiOrigin(rawIp, apiPort) {
+    const ip = normalizeIpv4(rawIp);
+    const port = parsePort(apiPort);
+    if (!ip || port === null) {
+        return null;
+    }
+    return `http://${ip}:${port}`;
+}
+export function buildExternalApiOrigin(rawHost, rawPort, useHttps) {
+    const host = normalizeHost(rawHost);
+    const port = parsePort(rawPort);
+    if (!host || port === null) {
+        return null;
+    }
+    const scheme = useHttps ? "https" : "http";
+    const shouldOmitPort = (scheme === "https" && port === 443) || (scheme === "http" && port === 80);
+    return shouldOmitPort ? `${scheme}://${host}` : `${scheme}://${host}:${port}`;
+}
 export function extensionSetupPlan(connection) {
     return {
         title: "Chrome 확장프로그램 연동",
@@ -44,6 +114,7 @@ export function extensionSetupPlan(connection) {
                     "Chrome 확장프로그램은 API URL에 적은 주소를 기준으로 /auth/login, /config/extension, /prompts/analyze 요청을 보냅니다.",
                     `관리자 로컬 확인용 주소는 ${connection.admin_local_api_origin}입니다. 이 localhost는 서버 관리자 PC에서만 유효하고, 다른 사용자 컴퓨터에서는 통하지 않습니다.`,
                     "확장 사용자의 컴퓨터에서 접속 가능한 주소를 확인한 뒤 그 주소를 사용자에게 안내합니다.",
+                    ...dockerBridgeNotice(connection),
                 ],
             },
             {
@@ -81,6 +152,10 @@ export function extensionSetupPlan(connection) {
                 ],
             },
         ],
+        urlBuilder: {
+            apiPort: connection.api_port,
+            excludedOrigins: connection.excluded_internal_api_origins,
+        },
     };
 }
 export function renderStatusPlan(payload) {

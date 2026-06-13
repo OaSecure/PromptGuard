@@ -142,6 +142,7 @@ def test_dashboard_status_with_admin_returns_flat_allowlist(monkeypatch) -> None
     assert "dependencies" not in body
     assert body["extension_connection"] == {
         "internal_api_origins": ["http://192.168.0.10:8000"],
+        "excluded_internal_api_origins": [],
         "admin_local_api_origin": "http://localhost:8000",
         "external_api_origin": None,
         "api_port": "8000",
@@ -163,10 +164,23 @@ def test_dashboard_status_reports_forwarded_external_origin(monkeypatch) -> None
     assert response.status_code == 200
     assert response.json()["extension_connection"] == {
         "internal_api_origins": ["http://10.1.2.3:8000"],
+        "excluded_internal_api_origins": [],
         "admin_local_api_origin": "http://localhost:8000",
         "external_api_origin": "https://promptguard.example.com",
         "api_port": "8000",
     }
+
+
+def test_dashboard_status_excludes_docker_bridge_origin_from_recommended_extension_urls(monkeypatch) -> None:
+    user = _user()
+    monkeypatch.setattr(dashboard_status, "collect_server_ipv4_addresses", lambda: ["172.19.0.3", "192.168.0.10"])
+    monkeypatch.setattr(dashboard_status, "is_running_in_container", lambda: True)
+    response = _client(monkeypatch, user=user).get("/dashboard/status", headers={"host": "localhost:8000"})
+
+    body = response.json()["extension_connection"]
+    assert response.status_code == 200
+    assert body["internal_api_origins"] == ["http://192.168.0.10:8000"]
+    assert body["excluded_internal_api_origins"] == ["http://172.19.0.3:8000"]
 
 
 def test_dashboard_status_does_not_leak_raw_details(monkeypatch) -> None:

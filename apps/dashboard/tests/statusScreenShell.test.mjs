@@ -1,7 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-const { renderStatusPlan } = await import("../static/statusPageModel.js");
+const {
+  buildExternalApiOrigin,
+  buildLanApiOrigin,
+  renderStatusPlan,
+} = await import("../static/statusPageModel.js");
 
 function statusPayload(overrides = {}) {
   return {
@@ -13,6 +17,7 @@ function statusPayload(overrides = {}) {
     filter_rules_status: "healthy",
     extension_connection: {
       internal_api_origins: ["http://192.168.0.10:8000", "http://10.0.0.8:8000"],
+      excluded_internal_api_origins: [],
       external_api_origin: null,
       admin_local_api_origin: "http://localhost:8000",
       api_port: "8000",
@@ -56,6 +61,7 @@ test("status screen distinguishes local-admin localhost from extension-user addr
   const plan = renderStatusPlan(statusPayload({
     extension_connection: {
       internal_api_origins: [],
+      excluded_internal_api_origins: ["http://172.19.0.3:8000"],
       external_api_origin: null,
       admin_local_api_origin: "http://localhost:8000",
       api_port: "8000",
@@ -74,6 +80,7 @@ test("status screen uses forwarded external origin when proxy or port forwarding
   const plan = renderStatusPlan(statusPayload({
     extension_connection: {
       internal_api_origins: ["http://192.168.0.10:8000"],
+      excluded_internal_api_origins: [],
       external_api_origin: "https://promptguard.example.com:9443",
       admin_local_api_origin: "http://localhost:8000",
       api_port: "8000",
@@ -111,4 +118,37 @@ test("status screen keeps connection cards concise and moves operating-system st
   assert.match(helpText, /ipconfig/);
   assert.match(helpText, /hostname -I|ip addr/);
   assert.match(helpText, /공유기 관리자 페이지|방화벽/);
+});
+
+test("status screen excludes Docker bridge origins from recommended cards but explains why", () => {
+  const plan = renderStatusPlan(statusPayload({
+    extension_connection: {
+      internal_api_origins: [],
+      excluded_internal_api_origins: ["http://172.19.0.3:8000"],
+      external_api_origin: null,
+      admin_local_api_origin: "http://localhost:8000",
+      api_port: "8000",
+    },
+  }));
+  const internal = connectionCardByLabel(plan, "내부망 연결 주소");
+  const encoded = JSON.stringify(plan);
+
+  assert.doesNotMatch(internal.value, /172\.19\.0\.3/);
+  assert.match(encoded, /컨테이너 내부 주소는 제외됨/);
+  assert.match(encoded, /http:\/\/172\.19\.0\.3:8000/);
+});
+
+test("status URL builder creates extension API origins from admin-entered host values", () => {
+  assert.equal(buildLanApiOrigin("192.168.0.10", "8000"), "http://192.168.0.10:8000");
+  assert.equal(buildLanApiOrigin(" 10.0.0.8 ", "8000"), "http://10.0.0.8:8000");
+  assert.equal(buildLanApiOrigin("172.19.0.3", "8000"), "http://172.19.0.3:8000");
+  assert.equal(buildLanApiOrigin("localhost", "8000"), null);
+  assert.equal(buildLanApiOrigin("999.1.1.1", "8000"), null);
+
+  assert.equal(buildExternalApiOrigin("promptguard.example.com", "9443", false), "http://promptguard.example.com:9443");
+  assert.equal(buildExternalApiOrigin("promptguard.example.com", "443", true), "https://promptguard.example.com");
+  assert.equal(buildExternalApiOrigin("https://promptguard.example.com/app", "443", true), "https://promptguard.example.com");
+  assert.equal(buildExternalApiOrigin("http://203.0.113.10", "18000", false), "http://203.0.113.10:18000");
+  assert.equal(buildExternalApiOrigin("bad host name", "8000", false), null);
+  assert.equal(buildExternalApiOrigin("promptguard.example.com", "70000", false), null);
 });
