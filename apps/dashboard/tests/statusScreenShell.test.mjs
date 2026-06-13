@@ -41,7 +41,9 @@ test("status screen contract shows network addresses extension users can actuall
   assert.match(internal.value, /http:\/\/192\.168\.0\.10:8000/);
   assert.match(internal.value, /http:\/\/10\.0\.0\.8:8000/);
   assert.match(internal.description, /같은 공유기|사내망|내부망/);
-  assert.match(external.description, /외부에서 접속할 Chrome 확장프로그램 사용자/);
+  assert.match(external.description, /외부 접속.*API URL 확인 방법/);
+  assert.match(external.value, /자동 감지 안 됨/);
+  assert.match(external.description, /자동으로 확인하지 못했습니다/);
   assert.equal(port.value, "8000");
 
   const encoded = JSON.stringify(plan);
@@ -81,6 +83,7 @@ test("status screen uses forwarded external origin when proxy or port forwarding
 
   const encoded = JSON.stringify(plan);
   assert.equal(external.value, "https://promptguard.example.com:9443");
+  assert.match(external.description, /자동 감지됨/);
   assert.match(external.description, /외부에서 접속할 Chrome 확장프로그램 사용자/);
 });
 

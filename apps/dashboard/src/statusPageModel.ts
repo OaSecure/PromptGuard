@@ -47,7 +47,14 @@ function externalOriginValue(connection: ExtensionConnectionInfo): string {
   if (connection.external_api_origin) {
     return connection.external_api_origin;
   }
-  return "포트포워딩 또는 도메인 설정 후 확인 필요";
+  return "자동 감지 안 됨 - 포트포워딩 또는 도메인 설정 후 확인 필요";
+}
+
+function externalOriginDescription(connection: ExtensionConnectionInfo): string {
+  if (connection.external_api_origin) {
+    return "자동 감지됨. 외부에서 접속할 Chrome 확장프로그램 사용자가 API URL에 입력할 주소입니다.";
+  }
+  return "자동으로 확인하지 못했습니다. 외부 접속이 필요하면 API URL 확인 방법을 열어 외부 주소 확인 절차를 진행하세요.";
 }
 
 export function extensionSetupPlan(connection: ExtensionConnectionInfo): StatusExtensionSetupPlan {
@@ -63,7 +70,7 @@ export function extensionSetupPlan(connection: ExtensionConnectionInfo): StatusE
       {
         label: "외부/포트포워딩 주소",
         value: externalOriginValue(connection),
-        description: "외부에서 접속할 Chrome 확장프로그램 사용자가 API URL에 입력할 주소입니다.",
+        description: externalOriginDescription(connection),
       },
       {
         label: "API 포트",
