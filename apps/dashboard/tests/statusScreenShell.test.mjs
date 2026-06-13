@@ -152,3 +152,17 @@ test("status URL builder creates extension API origins from admin-entered host v
   assert.equal(buildExternalApiOrigin("bad host name", "8000", false), null);
   assert.equal(buildExternalApiOrigin("promptguard.example.com", "70000", false), null);
 });
+
+test("status API URL dialog keeps internal and external builders separated to avoid oversized modal", async () => {
+  const fs = await import("node:fs/promises");
+  const statusJs = await fs.readFile(new URL("../static/status.js", import.meta.url), "utf8");
+  const mainCss = await fs.readFile(new URL("../static/main.css", import.meta.url), "utf8");
+
+  assert.match(statusJs, /내부망 주소 만들기/);
+  assert.match(statusJs, /외부망 주소 만들기/);
+  assert.match(statusJs, /status-url-builder-mode/);
+  assert.match(statusJs, /hidden = mode !== "lan"/);
+  assert.match(statusJs, /hidden = mode !== "external"/);
+  assert.match(mainCss, /max-height:\s*calc\(100vh - 48px\)/);
+  assert.match(mainCss, /overflow-y:\s*auto/);
+});

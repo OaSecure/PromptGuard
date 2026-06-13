@@ -1292,10 +1292,26 @@ input {
   margin: 0;
 }
 
-.status-url-builder-grid {
-  display: grid;
-  gap: 12px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+.status-url-builder-mode {
+  display: flex;
+  gap: 8px;
+}
+
+.status-url-builder-mode button {
+  background: #e8f4ff;
+  border: 1px solid #bedbfa;
+  border-radius: 12px;
+  color: #2f75dc;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 900;
+  padding: 10px 14px;
+}
+
+.status-url-builder-mode button.active {
+  background: #347fde;
+  border-color: #347fde;
+  color: #ffffff;
 }
 
 .status-url-builder-panel {
@@ -1305,6 +1321,10 @@ input {
   display: grid;
   gap: 10px;
   padding: 14px;
+}
+
+.status-url-builder-panel[hidden] {
+  display: none;
 }
 
 .status-url-builder label {
@@ -1371,7 +1391,9 @@ input {
   box-shadow: 0 24px 60px rgba(16, 40, 74, 0.22);
   display: grid;
   gap: 18px;
+  max-height: calc(100vh - 48px);
   max-width: 920px;
+  overflow-y: auto;
   padding: 26px;
   width: min(100%, 920px);
 }
@@ -1499,7 +1521,7 @@ input {
     grid-template-columns: 1fr;
   }
 
-  .status-url-builder-grid {
-    grid-template-columns: 1fr;
+  .status-url-builder-mode {
+    flex-direction: column;
   }
 }

@@ -206,8 +206,15 @@ function renderApiUrlBuilder(plan: StatusExtensionSetupPlan): HTMLElement {
   appendText(builder, "h3", "API URL 만들기");
   appendText(builder, "p", "환경변수 없이 서버 PC 주소 또는 외부 주소를 입력하면 Chrome 확장프로그램에 넣을 API URL을 만듭니다.");
 
-  const grid = document.createElement("div");
-  grid.className = "status-url-builder-grid";
+  const modeControls = document.createElement("div");
+  modeControls.className = "status-url-builder-mode";
+  const lanMode = document.createElement("button");
+  lanMode.type = "button";
+  lanMode.textContent = "내부망 주소 만들기";
+  const externalMode = document.createElement("button");
+  externalMode.type = "button";
+  externalMode.textContent = "외부망 주소 만들기";
+  modeControls.append(lanMode, externalMode);
 
   const lan = document.createElement("article");
   lan.className = "status-url-builder-panel";
@@ -245,6 +252,22 @@ function renderApiUrlBuilder(plan: StatusExtensionSetupPlan): HTMLElement {
   const externalResult = renderReadonlyOutput("생성된 외부 API URL");
   external.append(hostLabel, portLabel, httpsLabel, externalResult.root);
 
+  let mode: "lan" | "external" = "lan";
+  const renderMode = () => {
+    lan.hidden = mode !== "lan";
+    external.hidden = mode !== "external";
+    lanMode.classList.toggle("active", mode === "lan");
+    externalMode.classList.toggle("active", mode === "external");
+  };
+  lanMode.addEventListener("click", () => {
+    mode = "lan";
+    renderMode();
+  });
+  externalMode.addEventListener("click", () => {
+    mode = "external";
+    renderMode();
+  });
+
   const updateLan = () => {
     lanResult.output.value = buildLanApiOrigin(lanInput.value, plan.urlBuilder.apiPort) ?? "서버 PC의 실제 IPv4 주소를 입력하세요.";
   };
@@ -256,11 +279,11 @@ function renderApiUrlBuilder(plan: StatusExtensionSetupPlan): HTMLElement {
   hostInput.addEventListener("input", updateExternal);
   portInput.addEventListener("input", updateExternal);
   httpsInput.addEventListener("change", updateExternal);
+  renderMode();
   updateLan();
   updateExternal();
 
-  grid.append(lan, external);
-  builder.append(grid);
+  builder.append(modeControls, lan, external);
   if (plan.urlBuilder.excludedOrigins.length > 0) {
     const notice = document.createElement("p");
     notice.className = "status-url-builder-notice";
