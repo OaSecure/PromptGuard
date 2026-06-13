@@ -3,90 +3,109 @@ import assert from "node:assert/strict";
 
 const { renderStatusPlan } = await import("../static/statusPageModel.js");
 
-test("status screen includes safe Chrome extension setup guidance", () => {
-  const payload = {
+function statusPayload(overrides = {}) {
+  return {
     status: "healthy",
     last_checked: "2026-06-12T09:00:00Z",
     api_status: "healthy",
     postgres_status: "healthy",
     migration_status: "healthy",
     filter_rules_status: "healthy",
+    extension_connection: {
+      internal_api_origins: ["http://192.168.0.10:8000", "http://10.0.0.8:8000"],
+      external_api_origin: null,
+      admin_local_api_origin: "http://localhost:8000",
+      api_port: "8000",
+    },
+    ...overrides,
   };
-  const plan = renderStatusPlan(payload, "http://localhost:3000");
+}
+
+function connectionCardByLabel(plan, label) {
+  const card = plan.extensionSetup.connectionCards.find((item) => item.label === label);
+  assert.ok(card, `missing connection card: ${label}`);
+  return card;
+}
+
+test("status screen contract shows network addresses extension users can actually enter", () => {
+  const plan = renderStatusPlan(statusPayload());
+  const internal = connectionCardByLabel(plan, "내부망 연결 주소");
+  const external = connectionCardByLabel(plan, "외부/포트포워딩 주소");
+  const port = connectionCardByLabel(plan, "API 포트");
 
   assert.equal(plan.extensionSetup.title, "Chrome 확장프로그램 연동");
-  assert.deepEqual(plan.extensionSetup.settings, [
-    {
-      label: "API URL",
-      value: "다른 PC 사용자에게는 서버 PC의 LAN IP, 도메인, 또는 포트포워딩 주소를 안내합니다.",
-      description: "Chrome 확장프로그램은 이 주소에 /auth/login, /config/extension, /prompts/analyze 요청을 보냅니다. localhost는 서버 관리자 PC에서만 유효합니다.",
-    },
-    {
-      label: "관리자 로컬 확인용",
-      value: "http://localhost:8000",
-      description: "서버를 띄운 같은 컴퓨터에서만 확인할 때 쓰는 주소입니다. 다른 사용자에게 이 값을 그대로 전달하지 않습니다.",
-    },
-    {
-      label: "Mock API",
-      value: "끔",
-      description: "Mock API mode 체크를 해제해야 실제 PromptGuard 서버로 요청합니다.",
-    },
-    {
-      label: "Login ID",
-      value: "대시보드에서 생성한 사용자 ID 또는 로컬 기본 관리자 ID admin",
-      description: "운영 환경에서는 사용자별 계정을 사용합니다.",
-    },
-    {
-      label: "Password",
-      value: "해당 계정의 비밀번호",
-      description: "서버 상태 화면은 비밀번호 값을 표시하지 않습니다.",
-    },
-  ]);
-  assert.deepEqual(plan.extensionSetup.steps, [
-    "서버 배포자는 Chrome 확장프로그램 사용자의 컴퓨터에서 접속할 수 있는 백엔드 API origin을 확인합니다.",
-    "다른 PC 사용자는 localhost가 아니라 서버 PC의 LAN IP, 도메인, 또는 외부로 열린 포트포워딩 주소를 API URL로 입력해야 합니다.",
-    "옵션에서 Save를 눌러 API URL과 Mock API 설정을 저장합니다.",
-    "Login ID와 Password로 확장프로그램 로그인을 실행합니다.",
-    "Sync config를 눌러 서버의 확장 설정을 가져옵니다.",
-    "이후 브라우저 입력창에서 Allow/Warn/Mask/Block 동작을 확인합니다.",
-  ]);
+  assert.deepEqual(
+    plan.extensionSetup.connectionCards.map((item) => item.label),
+    ["내부망 연결 주소", "외부/포트포워딩 주소", "API 포트"]
+  );
+  assert.match(internal.value, /http:\/\/192\.168\.0\.10:8000/);
+  assert.match(internal.value, /http:\/\/10\.0\.0\.8:8000/);
+  assert.match(internal.description, /같은 공유기|사내망|내부망/);
+  assert.match(external.description, /외부에서 접속할 Chrome 확장프로그램 사용자/);
+  assert.equal(port.value, "8000");
 
   const encoded = JSON.stringify(plan);
+  assert.match(encoded, /포트포워딩|공인 IP|도메인|외부 포트/);
+  assert.doesNotMatch(encoded, /Login ID|Password|Mock API|해당 계정의 비밀번호/);
   assert.doesNotMatch(encoded, /1234|access[_ -]?token|refresh[_ -]?token|secret|DB URL|DATABASE_URL|stack trace|selector/i);
 });
 
-test("status page renders API URL help in a dialog instead of crowding the card", async () => {
-  const fs = await import("node:fs/promises");
-  const statusJs = await fs.readFile(new URL("../static/status.js", import.meta.url), "utf8");
+test("status screen distinguishes local-admin localhost from extension-user address", () => {
+  const plan = renderStatusPlan(statusPayload({
+    extension_connection: {
+      internal_api_origins: [],
+      external_api_origin: null,
+      admin_local_api_origin: "http://localhost:8000",
+      api_port: "8000",
+    },
+  }));
+  const encoded = JSON.stringify(plan);
+  const internal = connectionCardByLabel(plan, "내부망 연결 주소");
 
-  assert.match(statusJs, /API URL 확인 방법/);
-  assert.match(statusJs, /status-help-dialog/);
-  assert.match(statusJs, /aria-modal/);
-  assert.match(statusJs, /닫기/);
-  assert.doesNotMatch(statusJs, /card\.append\(copy, settings, list\)/);
-  assert.match(statusJs, /card\.append\(copy, settings, actions\)/);
+  assert.match(encoded, /서버 내부망 IP를 확인할 수 없습니다/);
+  assert.match(encoded, /관리자 로컬 확인용/);
+  assert.match(encoded, /localhost는 서버 관리자 PC에서만 유효/);
+  assert.doesNotMatch(internal.value, /localhost/);
 });
 
-test("status screen derives extension API URL from dashboard origin and documents port forwarding", () => {
-  const payload = {
-    status: "healthy",
-    last_checked: "2026-06-12T09:00:00Z",
-    api_status: "healthy",
-    postgres_status: "healthy",
-    migration_status: "healthy",
-    filter_rules_status: "healthy",
-  };
+test("status screen uses forwarded external origin when proxy or port forwarding exposes one", () => {
+  const plan = renderStatusPlan(statusPayload({
+    extension_connection: {
+      internal_api_origins: ["http://192.168.0.10:8000"],
+      external_api_origin: "https://promptguard.example.com:9443",
+      admin_local_api_origin: "http://localhost:8000",
+      api_port: "8000",
+    },
+  }));
+  const external = connectionCardByLabel(plan, "외부/포트포워딩 주소");
 
-  const localPlan = renderStatusPlan(payload, "http://127.0.0.1:3000");
-  assert.notEqual(localPlan.extensionSetup.settings[0].value, "http://127.0.0.1:8000");
-  assert.equal(localPlan.extensionSetup.settings[1].value, "http://127.0.0.1:8000");
+  const encoded = JSON.stringify(plan);
+  assert.equal(external.value, "https://promptguard.example.com:9443");
+  assert.match(external.description, /외부에서 접속할 Chrome 확장프로그램 사용자/);
+});
 
-  const forwardedPlan = renderStatusPlan(payload, "https://promptguard.example.com");
-  assert.equal(forwardedPlan.extensionSetup.settings[0].value, "https://promptguard.example.com");
+test("status help contract teaches non-expert admins to find IP and port forwarding on Windows macOS and Linux", () => {
+  const plan = renderStatusPlan(statusPayload());
+  const encoded = JSON.stringify(plan.extensionSetup.helpSections);
 
-  const encoded = JSON.stringify(forwardedPlan);
   assert.match(encoded, /Chrome 확장프로그램.*\/auth\/login.*\/config\/extension.*\/prompts\/analyze/);
-  assert.match(encoded, /사용자의 컴퓨터에서 접속할 수 있는 백엔드 API origin/);
-  assert.match(encoded, /localhost가 아니라 서버 PC의 LAN IP, 도메인, 또는 외부로 열린 포트포워딩 주소/);
-  assert.doesNotMatch(encoded, /http:\/\/localhost:8000/);
+  assert.match(encoded, /Windows/);
+  assert.match(encoded, /ipconfig/);
+  assert.match(encoded, /IPv4/);
+  assert.match(encoded, /macOS/);
+  assert.match(encoded, /시스템 설정|ifconfig|getifaddr/);
+  assert.match(encoded, /Linux/);
+  assert.match(encoded, /ip addr|hostname -I/);
+  assert.match(encoded, /공유기 관리자 페이지|포트포워딩|외부 포트|내부 포트|방화벽/);
+});
+
+test("status screen keeps connection cards concise and moves operating-system steps into help", () => {
+  const plan = renderStatusPlan(statusPayload());
+  const cardText = JSON.stringify(plan.extensionSetup.connectionCards);
+  const helpText = JSON.stringify(plan.extensionSetup.helpSections);
+
+  assert.doesNotMatch(cardText, /ipconfig|hostname -I|ip addr|공유기 관리자 페이지|방화벽/);
+  assert.match(helpText, /ipconfig/);
+  assert.match(helpText, /hostname -I|ip addr/);
+  assert.match(helpText, /공유기 관리자 페이지|방화벽/);
 });

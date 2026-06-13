@@ -111,7 +111,7 @@ function renderExtensionSetup(plan: StatusExtensionSetupPlan): HTMLElement {
 
   const settings = document.createElement("div");
   settings.className = "status-setup-values";
-  for (const item of plan.settings) {
+  for (const item of plan.connectionCards) {
     const entry = document.createElement("article");
     entry.className = "status-setup-value-card";
     appendText(entry, "span", item.label);
@@ -159,8 +159,16 @@ function openExtensionSetupDialog(plan: StatusExtensionSetupPlan): void {
 
   const list = document.createElement("ol");
   list.className = "status-setup-list";
-  for (const step of plan.steps) {
-    appendText(list, "li", step);
+  for (const section of plan.helpSections) {
+    const sectionItem = document.createElement("li");
+    appendText(sectionItem, "strong", section.title);
+    const nested = document.createElement("ol");
+    nested.className = "status-help-step-list";
+    for (const step of section.steps) {
+      appendText(nested, "li", step);
+    }
+    sectionItem.append(nested);
+    list.append(sectionItem);
   }
 
   backdrop.addEventListener("click", (event) => {
@@ -195,7 +203,7 @@ function renderUnavailable(statusCode?: number): void {
 }
 
 function renderStatus(payload: DashboardStatus): void {
-  const plan = renderStatusPlan(payload, window.location.origin);
+  const plan = renderStatusPlan(payload);
   const summary = document.createElement("section");
   summary.className = "status-summary-card";
   const copy = document.createElement("div");

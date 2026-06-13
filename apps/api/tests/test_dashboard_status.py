@@ -116,7 +116,8 @@ def test_dashboard_status_with_user_role_returns_403(monkeypatch) -> None:
 
 def test_dashboard_status_with_admin_returns_flat_allowlist(monkeypatch) -> None:
     user = _user()
-    response = _client(monkeypatch, user=user).get("/dashboard/status")
+    monkeypatch.setattr(dashboard_status, "collect_server_ipv4_addresses", lambda: ["192.168.0.10"])
+    response = _client(monkeypatch, user=user).get("/dashboard/status", headers={"host": "localhost:8000"})
 
     body = response.json()
     assert response.status_code == 200
@@ -127,6 +128,7 @@ def test_dashboard_status_with_admin_returns_flat_allowlist(monkeypatch) -> None
         "postgres_status",
         "migration_status",
         "filter_rules_status",
+        "extension_connection",
     }
     assert body["last_checked"] == "2026-06-01T00:00:00Z"
     assert body["api_status"] == "healthy"
@@ -138,6 +140,33 @@ def test_dashboard_status_with_admin_returns_flat_allowlist(monkeypatch) -> None
     assert "migrations" not in body
     assert "filter_rules" not in body
     assert "dependencies" not in body
+    assert body["extension_connection"] == {
+        "internal_api_origins": ["http://192.168.0.10:8000"],
+        "admin_local_api_origin": "http://localhost:8000",
+        "external_api_origin": None,
+        "api_port": "8000",
+    }
+
+
+def test_dashboard_status_reports_forwarded_external_origin(monkeypatch) -> None:
+    user = _user()
+    monkeypatch.setattr(dashboard_status, "collect_server_ipv4_addresses", lambda: ["10.1.2.3"])
+    response = _client(monkeypatch, user=user).get(
+        "/dashboard/status",
+        headers={
+            "host": "localhost:8000",
+            "x-forwarded-proto": "https",
+            "x-forwarded-host": "promptguard.example.com",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["extension_connection"] == {
+        "internal_api_origins": ["http://10.1.2.3:8000"],
+        "admin_local_api_origin": "http://localhost:8000",
+        "external_api_origin": "https://promptguard.example.com",
+        "api_port": "8000",
+    }
 
 
 def test_dashboard_status_does_not_leak_raw_details(monkeypatch) -> None:
