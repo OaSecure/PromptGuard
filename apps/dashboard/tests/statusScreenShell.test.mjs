@@ -19,7 +19,7 @@ test("status screen includes safe Chrome extension setup guidance", () => {
     {
       label: "API URL",
       value: "http://localhost:8000",
-      description: "현재 대시보드 주소에서 추정한 로컬 API 주소입니다. 포트포워딩이나 리버스 프록시를 쓰면 브라우저에서 접근 가능한 외부 API 주소를 입력합니다.",
+      description: "Chrome 확장프로그램이 이 주소에 /auth/login, /config/extension, /prompts/analyze 요청을 보냅니다. 서버 배포자는 사용자 브라우저에서 접근 가능한 백엔드 API 주소를 알려줘야 합니다.",
     },
     {
       label: "Mock API",
@@ -38,6 +38,8 @@ test("status screen includes safe Chrome extension setup guidance", () => {
     },
   ]);
   assert.deepEqual(plan.extensionSetup.steps, [
+    "서버 배포자는 Chrome 확장프로그램 사용자가 접속할 수 있는 백엔드 API origin을 확인합니다.",
+    "포트포워딩을 쓰면 내부 컨테이너 주소가 아니라 외부로 열린 host/IP/domain과 포트를 API URL로 안내합니다.",
     "옵션에서 Save를 눌러 API URL과 Mock API 설정을 저장합니다.",
     "Login ID와 Password로 확장프로그램 로그인을 실행합니다.",
     "Sync config를 눌러 서버의 확장 설정을 가져옵니다.",
@@ -65,6 +67,8 @@ test("status screen derives extension API URL from dashboard origin and document
   assert.equal(forwardedPlan.extensionSetup.settings[0].value, "https://promptguard.example.com");
 
   const encoded = JSON.stringify(forwardedPlan);
-  assert.match(encoded, /포트포워딩|리버스 프록시|외부 API 주소/);
+  assert.match(encoded, /Chrome 확장프로그램.*\/auth\/login.*\/config\/extension.*\/prompts\/analyze/);
+  assert.match(encoded, /사용자 브라우저에서 접근 가능한 백엔드 API 주소/);
+  assert.match(encoded, /포트포워딩.*외부로 열린 host\/IP\/domain과 포트/);
   assert.doesNotMatch(encoded, /http:\/\/localhost:8000/);
 });
