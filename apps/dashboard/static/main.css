@@ -1260,6 +1260,59 @@ input {
   line-height: 1.6;
 }
 
+.extension-setup-card {
+  align-items: stretch;
+  flex-direction: column;
+}
+
+.status-setup-values {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: 100%;
+}
+
+.status-setup-value-card {
+  background: #f6fbff;
+  border: 1px solid #d6eaff;
+  border-radius: 16px;
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+}
+
+.status-setup-value-card span {
+  color: #5b78a0;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.status-setup-value-card strong {
+  color: #10284a;
+  font-size: 18px;
+  font-weight: 900;
+  overflow-wrap: anywhere;
+}
+
+.status-setup-value-card p {
+  color: #5b78a0;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.status-setup-list {
+  color: #496b97;
+  display: grid;
+  font-size: 14px;
+  font-weight: 800;
+  gap: 10px;
+  line-height: 1.55;
+  margin: 0;
+  padding-left: 22px;
+}
+
 .status-meta-grid {
   display: grid;
   gap: 18px;
@@ -1351,6 +1404,10 @@ input {
   }
 
   .dependency-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .status-setup-values {
     grid-template-columns: 1fr;
   }
 }

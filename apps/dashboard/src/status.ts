@@ -108,12 +108,24 @@ function renderExtensionSetup(plan: StatusExtensionSetupPlan): HTMLElement {
   appendText(copy, "p", "운영 안내").className = "eyebrow";
   appendText(copy, "h2", plan.title);
   appendText(copy, "p", plan.description).className = "status-summary-copy";
+
+  const settings = document.createElement("div");
+  settings.className = "status-setup-values";
+  for (const item of plan.settings) {
+    const entry = document.createElement("article");
+    entry.className = "status-setup-value-card";
+    appendText(entry, "span", item.label);
+    appendText(entry, "strong", item.value);
+    appendText(entry, "p", item.description);
+    settings.append(entry);
+  }
+
   const list = document.createElement("ol");
   list.className = "status-setup-list";
   for (const step of plan.steps) {
     appendText(list, "li", step);
   }
-  card.append(copy, list);
+  card.append(copy, settings, list);
   return card;
 }
 
