@@ -3,13 +3,9 @@ from typing import Literal
 from pydantic import BaseModel
 
 from app.atoms.models import AnalysisAtom, PipelineFailure, TextRange
+from app.ml.embedding.models import AtomEmbedding
 
 SegmentType = Literal["semantic", "structure", "size_fallback", "single_atom"]
-
-
-class AtomEmbedding(BaseModel):
-    atom_id: str
-    vector: list[float]
 
 
 class SegmentPolicy(BaseModel):
