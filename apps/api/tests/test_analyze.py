@@ -733,13 +733,19 @@ def test_analyze_returns_business_context_matches_without_raw_spans() -> None:
             "category": "Business",
             "reason_code": "CUSTOM_CONTEXT_RULE_NDA_CONTEXT",
             "match_count": 2,
-            "matched_keywords": ["NDA", "penalty"],
+            "matched_keywords": [
+                f"rule:{rule.id}:group:cc8321d6375c:pattern:0",
+                f"rule:{rule.id}:group:cc8321d6375c:pattern:1",
+            ],
             "evidence_counts": {"matched_condition_count": 2},
         }
     ]
     assert body["detections"][0]["source"] == "composer"
     assert detection_rows[0].source == "custom_context_rule"
-    assert detection_rows[0].matched_keywords == ["NDA", "penalty"]
+    assert detection_rows[0].matched_keywords == [
+        f"rule:{rule.id}:group:cc8321d6375c:pattern:0",
+        f"rule:{rule.id}:group:cc8321d6375c:pattern:1",
+    ]
     assert detection_rows[0].evidence_counts == {"match_count": 2, "matched_condition_count": 2}
     assert "confidential" not in encoded
     assert "amount" not in encoded

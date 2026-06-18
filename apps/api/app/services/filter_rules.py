@@ -1,5 +1,4 @@
 import hashlib
-import re
 import uuid
 from dataclasses import dataclass
 from typing import Any, Literal
@@ -7,8 +6,11 @@ from typing import Any, Literal
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.atoms.models import ParsedBlock, ParsedDocument
 from app.detectors.pii import Detection, detect_pii
 from app.models.filters import FilterRule
+from app.normalization import NormalizerRequest, normalize_document
+from app.scanner import LexicalRule, LexicalScanRequest, scan_lexical_signals
 
 RuleAction = Literal["ALLOW", "WARN", "MASK", "BLOCK"]
 RuleSeverity = Literal["low", "medium", "high", "critical"]
@@ -171,26 +173,7 @@ def _built_in_matches(prompt: str, rules: list[FilterRule]) -> list[RuleMatch]:
 def _custom_keyword_match(prompt: str, rule: FilterRule) -> RuleMatch | None:
     if not rule.keyword:
         return None
-    detections: list[Detection] = []
-    prompt_folded = prompt.casefold()
-    keyword_folded = rule.keyword.casefold()
-    start = 0
-    while True:
-        index = prompt_folded.find(keyword_folded, start)
-        if index < 0:
-            break
-        end = index + len(rule.keyword)
-        detections.append(
-            Detection(
-                detector_key=rule.placeholder or "CUSTOM_KEYWORD",
-                category=rule.category,
-                start=index,
-                end=end,
-                placeholder=rule.placeholder or "CUSTOM_KEYWORD",
-                value_length=end - index,
-            )
-        )
-        start = end
+    detections = _lexical_detections(prompt, rule, "keyword", rule.keyword)
     if not detections:
         return None
     return RuleMatch(
@@ -213,18 +196,7 @@ def _custom_keyword_match(prompt: str, rule: FilterRule) -> RuleMatch | None:
 def _custom_regex_match(prompt: str, rule: FilterRule) -> RuleMatch | None:
     if not rule.pattern:
         return None
-    compiled = re.compile(rule.pattern)
-    detections = [
-        Detection(
-            detector_key=rule.placeholder or "CUSTOM_REGEX",
-            category=rule.category,
-            start=match.start(),
-            end=match.end(),
-            placeholder=rule.placeholder or "CUSTOM_REGEX",
-            value_length=match.end() - match.start(),
-        )
-        for match in compiled.finditer(prompt)
-    ]
+    detections = _lexical_detections(prompt, rule, "regex", rule.pattern)
     if not detections:
         return None
     return RuleMatch(
@@ -250,14 +222,24 @@ def _context_rule_match(prompt: str, rule: FilterRule) -> RuleMatch | None:
     if not isinstance(groups, dict):
         return None
     min_count = int(config.get("min_condition_count", 1))
-    matched_keywords: list[str] = []
-    prompt_folded = prompt.casefold()
-    for terms in groups.values():
+    matched_pattern_ids: list[str] = []
+    matched_group_ids: set[str] = set()
+    for group_id, terms in groups.items():
+        safe_group_id = f"group:{hashlib.sha256(str(group_id).encode()).hexdigest()[:12]}"
         if isinstance(terms, list):
-            for term in terms:
-                if isinstance(term, str) and term and term.casefold() in prompt_folded:
-                    matched_keywords.append(term)
-    matched_terms = len(matched_keywords)
+            for index, term in enumerate(terms):
+                if isinstance(term, str) and term:
+                    pattern_id = f"rule:{rule.id}:{safe_group_id}:pattern:{index}"
+                    lexical_rule = LexicalRule(
+                        pattern_id=pattern_id,
+                        kind="keyword",
+                        expression=term,
+                        signal_type="CONTEXT",
+                    )
+                    if _scan(prompt, lexical_rule):
+                        matched_pattern_ids.append(pattern_id)
+                        matched_group_ids.add(safe_group_id)
+    matched_terms = len(matched_pattern_ids)
     if matched_terms < min_count:
         return None
     return RuleMatch(
@@ -274,10 +256,43 @@ def _context_rule_match(prompt: str, rule: FilterRule) -> RuleMatch | None:
         match_count=matched_terms,
         safe_evidence={
             "matched_condition_count": matched_terms,
-            "matched_keywords": sorted(set(matched_keywords), key=str.casefold),
+            "matched_group_ids": sorted(matched_group_ids),
+            "matched_pattern_ids": sorted(matched_pattern_ids),
         },
         detections=[],
     )
+
+
+def _scan(prompt: str, lexical_rule: LexicalRule) -> list:
+    document = ParsedDocument(
+        input_id="legacy-input",
+        blocks=[ParsedBlock(block_id="legacy-block", input_id="legacy-input", text=prompt)],
+    )
+    normalized = normalize_document(NormalizerRequest(document=document))
+    return scan_lexical_signals(LexicalScanRequest(normalized_document=normalized, rules=[lexical_rule])).signals
+
+
+def _lexical_detections(
+    prompt: str,
+    rule: FilterRule,
+    kind: Literal["keyword", "regex"],
+    expression: str,
+) -> list[Detection]:
+    detector_key = rule.placeholder or ("CUSTOM_KEYWORD" if kind == "keyword" else "CUSTOM_REGEX")
+    lexical_rule = LexicalRule(
+        pattern_id=f"rule:{rule.id}", kind=kind, expression=expression, signal_type=detector_key
+    )
+    return [
+        Detection(
+            detector_key=detector_key,
+            category=rule.category,
+            start=signal.original_range.start,
+            end=signal.original_range.end,
+            placeholder=detector_key,
+            value_length=signal.original_range.end - signal.original_range.start,
+        )
+        for signal in _scan(prompt, lexical_rule)
+    ]
 
 
 def evaluate_filter_rules(prompt: str, rules: list[FilterRule]) -> list[RuleMatch]:
