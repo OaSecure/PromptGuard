@@ -61,11 +61,22 @@ def test_context_evidence_contains_only_safe_group_and_pattern_ids():
     assert "contract" not in encoded
 
 
-def test_scanner_contract_has_no_policy_fields_or_raw_rule_material():
+def test_lexical_rule_snapshot_is_manifest_only(caplog):
     forbidden = {"action", "recommended_action", "reason_code", "user_notice", "user_message"}
     assert forbidden.isdisjoint(LexicalSignal.model_fields)
-    rule = _rule("regex", pattern=r"RAW-SECRET-\d+", placeholder="SECRET")
-    match = evaluate_filter_rules("RAW-SECRET-42", [rule])[0]
-    encoded = repr(match.safe_evidence)
-    assert "RAW-SECRET" not in encoded
-    assert "\\d+" not in encoded
+    raw_pattern = r"RAW-PROTECTED-TARGET-\d+"
+    raw_value = "RAW-PROTECTED-TARGET-42"
+    rule = _rule("regex", pattern=raw_pattern, placeholder="SECRET")
+    match = evaluate_filter_rules(raw_value, [rule])[0]
+    manifest = {
+        "rule_id": match.rule_id,
+        "detector_id": match.detector_id,
+        "source": match.source,
+        "match_count": match.match_count,
+        "safe_evidence": match.safe_evidence,
+    }
+    encoded = json.dumps(manifest)
+    assert raw_value not in encoded
+    assert raw_pattern not in encoded
+    assert raw_value not in caplog.text
+    assert raw_pattern not in caplog.text
