@@ -54,6 +54,41 @@ def test_segment_embedding_mean_pooling():
     assert result.segment_embeddings[0].normalized is False
 
 
+def test_segment_embedding_single_atom_boundary_preserves_vector():
+    result = build_segment_embeddings(
+        request(
+            [segment("s1", ["a1"], 0)],
+            [embedding("a1", [7.0, 11.0])],
+        )
+    )
+
+    assert result.failure is None
+    assert result.segment_embeddings[0].vector == [7.0, 11.0]
+    assert result.segment_embeddings[0].dimension == 2
+
+
+def test_segment_embedding_empty_request_returns_empty_result():
+    result = build_segment_embeddings(request([], []))
+
+    assert result.input_id == "input-1"
+    assert result.segment_embeddings == []
+    assert result.failure is None
+
+
+def test_segment_embedding_weighted_mean_uses_uniform_weights_without_weight_field():
+    result = build_segment_embeddings(
+        request(
+            [segment("s1", ["a1", "a2"], 0)],
+            [embedding("a1", [2.0, 4.0]), embedding("a2", [6.0, 8.0])],
+            SegmentEmbeddingPolicy(pooling="weighted_mean", normalize_vectors=False),
+        )
+    )
+
+    assert result.failure is None
+    assert result.segment_embeddings[0].vector == [4.0, 6.0]
+    assert result.segment_embeddings[0].pooling == "weighted_mean"
+
+
 def test_segment_embedding_normalizes_mean_vector():
     result = build_segment_embeddings(
         request(
@@ -68,6 +103,20 @@ def test_segment_embedding_normalizes_mean_vector():
     assert result.failure is None
     assert math.isclose(math.sqrt(sum(value * value for value in vector)), 1.0)
     assert result.segment_embeddings[0].normalized is True
+
+
+def test_segment_embedding_zero_vector_normalization_fails():
+    result = build_segment_embeddings(
+        request(
+            [segment("s1", ["a1", "a2"], 0)],
+            [embedding("a1", [1.0, 0.0]), embedding("a2", [-1.0, 0.0])],
+            SegmentEmbeddingPolicy(normalize_vectors=True),
+        )
+    )
+
+    assert result.segment_embeddings == []
+    assert result.failure is not None
+    assert result.failure.code == "SEGMENT_EMBEDDING_NORMALIZATION_FAILED"
 
 
 def test_segment_embedding_preserves_segment_order():
