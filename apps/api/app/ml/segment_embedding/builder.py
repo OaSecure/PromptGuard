@@ -80,15 +80,25 @@ def _vectors_for_segment(
 
 
 def _pool_vectors(vectors: list[list[float]], policy: SegmentEmbeddingPolicy) -> list[float] | None:
-    pooled = _mean(vectors)
+    pooled = _pool_by_policy(vectors, policy)
     if policy.normalize_vectors:
         return _normalize(pooled)
     return pooled
 
 
+def _pool_by_policy(vectors: list[list[float]], policy: SegmentEmbeddingPolicy) -> list[float]:
+    if policy.pooling == "weighted_mean":
+        return _uniform_weighted_mean(vectors)
+    return _mean(vectors)
+
+
 def _mean(vectors: list[list[float]]) -> list[float]:
     count = len(vectors)
     return [sum(vector[index] for vector in vectors) / count for index in range(len(vectors[0]))]
+
+
+def _uniform_weighted_mean(vectors: list[list[float]]) -> list[float]:
+    return _mean(vectors)
 
 
 def _normalize(vector: list[float]) -> list[float] | None:
