@@ -3,6 +3,10 @@ import unicodedata
 from app.atoms.models import TextRange
 from app.normalization.models import NormalizedBlock, NormalizedDocument, NormalizerRequest, OffsetMapEntry
 
+# PR 11 intentionally collapses only consecutive, identical special characters.
+# Removing separators between characters and migrating legacy rule/filter evaluation
+# are deferred to PR 12+ so this module cannot change current Analyze behavior.
+
 
 def _is_special(character: str) -> bool:
     return unicodedata.category(character)[:1] in {"P", "S"}

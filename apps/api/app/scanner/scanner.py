@@ -48,7 +48,7 @@ def scan_lexical_signals(request: LexicalScanRequest) -> LexicalScanResult:
                         original_range=original_range,
                     )
                 )
-    status = "partial" if warnings or failures else "ok"
+    status = "partial" if warnings or failures else "completed"
     return LexicalScanResult(
         input_id=request.normalized_document.input_id,
         signals=signals,

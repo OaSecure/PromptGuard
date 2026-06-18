@@ -7,6 +7,8 @@ from app.scanner.models import LexicalSignal
 def test_scanner_signal_has_no_policy_or_raw_value_fields():
     forbidden = {"raw_value", "matched_value", "value", "action", "reason_code", "user_message", "confidence_hint"}
     assert forbidden.isdisjoint(LexicalSignal.model_fields)
+    assert LexicalSignal.model_fields["severity_hint"].default is None
+    assert LexicalSignal.model_fields["value_fingerprint"].default is None
 
 
 def test_new_modules_do_not_import_analyze_policy_or_storage_layers():

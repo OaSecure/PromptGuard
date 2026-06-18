@@ -22,6 +22,9 @@ def test_scanner_uses_normalized_text_and_restores_original_range():
     assert signal.original_range == TextRange(start=0, end=16)
     assert signal.match_basis == "keyword"
     assert signal.deterministic is True
+    assert signal.severity_hint is None
+    assert signal.value_fingerprint is None
+    assert result.scanner_status == "completed"
 
 
 def test_scanner_supports_minimal_regex_rules_without_returning_match_value():
@@ -61,6 +64,7 @@ def test_invalid_regex_is_isolated_as_warning():
     )
 
     assert result.signals == []
+    assert result.scanner_status == "partial"
     assert result.warnings == ["INVALID_REGEX:invalid"]
 
 

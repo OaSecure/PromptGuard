@@ -5,6 +5,9 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.atoms.models import TextRange
 from app.normalization.models import NormalizedDocument
 
+SeverityHint = Literal["info", "low", "medium", "high", "critical"]
+ScannerStatus = Literal["not_started", "completed", "partial", "timeout", "failed"]
+
 
 class LexicalRule(BaseModel):
     pattern_id: str = Field(min_length=1, max_length=80)
@@ -31,6 +34,8 @@ class LexicalSignal(BaseModel):
     deterministic: bool = True
     normalized_range: TextRange
     original_range: TextRange
+    severity_hint: SeverityHint | None = None
+    value_fingerprint: str | None = None
     metadata: dict[str, str] = Field(default_factory=dict)
 
 
@@ -43,7 +48,7 @@ class ScannerFailure(BaseModel):
 class LexicalScanResult(BaseModel):
     input_id: str
     signals: list[LexicalSignal]
-    scanner_status: Literal["ok", "partial", "failed"]
+    scanner_status: ScannerStatus
     scanner_version: str
     warnings: list[str] = Field(default_factory=list)
     failures: list[ScannerFailure] = Field(default_factory=list)
