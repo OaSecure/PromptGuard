@@ -197,3 +197,34 @@ def test_signal_can_map_to_multiple_segments_when_policy_allows():
     )
 
     assert [item.signal_ids for item in result.segment_signal_sets] == [["sig-1"], ["sig-1"]]
+
+
+def test_signal_with_different_input_id_is_not_mapped():
+    foreign_signal = signal("sig-foreign", "block-1", 5, 10)
+    foreign_signal.input_id = "other-input"
+
+    result = map_signals_to_segments(
+        request(
+            [segment("seg-1", ["a1"], 0, 20, 0)],
+            [atom("a1", "block-1", 0, 20, 0)],
+            [foreign_signal],
+        )
+    )
+
+    assert result.segment_signal_sets[0].signals == []
+
+
+def test_duplicate_signal_ids_are_deduplicated_per_segment():
+    first = signal("sig-1", "block-1", 5, 10)
+    duplicate = signal("sig-1", "block-1", 6, 11)
+
+    result = map_signals_to_segments(
+        request(
+            [segment("seg-1", ["a1"], 0, 20, 0)],
+            [atom("a1", "block-1", 0, 20, 0)],
+            [first, duplicate],
+        )
+    )
+
+    assert result.segment_signal_sets[0].signal_ids == ["sig-1"]
+    assert result.segment_signal_sets[0].signal_count == 1

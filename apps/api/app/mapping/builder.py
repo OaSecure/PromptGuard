@@ -1,3 +1,5 @@
+from collections.abc import Iterable
+
 from app.atoms.models import AnalysisAtom, TextRange
 from app.mapping.models import (
     LexicalSignal,
@@ -20,12 +22,15 @@ SEVERITY_ORDER = {
 
 def map_signals_to_segments(request: SignalMappingRequest) -> SignalMappingResult:
     atoms_by_id = {atom.atom_id: atom for atom in request.atoms}
+    signals = _dedupe_signals_by_id(
+        signal for signal in request.lexical_signals if signal.input_id == request.input_id
+    )
     assigned_signal_ids: set[str] = set()
     signal_sets: list[SegmentSignalSet] = []
     for segment in request.segments:
         signal_set = _map_segment_signals(
             segment,
-            request.lexical_signals,
+            signals,
             atoms_by_id,
             request.mapping_policy.allow_multiple_segment_matches,
             assigned_signal_ids,
@@ -38,6 +43,17 @@ def map_signals_to_segments(request: SignalMappingRequest) -> SignalMappingResul
         mapper_version=request.mapping_policy.mapper_version,
         failure=None,
     )
+
+
+def _dedupe_signals_by_id(signals: Iterable[LexicalSignal]) -> list[LexicalSignal]:
+    deduped: list[LexicalSignal] = []
+    seen: set[str] = set()
+    for signal in signals:
+        if signal.signal_id in seen:
+            continue
+        seen.add(signal.signal_id)
+        deduped.append(signal)
+    return deduped
 
 
 def _map_segment_signals(
