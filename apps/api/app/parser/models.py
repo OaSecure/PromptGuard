@@ -18,6 +18,19 @@ ExtractionRequirement = Literal[
 ]
 ParserStatus = Literal["parsed", "partial", "failed", "unsupported", "timeout", "too_large", "encrypted"]
 OcrStatus = Literal["not_applicable", "text_found", "no_text_detected", "timeout", "failed"]
+PlanKind = Literal[
+    "wrap_text", "native_text", "pdf_native_then_page_ocr", "image_ocr",
+    "office_parse", "spreadsheet_parse", "slide_parse", "code_parse",
+    "metadata_only", "unsupported",
+]
+StepKind = Literal[
+    "wrap_text", "native_text_extract", "pdf_native_text_extract", "pdf_coverage_evaluate",
+    "render_ocr_candidate_pages", "ocr_primary", "ocr_fallback", "merge_blocks",
+    "image_ocr", "office_parse", "spreadsheet_parse", "slide_parse", "code_parse",
+]
+FallbackTrigger = Literal[
+    "adapter_unavailable", "adapter_initialization_failed", "step_failed", "no_text_detected"
+]
 
 
 class TempFileAccessContext(BaseModel):
@@ -63,11 +76,96 @@ class ParserWorkerPayload(BaseModel):
         return self
 
 
-class ParserExecutionPlanStub(BaseModel):
-    """Opaque placeholder. Typed steps and fallback rules belong to PR5."""
+class ParserPlanStep(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
-    model_config = ConfigDict(extra="forbid")
+    step_id: str
+    ordinal: int = Field(ge=0)
+    step_kind: StepKind
+    capability_id: str
+    execution_mode: Literal["always", "fallback"] = "always"
+
+
+class ParserFallbackRule(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    rule_id: str
+    source_step_id: str
+    trigger: FallbackTrigger
+    target_step_id: str
+    ordinal: int = Field(ge=0)
+
+
+class ParserExecutionPlan(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
     plan_id: str
+    plan_kind: PlanKind
+    steps: tuple[ParserPlanStep, ...]
+    fallback_rules: tuple[ParserFallbackRule, ...] = ()
+
+    @model_validator(mode="after")
+    def validate_plan_graph(self) -> "ParserExecutionPlan":
+        if not self.steps and self.plan_kind not in {"metadata_only", "unsupported"}:
+            raise ValueError("executable plans require steps")
+        step_ordinals = [step.ordinal for step in self.steps]
+        if step_ordinals != list(range(len(self.steps))):
+            raise ValueError("step ordinals must be unique, ordered, and contiguous")
+        rule_ordinals = [rule.ordinal for rule in self.fallback_rules]
+        if rule_ordinals != list(range(len(self.fallback_rules))):
+            raise ValueError("fallback rule ordinals must be unique, ordered, and contiguous")
+        steps_by_id = {step.step_id: step for step in self.steps}
+        if len(steps_by_id) != len(self.steps):
+            raise ValueError("step ids must be unique")
+        for rule in self.fallback_rules:
+            if rule.source_step_id not in steps_by_id:
+                raise ValueError("fallback source step must exist")
+            target = steps_by_id.get(rule.target_step_id)
+            if target is None or target.execution_mode != "fallback":
+                raise ValueError("fallback target must be an existing fallback step")
+        return self
+
+
+class ParserAdapterCapability(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    capability_id: str
+    step_kinds: tuple[StepKind, ...]
+    enabled: bool = True
+
+
+class ParserPlanConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    enable_native_parsing: bool = True
+    enable_ocr: bool = True
+
+
+class ParserLicensePolicy(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    denied_capability_ids: tuple[str, ...] = ()
+
+
+class ParserPlanRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    payload: ParserWorkerPayload
+    resolved_file: ResolvedTemporaryFile | None = None
+    config: ParserPlanConfig
+    capabilities: tuple[ParserAdapterCapability, ...]
+    license_policy: ParserLicensePolicy
+
+
+class ParserStepResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    step_id: str
+    status: Literal["success", "partial", "failed", "skipped"]
+    trigger: FallbackTrigger | None = None
+    document: ParsedDocument | None = None
+    failure: PipelineFailure | None = None
+
 
 
 class FileParserResult(BaseModel):
@@ -81,7 +179,7 @@ class FileParserResult(BaseModel):
 
 
 class ParserPlanResolution(BaseModel):
-    plan: ParserExecutionPlanStub | None = None
+    plan: ParserExecutionPlan | None = None
     failure: PipelineFailure | None = None
 
 
