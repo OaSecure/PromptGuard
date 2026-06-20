@@ -2,12 +2,14 @@ from typing import Protocol
 
 from app.parser.models import (
     FileParserResult,
-    ParserExecutionPlanStub,
+    ParserExecutionPlan,
     ParserPlanResolution,
     ParserWorkerPayload,
     ResolvedPlanRequest,
     ResolvedTemporaryFile,
     TempFileAccessContext,
+    ParserPlanStep,
+    ParserStepResult,
 )
 
 
@@ -24,8 +26,17 @@ class ParserPlanExecutorPort(Protocol):
         self,
         payload: ParserWorkerPayload,
         resolved_file: ResolvedTemporaryFile | None,
-        plan: ParserExecutionPlanStub,
+        plan: ParserExecutionPlan,
     ) -> FileParserResult: ...
+
+
+class ParserStepAdapterPort(Protocol):
+    def execute_step(
+        self,
+        step: ParserPlanStep,
+        payload: ParserWorkerPayload,
+        resolved_file: ResolvedTemporaryFile | None,
+    ) -> ParserStepResult: ...
 
 
 class FileParserRunnerPort(Protocol):

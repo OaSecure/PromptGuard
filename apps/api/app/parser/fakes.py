@@ -4,13 +4,15 @@ from app.atoms.models import ParsedDocument
 from app.parser.models import (
     FileParserResult,
     ParserBoundaryError,
-    ParserExecutionPlanStub,
+    ParserExecutionPlan,
     ParserPlanResolution,
     ParserWorkerPayload,
     ResolvedPlanRequest,
     ResolvedTemporaryFile,
     TempFileAccessContext,
     sanitized_failure,
+    ParserPlanStep,
+    ParserStepResult,
 )
 
 
@@ -39,7 +41,9 @@ class FakeParserPlanResolver:
         self.calls.append(request)
         if self.failure_code:
             return ParserPlanResolution(failure=sanitized_failure(self.failure_code))
-        return ParserPlanResolution(plan=ParserExecutionPlanStub(plan_id="fake-plan"))
+        return ParserPlanResolution(plan=ParserExecutionPlan(
+            plan_id="fake-plan", plan_kind="metadata_only", steps=()
+        ))
 
 
 class FakeParserPlanExecutor:
@@ -60,6 +64,19 @@ class FakeParserPlanExecutor:
             document=ParsedDocument(input_id=payload.input_id, blocks=[]),
             parser_status="parsed",
         )
+
+
+class FakeParserStepAdapter:
+    def __init__(self, results: dict[str, ParserStepResult] | None = None, exception_message: str | None = None) -> None:
+        self.results = results or {}
+        self.exception_message = exception_message
+        self.calls: list[str] = []
+
+    def execute_step(self, step: ParserPlanStep, payload, resolved_file) -> ParserStepResult:
+        self.calls.append(step.step_id)
+        if self.exception_message is not None:
+            raise RuntimeError(self.exception_message)
+        return self.results.get(step.step_id, ParserStepResult(step_id=step.step_id, status="success"))
 
 
 class FakeFileParserRunner:
