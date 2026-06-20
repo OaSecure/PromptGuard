@@ -18,6 +18,10 @@ class TemporaryFileResolverPort(Protocol):
     def resolve(self, file_ref: str, access_context: TempFileAccessContext) -> ResolvedTemporaryFile: ...
 
 
+class ResolvedFileContentSourcePort(Protocol):
+    def read(self, resolved_file: ResolvedTemporaryFile) -> bytes: ...
+
+
 class ParserPlanResolverPort(Protocol):
     def resolve(self, request: ResolvedPlanRequest) -> ParserPlanResolution: ...
 
