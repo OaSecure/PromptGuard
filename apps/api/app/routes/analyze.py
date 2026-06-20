@@ -332,7 +332,9 @@ def business_context_matches(matched_inputs: list[tuple[int, AnalyzeInput, list[
         for match in matches:
             if match.source != "custom_context_rule":
                 continue
-            matched_keywords = match.safe_evidence.get("matched_keywords", [])
+            matched_keywords = match.safe_evidence.get(
+                "matched_pattern_ids", match.safe_evidence.get("matched_keywords", [])
+            )
             if not isinstance(matched_keywords, list):
                 matched_keywords = []
             context_matches.append(
@@ -376,7 +378,9 @@ def event_input_rows(event_id: uuid.UUID, input_results: list[AnalyzeInputResult
 
 
 def matched_keywords_for_evidence(safe_evidence: dict[str, Any]) -> list[str]:
-    matched_keywords = safe_evidence.get("matched_keywords", [])
+    matched_keywords = safe_evidence.get(
+        "matched_pattern_ids", safe_evidence.get("matched_keywords", [])
+    )
     if not isinstance(matched_keywords, list):
         return []
     return [item for item in matched_keywords if isinstance(item, str)]

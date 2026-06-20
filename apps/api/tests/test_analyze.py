@@ -255,7 +255,7 @@ def test_analyze_rejects_legacy_parallel_input_fields() -> None:
 def test_analyze_accepts_inputs_bundle_and_returns_mvp_response_shape() -> None:
     user = _user()
     client, fake_session = _client(user)
-    prompt = "계약서에 포함된 연락처를 확인해줘"
+    prompt = "\uacc4\uc57d\uc11c\uc5d0 \ud3ec\ud568\ub41c \uc5f0\ub77d\ucc98\ub97c \ud655\uc778\ud574\uc918"
 
     response = client.post(
         "/prompts/analyze",
@@ -702,7 +702,7 @@ def test_analyze_returns_business_context_matches_without_raw_spans() -> None:
         action="WARN",
         keyword=None,
         config_json={
-            "keyword_groups": {"contract": ["NDA", "penalty"]},
+            "keyword_groups": {"contract": ["RAW_TARGET_ALPHA", "RAW_TARGET_BETA"]},
             "exclusion_keywords": [],
             "window_size": 80,
             "min_condition_count": 2,
@@ -714,12 +714,13 @@ def test_analyze_returns_business_context_matches_without_raw_spans() -> None:
     response = client.post(
         "/prompts/analyze",
         headers=_bearer_header(user.id),
-        json=_analyze_payload(_text_input("in_1", "NDA penalty amount is confidential.")),
+        json=_analyze_payload(_text_input("in_1", "RAW_TARGET_ALPHA RAW_TARGET_BETA amount is confidential.")),
     )
 
     body = response.json()
     encoded = json.dumps(body, ensure_ascii=False)
     detection_rows = [item for item in fake_session.added if isinstance(item, EventDetection)]
+    encoded_event = json.dumps(detection_rows[0].__dict__, default=str, ensure_ascii=False)
 
     assert response.status_code == 200
     assert body["action"] == "Warn"
@@ -733,14 +734,24 @@ def test_analyze_returns_business_context_matches_without_raw_spans() -> None:
             "category": "Business",
             "reason_code": "CUSTOM_CONTEXT_RULE_NDA_CONTEXT",
             "match_count": 2,
-            "matched_keywords": ["NDA", "penalty"],
+            "matched_keywords": [
+                f"rule:{rule.id}:group:cc8321d6375c:pattern:0",
+                f"rule:{rule.id}:group:cc8321d6375c:pattern:1",
+            ],
             "evidence_counts": {"matched_condition_count": 2},
         }
     ]
     assert body["detections"][0]["source"] == "composer"
     assert detection_rows[0].source == "custom_context_rule"
-    assert detection_rows[0].matched_keywords == ["NDA", "penalty"]
+    assert detection_rows[0].matched_keywords == [
+        f"rule:{rule.id}:group:cc8321d6375c:pattern:0",
+        f"rule:{rule.id}:group:cc8321d6375c:pattern:1",
+    ]
     assert detection_rows[0].evidence_counts == {"match_count": 2, "matched_condition_count": 2}
+    assert "RAW_TARGET_ALPHA" not in encoded
+    assert "RAW_TARGET_BETA" not in encoded
+    assert "RAW_TARGET_ALPHA" not in encoded_event
+    assert "RAW_TARGET_BETA" not in encoded_event
     assert "confidential" not in encoded
     assert "amount" not in encoded
 
