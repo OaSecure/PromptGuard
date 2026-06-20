@@ -2,6 +2,7 @@ import json
 import re
 import uuid
 from datetime import datetime, timedelta
+from functools import lru_cache
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -12,12 +13,17 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import Settings, get_settings
 from app.core.tokens import utc_now
 from app.masking.placeholder import apply_placeholders
+from app.ml.classifier.factory import ClassifierRuntimeProviderResult, build_classifier_service_from_settings
+from app.ml.embedding import create_qwen3_backend
+from app.ml.embedding.loader import AtomEmbeddingModelLoader
 from app.models.auth import User
 from app.models.events import AnalysisEvent, EventDetection, EventInput, IdempotencyKey
 from app.models.filters import FilterRule
 from app.routes.auth import get_db_session, require_active_user
+from app.services.analyze_classifier import AnalyzeClassifierOutcome, evaluate_analyze_classifier
 from app.services.filter_rules import (
     RuleMatch,
     action_for_matches,
@@ -547,6 +553,16 @@ def final_action_for_analyze_result(action: str, payload: AnalyzeRequest, matche
     return action
 
 
+def final_action_for_classifier_outcome(action: str, classifier_outcome: AnalyzeClassifierOutcome) -> str:
+    if not classifier_outcome.enabled:
+        return action
+    if classifier_outcome.failure is not None:
+        return ACTION_BLOCK
+    if action == ACTION_ALLOW and classifier_outcome.has_candidates:
+        return ACTION_WARN
+    return action
+
+
 def score_for_final_action(score: int, action: str) -> int:
     if action == ACTION_BLOCK:
         return max(score, 95)
@@ -582,11 +598,38 @@ def is_idempotency_conflict(error: IntegrityError) -> bool:
     return "idempotency_keys" in message or "pk_idempotency_keys" in message
 
 
+@lru_cache(maxsize=8)
+def _cached_classifier_runtime_provider(
+    classifier_runtime_enabled: bool,
+    classifier_manifest_path: str,
+) -> ClassifierRuntimeProviderResult:
+    settings = Settings(
+        PROMPTGUARD_CLASSIFIER_RUNTIME_ENABLED=classifier_runtime_enabled,
+        PROMPTGUARD_CLASSIFIER_MANIFEST_PATH=classifier_manifest_path,
+    )
+    return build_classifier_service_from_settings(settings)
+
+
+def get_classifier_runtime_provider(settings: Settings = Depends(get_settings)) -> ClassifierRuntimeProviderResult:
+    return _cached_classifier_runtime_provider(
+        settings.classifier_runtime_enabled,
+        settings.classifier_manifest_path,
+    )
+
+
+def get_atom_embedding_loader(settings: Settings = Depends(get_settings)) -> AtomEmbeddingModelLoader | None:
+    if not settings.classifier_runtime_enabled:
+        return None
+    return AtomEmbeddingModelLoader(create_qwen3_backend)
+
+
 @router.post("/analyze", response_model=AnalyzeResponse, response_model_exclude_none=True)
 async def analyze_prompt(
     payload: AnalyzeRequest,
     current_user: User = Depends(require_active_user),
     session: AsyncSession = Depends(get_db_session),
+    classifier_provider: ClassifierRuntimeProviderResult = Depends(get_classifier_runtime_provider),
+    embedding_loader: AtomEmbeddingModelLoader | None = Depends(get_atom_embedding_loader),
 ) -> AnalyzeResponse:
     request_id = payload.client_request_id
     event_id = uuid.uuid4()
@@ -604,6 +647,12 @@ async def analyze_prompt(
     action = action_for_matches(matches)
     has_unavailable_input = bool(unavailable_inputs(payload))
     action = final_action_for_analyze_result(action, payload, matched_inputs)
+    classifier_outcome = (
+        AnalyzeClassifierOutcome(enabled=False)
+        if classifier_provider.failure is not None and classifier_provider.failure.code == "CLASSIFIER_RUNTIME_DISABLED"
+        else evaluate_analyze_classifier(text_inputs, classifier_provider, embedding_loader)
+    )
+    action = final_action_for_classifier_outcome(action, classifier_outcome)
     risk_score = score_for_final_action(risk_score, action)
     risk_level = risk_level_for_score(risk_score)
     masking_matches = []
