@@ -51,7 +51,21 @@ def test_verifier_request_is_built_only_from_classifier_candidates():
         )
     ]
     assert not hasattr(request.candidates[0], "score")
-    assert not hasattr(request.candidates[0], "text")
+    assert request.candidates[0].text is None
+    assert "text" not in request.candidates[0].model_dump()
+
+
+def test_verifier_candidate_text_is_runtime_only_and_excluded_from_dumps():
+    request = build_verification_request_from_classifier(
+        input_id="input-1",
+        classification=SegmentClassificationResult(input_id="input-1", candidates=[candidate()]),
+        artifact=artifact(),
+        candidate_text_by_segment_id={"segment-1": "SENSITIVE_PROMPT_SENTINEL"},
+    )
+
+    assert request.candidates[0].text == "SENSITIVE_PROMPT_SENTINEL"
+    assert "text" not in request.candidates[0].model_dump()
+    assert "SENSITIVE_PROMPT_SENTINEL" not in str(request.model_dump())
 
 
 def test_verifier_request_skips_when_classifier_has_no_candidate():
