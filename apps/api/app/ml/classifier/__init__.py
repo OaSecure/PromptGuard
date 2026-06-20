@@ -14,10 +14,13 @@ from app.ml.classifier.models import (
     SegmentClassificationResult,
 )
 from app.ml.classifier.runtime import LrClassifierRuntime
+from app.ml.classifier.service import ClassifierRuntime, ClassifierService
 
 __all__ = [
     "ClassifierArtifactRef",
+    "ClassifierRuntime",
     "ClassifierRuntimeBuildError",
+    "ClassifierService",
     "JoblibLrClassifierLoadError",
     "JoblibLrProbabilityPredictor",
     "LrClassifierRuntime",
