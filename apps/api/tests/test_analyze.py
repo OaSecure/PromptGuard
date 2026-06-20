@@ -766,7 +766,6 @@ def test_analyze_reports_detections_for_each_scannable_input() -> None:
         json=_analyze_payload(
             _text_input("composer_1", "Contact admin@example.com"),
             _text_input("paste_1", "Call 010-1234-5678", source="converted_paste"),
-            _text_input("file_1", "Card 4111 1111 1111 1111", source="file"),
         ),
     )
 
@@ -777,23 +776,21 @@ def test_analyze_reports_detections_for_each_scannable_input() -> None:
     assert body["action"] == "Block"
     assert body["allow_original_send"] is False
     assert "masked_prompt" not in body
-    assert {item["input_id"] for item in body["detections"]} == {"composer_1", "paste_1", "file_1"}
-    assert {item["source"] for item in body["detections"]} == {"composer", "converted_paste", "file"}
+    assert {item["input_id"] for item in body["detections"]} == {"composer_1", "paste_1"}
+    assert {item["source"] for item in body["detections"]} == {"composer", "converted_paste"}
     assert {item["decision_basis"] for item in body["input_results"]} == {"detection"}
     assert {(item.input_id, item.input_index, item.source, item.decision_basis) for item in input_rows} == {
         ("composer_1", 0, "composer", "detection"),
         ("paste_1", 1, "converted_paste", "detection"),
-        ("file_1", 2, "file", "detection"),
     }
-    assert len(detection_rows) == 3
+    assert len(detection_rows) == 2
     assert {(item.input_id, item.input_index, item.input_source) for item in detection_rows} == {
         ("composer_1", 0, "composer"),
         ("paste_1", 1, "converted_paste"),
-        ("file_1", 2, "file"),
     }
 
 
-def test_analyze_blocks_file_only_mask_detection_without_masked_prompt() -> None:
+def test_analyze_rejects_legacy_file_text_without_echoing_content() -> None:
     user = _user()
     client, fake_session = _client(user)
     file_text = "File secret admin@example.com"
@@ -804,18 +801,10 @@ def test_analyze_blocks_file_only_mask_detection_without_masked_prompt() -> None
         json=_analyze_payload(_text_input("file_1", file_text, source="file")),
     )
 
-    body = response.json()
-    encoded = json.dumps(body, ensure_ascii=False)
-    detection_rows = [item for item in fake_session.added if isinstance(item, EventDetection)]
-    assert response.status_code == 200
-    assert body["action"] == "Block"
-    assert body["allow_original_send"] is False
-    assert body["requires_user_confirmation"] is False
-    assert "masked_prompt" not in body
+    encoded = response.text
+    assert response.status_code == 422
     assert "admin@example.com" not in encoded
-    assert body["detections"][0]["input_id"] == "file_1"
-    assert body["detections"][0]["source"] == "file"
-    assert detection_rows[0].source == "built_in_detector"
+    assert fake_session.added == []
 
 
 def test_analyze_blocks_unavailable_input_even_when_text_would_mask() -> None:
@@ -894,9 +883,9 @@ def test_analyze_applies_block_mask_warn_action_priority() -> None:
     assert block_response.json()["risk_level"] == "critical"
 
 
-def test_analyze_blocks_mixed_file_mask_even_when_composer_can_be_masked() -> None:
+def test_analyze_rejects_mixed_legacy_file_text_before_partial_processing() -> None:
     user = _user()
-    client, _ = _client(user)
+    client, fake_session = _client(user)
 
     response = client.post(
         "/prompts/analyze",
@@ -907,14 +896,10 @@ def test_analyze_blocks_mixed_file_mask_even_when_composer_can_be_masked() -> No
         ),
     )
 
-    body = response.json()
-    assert response.status_code == 200
-    assert body["action"] == "Block"
-    assert body["allow_original_send"] is False
-    assert body["requires_user_confirmation"] is False
-    assert "masked_prompt" not in body
-    assert body["detections"][0]["source"] == "composer"
-    assert body["detections"][1]["source"] == "file"
+    encoded = response.text
+    assert response.status_code == 422
+    assert "4111 1111 1111 1111" not in encoded
+    assert fake_session.added == []
 
 
 def test_analyze_validates_request_boundaries() -> None:

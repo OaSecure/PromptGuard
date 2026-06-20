@@ -26,3 +26,19 @@ def test_existing_attachment_metadata_remains_accepted():
             "content_included": False, "metadata": {"extension": "pdf", "mime": "application/pdf"}}
     response = client.post("/prompts/analyze", headers=_bearer_header(user.id), json=_analyze_payload(item))
     assert response.status_code == 200
+
+
+def test_route_rejects_legacy_file_text_input_before_analysis():
+    user = _user()
+    client, fake_session = _client(user, rules=[])
+
+    response = client.post(
+        "/prompts/analyze",
+        headers=_bearer_header(user.id),
+        json=_analyze_payload(_text_input("file_1", "legacy file text", source="file")),
+    )
+
+    assert response.status_code == 422
+    assert fake_session.added == []
+    encoded = response.text
+    assert "legacy file text" not in encoded

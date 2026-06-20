@@ -32,12 +32,10 @@ def test_maps_text_metadata_and_unsupported_inputs_in_order():
     assert adapted.legacy_view.client_request_id == "req_adapter"
 
 
-def test_legacy_file_text_is_sidecar_only_and_never_a_v3_input():
+def test_legacy_file_text_is_not_accepted_as_public_input():
     file_input = text("file_1", "legacy file text", "file")
-    adapted = adapt_legacy_analyze_request(request(text("composer_1", "hello"), file_input), "trusted_login")
-    assert [item.input_id for item in adapted.v3_request.inputs] == ["composer_1"]
-    assert [item.input_id for item in adapted.legacy_file_text_sidecar] == ["file_1"]
-    assert all(not (item.kind == "text" and item.source == "file") for item in adapted.v3_request.inputs)
+    with pytest.raises(ValidationError):
+        request(text("composer_1", "hello"), file_input)
 
 
 @pytest.mark.parametrize("field", ["schema_version", "login_id", "file_ref", "prompt", "input", "file", "attachments", "raw_file_content", "base64_file_payload", "url", "local_path"])

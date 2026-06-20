@@ -40,7 +40,6 @@ router = APIRouter(prefix="/prompts", tags=["prompts"])
 MAX_ANALYZE_REQUEST_BYTES = 2_097_152
 MAX_COMPOSER_TEXT_BYTES = 262_144
 MAX_CONVERTED_PASTE_TEXT_BYTES = 1_048_576
-MAX_FILE_TEXT_SCAN_BYTES = 1_048_576
 IDEMPOTENCY_TTL = timedelta(hours=24)
 SAFE_CONTEXT_LABEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$")
 SAFE_CONTEXT_DOMAIN_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,253}[A-Za-z0-9])?$")
@@ -63,18 +62,16 @@ PUBLIC_ACTIONS = {
     ACTION_BLOCK: "Block",
 }
 
-TEXT_SOURCES = ("composer", "converted_paste", "file")
+TEXT_SOURCES = ("composer", "converted_paste")
 CONTENT_UNAVAILABLE_REASONS = ("oversized", "unsupported", "metadata_only", "unavailable")
 LIMIT_EXCEEDED_CODES = (
     "MAX_ANALYZE_REQUEST_BYTES",
     "MAX_COMPOSER_TEXT_BYTES",
     "MAX_CONVERTED_PASTE_TEXT_BYTES",
-    "MAX_FILE_TEXT_SCAN_BYTES",
 )
 TEXT_SOURCE_LIMITS = {
     "composer": MAX_COMPOSER_TEXT_BYTES,
     "converted_paste": MAX_CONVERTED_PASTE_TEXT_BYTES,
-    "file": MAX_FILE_TEXT_SCAN_BYTES,
 }
 FORBIDDEN_METADATA_KEYS = {"name", "filename", "file_name", "original_filename", "path", "url"}
 
@@ -138,7 +135,7 @@ class AnalyzeInput(BaseModel):
 
     input_id: str = Field(min_length=1, max_length=80, pattern=SAFE_INPUT_ID_RE.pattern)
     kind: Literal["text", "attachment_metadata", "unsupported_attachment"]
-    source: Literal["composer", "converted_paste", "file", "attachment_chip"]
+    source: Literal["composer", "converted_paste", "attachment_chip"]
     size_bytes: int = Field(ge=0, le=2_147_483_647)
     content_included: bool
     content: str | None = Field(default=None, max_length=1_048_576)
@@ -148,7 +145,6 @@ class AnalyzeInput(BaseModel):
         "MAX_ANALYZE_REQUEST_BYTES",
         "MAX_COMPOSER_TEXT_BYTES",
         "MAX_CONVERTED_PASTE_TEXT_BYTES",
-        "MAX_FILE_TEXT_SCAN_BYTES",
     ] | None = None
 
     @field_validator("input_id")
@@ -162,7 +158,7 @@ class AnalyzeInput(BaseModel):
     def validate_input_contract(self) -> "AnalyzeInput":
         if self.kind == "text":
             if self.source not in TEXT_SOURCES:
-                raise ValueError("text input source must be composer, converted_paste, or file")
+                raise ValueError("text input source must be composer or converted_paste")
             if self.content_included:
                 if self.content is None or not self.content.strip():
                     raise ValueError("included text input must include non-blank content")
@@ -251,7 +247,7 @@ class AnalyzeInputResult(BaseModel):
     input_id: str
     input_index: int
     kind: Literal["text", "attachment_metadata", "unsupported_attachment"]
-    source: Literal["composer", "converted_paste", "file", "attachment_chip"]
+    source: Literal["composer", "converted_paste", "attachment_chip"]
     content_included: bool
     content_scanned: bool
     decision_basis: Literal["no_detection", "detection", "content_unavailable", "metadata_only"]
@@ -263,7 +259,7 @@ class ContentUnavailableInput(BaseModel):
     input_id: str
     input_index: int
     kind: Literal["text", "attachment_metadata", "unsupported_attachment"]
-    source: Literal["composer", "converted_paste", "file", "attachment_chip"]
+    source: Literal["composer", "converted_paste", "attachment_chip"]
     reason: str
     limit_exceeded: str | None = None
 

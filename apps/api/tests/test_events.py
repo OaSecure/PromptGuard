@@ -200,7 +200,7 @@ def test_list_events_returns_metadata_only_latest_first() -> None:
     fake_session = _FakeSession(rows=[(older, event_user), (newer, event_user)], detections=[_detection(older)])
     fake_session.inputs = [
         _input(older),
-        _input(older, input_id="file-1", input_index=1, source="file", content_included=False, content_scanned=False, decision_basis="content_unavailable", content_unavailable_reason="unsupported_attachment"),
+        _input(older, input_id="attachment-1", input_index=1, kind="unsupported_attachment", source="attachment_chip", content_included=False, content_scanned=False, decision_basis="content_unavailable", content_unavailable_reason="unsupported_attachment"),
     ]
 
     response = _client(fake_session).get("/dashboard/events")
