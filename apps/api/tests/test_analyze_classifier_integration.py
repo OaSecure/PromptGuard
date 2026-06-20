@@ -302,6 +302,7 @@ def test_evaluate_analyze_classifier_verifies_classifier_candidates_without_raw_
     assert verifier_request.input_id == "in_verify"
     assert len(verifier_request.candidates) == 1
     assert verifier_request.candidates[0].candidate_label == "secret_risk"
+    assert verifier_request.candidates[0].text == f"ordinary note {raw_sentinel}"
     assert outcome.verifier_summaries == [
         {
             "verification_count": 1,

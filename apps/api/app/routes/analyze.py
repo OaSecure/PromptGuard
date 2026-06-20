@@ -19,6 +19,7 @@ from app.masking.placeholder import apply_placeholders
 from app.ml.classifier.factory import ClassifierRuntimeProviderResult, build_classifier_service_from_settings
 from app.ml.embedding import create_qwen3_backend
 from app.ml.embedding.loader import AtomEmbeddingModelLoader
+from app.ml.verifier import VerifierServiceBuildError, build_verifier_service_from_manifest
 from app.models.auth import User
 from app.models.events import AnalysisEvent, EventDetection, EventInput, IdempotencyKey
 from app.models.filters import FilterRule
@@ -623,8 +624,40 @@ def get_atom_embedding_loader(settings: Settings = Depends(get_settings)) -> Ato
     return AtomEmbeddingModelLoader(create_qwen3_backend)
 
 
-def get_analyze_verifier_config() -> AnalyzeVerifierConfig | None:
-    return None
+def _build_analyze_verifier_config_from_settings(
+    settings: Settings,
+    *,
+    builder=build_verifier_service_from_manifest,
+) -> AnalyzeVerifierConfig | None:
+    if not settings.verifier_runtime_enabled:
+        return None
+    manifest_path = settings.verifier_manifest_path_value()
+    if manifest_path is None:
+        return None
+    try:
+        bundle = builder(manifest_path)
+    except VerifierServiceBuildError:
+        return None
+    return AnalyzeVerifierConfig(service=bundle.service, artifact=bundle.artifact)
+
+
+@lru_cache(maxsize=8)
+def _cached_analyze_verifier_config(
+    verifier_runtime_enabled: bool,
+    verifier_manifest_path: str,
+) -> AnalyzeVerifierConfig | None:
+    settings = Settings(
+        PROMPTGUARD_VERIFIER_RUNTIME_ENABLED=verifier_runtime_enabled,
+        PROMPTGUARD_VERIFIER_MANIFEST_PATH=verifier_manifest_path,
+    )
+    return _build_analyze_verifier_config_from_settings(settings)
+
+
+def get_analyze_verifier_config(settings: Settings = Depends(get_settings)) -> AnalyzeVerifierConfig | None:
+    return _cached_analyze_verifier_config(
+        settings.verifier_runtime_enabled,
+        settings.verifier_manifest_path,
+    )
 
 
 @router.post("/analyze", response_model=AnalyzeResponse, response_model_exclude_none=True)

@@ -40,6 +40,8 @@ class Settings(BaseSettings):
     auth_rate_limit_window_seconds: int = Field(default=60, alias="AUTH_RATE_LIMIT_WINDOW_SECONDS")
     classifier_runtime_enabled: bool = Field(default=False, alias="PROMPTGUARD_CLASSIFIER_RUNTIME_ENABLED")
     classifier_manifest_path: str = Field(default="", alias="PROMPTGUARD_CLASSIFIER_MANIFEST_PATH")
+    verifier_runtime_enabled: bool = Field(default=False, alias="PROMPTGUARD_VERIFIER_RUNTIME_ENABLED")
+    verifier_manifest_path: str = Field(default="", alias="PROMPTGUARD_VERIFIER_MANIFEST_PATH")
 
     def cors_origin_list(self) -> list[str]:
         origins = [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
@@ -49,6 +51,12 @@ class Settings(BaseSettings):
 
     def classifier_manifest_path_value(self) -> Path | None:
         path = self.classifier_manifest_path.strip()
+        if not path:
+            return None
+        return Path(path)
+
+    def verifier_manifest_path_value(self) -> Path | None:
+        path = self.verifier_manifest_path.strip()
         if not path:
             return None
         return Path(path)
