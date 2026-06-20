@@ -1,7 +1,9 @@
 from app.ml.classifier.factory import (
     BuiltClassifierService,
+    ClassifierRuntimeProviderResult,
     ClassifierRuntimeBuildError,
     ClassifierServiceBuildError,
+    build_classifier_service_from_settings,
     build_classifier_service_from_manifest,
     build_lr_classifier_runtime,
 )
@@ -31,6 +33,7 @@ __all__ = [
     "ClassifierArtifactRef",
     "ClassifierRuntime",
     "ClassifierRuntimeBuildError",
+    "ClassifierRuntimeProviderResult",
     "ClassifierService",
     "ClassifierServiceBuildError",
     "ClassifierManifestLoadError",
@@ -43,6 +46,7 @@ __all__ = [
     "SegmentClassificationCandidate",
     "SegmentClassificationRequest",
     "SegmentClassificationResult",
+    "build_classifier_service_from_settings",
     "build_classifier_service_from_manifest",
     "build_classifier_artifact_ref",
     "build_lr_classifier_runtime",

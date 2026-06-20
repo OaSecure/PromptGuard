@@ -2,6 +2,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from app.atoms.models import PipelineFailure
+from app.core.config import Settings
 from app.ml.classifier.loader import JoblibLrClassifierLoadError, load_joblib_lr_predictor
 from app.ml.classifier.manifest import ClassifierManifestLoadError, LoadedClassifierManifest, load_classifier_manifest
 from app.ml.classifier.models import ClassifierArtifactRef, ProbabilityPredictor
@@ -27,6 +29,16 @@ class ClassifierServiceBuildError(Exception):
 class BuiltClassifierService:
     service: ClassifierService
     artifact: ClassifierArtifactRef
+
+
+@dataclass(frozen=True)
+class ClassifierRuntimeProviderResult:
+    bundle: BuiltClassifierService | None = None
+    failure: PipelineFailure | None = None
+
+    @property
+    def available(self) -> bool:
+        return self.bundle is not None and self.failure is None
 
 
 def build_lr_classifier_runtime(
@@ -84,3 +96,55 @@ def build_classifier_service_from_manifest(
         ) from exc
 
     return BuiltClassifierService(service=ClassifierService(runtime), artifact=loaded_manifest.artifact)
+
+
+def build_classifier_service_from_settings(
+    settings: Settings,
+    *,
+    builder: Callable[[Path], BuiltClassifierService] = build_classifier_service_from_manifest,
+) -> ClassifierRuntimeProviderResult:
+    if not settings.classifier_runtime_enabled:
+        return ClassifierRuntimeProviderResult(
+            failure=PipelineFailure(
+                code="CLASSIFIER_RUNTIME_DISABLED",
+                message="classifier runtime disabled",
+                metadata={"status": "disabled"},
+            ),
+        )
+
+    manifest_path = settings.classifier_manifest_path_value()
+    if manifest_path is None:
+        return ClassifierRuntimeProviderResult(
+            failure=PipelineFailure(
+                code="CLASSIFIER_MANIFEST_NOT_CONFIGURED",
+                message="classifier manifest path is not configured",
+                metadata={"status": "unavailable"},
+            ),
+        )
+
+    try:
+        bundle = builder(manifest_path)
+    except ClassifierServiceBuildError as exc:
+        return ClassifierRuntimeProviderResult(
+            failure=PipelineFailure(
+                code="CLASSIFIER_RUNTIME_UNAVAILABLE",
+                message="classifier runtime unavailable",
+                metadata={
+                    "status": "unavailable",
+                    "build_code": exc.code,
+                },
+            ),
+        )
+    except Exception:
+        return ClassifierRuntimeProviderResult(
+            failure=PipelineFailure(
+                code="CLASSIFIER_RUNTIME_UNAVAILABLE",
+                message="classifier runtime unavailable",
+                metadata={
+                    "status": "unavailable",
+                    "build_code": "CLASSIFIER_SERVICE_BUILD_FAILED",
+                },
+            ),
+        )
+
+    return ClassifierRuntimeProviderResult(bundle=bundle)
