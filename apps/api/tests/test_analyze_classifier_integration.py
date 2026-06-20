@@ -21,6 +21,7 @@ from app.ml.classifier.models import (
     SegmentClassificationCandidate,
     SegmentClassificationResult,
 )
+from app.ml.classifier.runtime import LrClassifierRuntime
 from app.ml.classifier.service import ClassifierService
 from app.ml.embedding.loader import AtomEmbeddingModelLoader
 from app.routes import analyze as analyze_route
@@ -105,6 +106,19 @@ class _FakeEmbeddingBackend:
         return [[1.0, 0.0] for _text in texts]
 
 
+class _RecordingEmbeddingBackend:
+    model_version = "fake-embedding-v1"
+    dimension = 2
+    is_frozen = True
+
+    def __init__(self) -> None:
+        self.seen_texts: list[str] = []
+
+    def embed_texts(self, texts: list[str], normalize: bool) -> list[list[float]]:
+        self.seen_texts.extend(texts)
+        return [[1.0, 0.0] if "Project Atlas" in text else [0.0, 1.0] for text in texts]
+
+
 class _FixedDimensionEmbeddingBackend:
     is_frozen = True
 
@@ -132,6 +146,17 @@ class _CandidateRuntime:
                 )
             ],
         )
+
+
+class _RecordingProbabilityPredictor:
+    target_labels = ["secret_risk"]
+
+    def __init__(self) -> None:
+        self.seen_vectors: list[list[float]] = []
+
+    def predict_probabilities(self, vectors: list[list[float]]) -> list[list[float]]:
+        self.seen_vectors.extend(vectors)
+        return [[0.92] for _vector in vectors]
 
 
 def _artifact() -> ClassifierArtifactRef:
@@ -188,6 +213,23 @@ def test_evaluate_analyze_classifier_uses_pipeline_and_reports_candidates() -> N
     assert outcome.enabled is True
     assert outcome.has_candidates is True
     assert outcome.failure is None
+
+
+def test_evaluate_analyze_classifier_embeds_sentence_and_classifies_with_lr_runtime() -> None:
+    backend = _RecordingEmbeddingBackend()
+    predictor = _RecordingProbabilityPredictor()
+    loader = AtomEmbeddingModelLoader(lambda _model_name: backend)
+    provider = _provider_with_runtime(LrClassifierRuntime(predictor))
+    sentence = "Project Atlas implementation note. Ship only after review."
+    text_inputs = [(0, SimpleNamespace(input_id="in_pipeline", source="composer", content=sentence))]
+
+    outcome = evaluate_analyze_classifier(text_inputs, provider, loader)
+
+    assert outcome.enabled is True
+    assert outcome.has_candidates is True
+    assert outcome.failure is None
+    assert backend.seen_texts == [sentence]
+    assert predictor.seen_vectors == [[1.0, 0.0]]
 
 
 def test_real_trained_lr_artifact_reaches_analyze_classifier_helper(tmp_path: Path) -> None:
