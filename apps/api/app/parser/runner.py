@@ -1,5 +1,6 @@
 from app.parser.models import (
     FileParserResult,
+    ParserBoundaryError,
     ParserWorkerPayload,
     ResolvedPlanRequest,
     sanitized_failure,
@@ -40,6 +41,12 @@ class FileParserRunner:
                     failure=resolution.failure or sanitized_failure("PARSER_PLAN_RESOLVE_FAILED"),
                 )
             return self._plan_executor.execute(payload, resolved_file, resolution.plan)
+        except ParserBoundaryError as error:
+            return FileParserResult(
+                input_id=payload.input_id,
+                parser_status="failed",
+                failure=error.failure,
+            )
         except Exception:
             return FileParserResult(
                 input_id=payload.input_id,

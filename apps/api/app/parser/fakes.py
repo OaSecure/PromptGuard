@@ -3,6 +3,7 @@ import time
 from app.atoms.models import ParsedDocument
 from app.parser.models import (
     FileParserResult,
+    ParserBoundaryError,
     ParserExecutionPlanStub,
     ParserPlanResolution,
     ParserWorkerPayload,
@@ -21,7 +22,7 @@ class FakeTemporaryFileResolver:
     def resolve(self, file_ref: str, access_context: TempFileAccessContext) -> ResolvedTemporaryFile:
         self.calls.append((file_ref, access_context))
         if self.failure_code:
-            raise RuntimeError(self.failure_code)
+            raise ParserBoundaryError(sanitized_failure(self.failure_code))
         return ResolvedTemporaryFile(
             file_ref=file_ref,
             file_kind="unknown",

@@ -90,5 +90,11 @@ class ResolvedPlanRequest(BaseModel):
     resolved_file: ResolvedTemporaryFile | None = None
 
 
+class ParserBoundaryError(Exception):
+    def __init__(self, failure: PipelineFailure) -> None:
+        super().__init__(failure.code)
+        self.failure = failure
+
+
 def sanitized_failure(code: str) -> PipelineFailure:
     return PipelineFailure(code=code, message=code, metadata={"failure_code": code})

@@ -1,5 +1,7 @@
 import ast
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from threading import Event
 
 import pytest
 from pydantic import ValidationError
@@ -90,6 +92,29 @@ def test_parser_worker_pool_returns_structured_failure_on_timeout():
     assert result.parser_status == "timeout"
     assert result.failure is not None
     assert result.failure.code == "PARSER_TIMEOUT"
+    pool.shutdown()
+
+
+def test_parser_worker_pool_uses_registered_failure_when_capacity_is_exceeded():
+    release = Event()
+
+    class BlockingRunner:
+        def run(self, payload):
+            release.wait(timeout=1)
+            return FileParserResult(input_id=payload.input_id, parser_status="parsed")
+
+    pool = ParserWorkerPool(runner=BlockingRunner(), max_workers=1, max_queue_size=1)
+    with ThreadPoolExecutor(max_workers=2) as callers:
+        first = callers.submit(pool.execute, _text_payload(input_id="first"), 500)
+        second = callers.submit(pool.execute, _text_payload(input_id="second"), 500)
+        result = pool.execute(_text_payload(input_id="third"), timeout_ms=100)
+        release.set()
+        first.result()
+        second.result()
+
+    assert result.parser_status == "failed"
+    assert result.failure is not None
+    assert result.failure.code == "PARSER_LIMIT_EXCEEDED"
     pool.shutdown()
 
 

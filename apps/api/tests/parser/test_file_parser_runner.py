@@ -73,15 +73,27 @@ def test_text_wrapper_skips_temp_file_resolver():
     assert result.parser_status == "parsed"
 
 
-@pytest.mark.parametrize("failure_owner", ["resolver", "plan_resolver", "executor"])
-def test_runner_returns_structured_failure_from_collaborator(failure_owner: str):
-    resolver = FakeTemporaryFileResolver(failure_code="TEMP_FILE_RESOLVE_FAILED" if failure_owner == "resolver" else None)
-    plan_resolver = FakeParserPlanResolver(failure_code="PARSER_PLAN_RESOLVE_FAILED" if failure_owner == "plan_resolver" else None)
-    executor = FakeParserPlanExecutor(failure_code="PARSER_EXECUTION_FAILED" if failure_owner == "executor" else None)
+@pytest.mark.parametrize(
+    ("failure_owner", "expected_code"),
+    [
+        ("resolver", "TEMP_FILE_RESOLVE_FAILED"),
+        ("plan_resolver", "PARSER_DISABLED"),
+        ("executor", "PARSER_WORKER_FAILED"),
+    ],
+)
+def test_runner_preserves_structured_failure_code_from_collaborator(
+    failure_owner: str, expected_code: str
+):
+    resolver = FakeTemporaryFileResolver(failure_code=expected_code if failure_owner == "resolver" else None)
+    plan_resolver = FakeParserPlanResolver(
+        failure_code=expected_code if failure_owner == "plan_resolver" else None
+    )
+    executor = FakeParserPlanExecutor(failure_code=expected_code if failure_owner == "executor" else None)
     runner = FileParserRunner(resolver, plan_resolver, executor)
     result = runner.run(_file_payload())
     assert isinstance(result, FileParserResult)
     assert result.failure is not None
+    assert result.failure.code == expected_code
 
 
 def test_file_parser_runner_does_not_import_concrete_parser_libraries():

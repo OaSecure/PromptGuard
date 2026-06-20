@@ -20,7 +20,7 @@ class ParserWorkerPool:
         if timeout_ms < 1:
             raise ValueError("timeout_ms must be positive")
         if not self._capacity.acquire(blocking=False):
-            return self._failure(payload.input_id, "PARSER_QUEUE_FULL")
+            return self._failure(payload.input_id, "PARSER_LIMIT_EXCEEDED")
         try:
             future = self._executor.submit(self._runner.run, payload)
         except Exception:
