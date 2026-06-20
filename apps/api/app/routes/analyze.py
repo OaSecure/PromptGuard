@@ -23,7 +23,7 @@ from app.models.auth import User
 from app.models.events import AnalysisEvent, EventDetection, EventInput, IdempotencyKey
 from app.models.filters import FilterRule
 from app.routes.auth import get_db_session, require_active_user
-from app.services.analyze_classifier import AnalyzeClassifierOutcome, evaluate_analyze_classifier
+from app.services.analyze_classifier import AnalyzeClassifierOutcome, AnalyzeVerifierConfig, evaluate_analyze_classifier
 from app.services.filter_rules import (
     RuleMatch,
     action_for_matches,
@@ -623,6 +623,10 @@ def get_atom_embedding_loader(settings: Settings = Depends(get_settings)) -> Ato
     return AtomEmbeddingModelLoader(create_qwen3_backend)
 
 
+def get_analyze_verifier_config() -> AnalyzeVerifierConfig | None:
+    return None
+
+
 @router.post("/analyze", response_model=AnalyzeResponse, response_model_exclude_none=True)
 async def analyze_prompt(
     payload: AnalyzeRequest,
@@ -630,6 +634,7 @@ async def analyze_prompt(
     session: AsyncSession = Depends(get_db_session),
     classifier_provider: ClassifierRuntimeProviderResult = Depends(get_classifier_runtime_provider),
     embedding_loader: AtomEmbeddingModelLoader | None = Depends(get_atom_embedding_loader),
+    verifier_config: AnalyzeVerifierConfig | None = Depends(get_analyze_verifier_config),
 ) -> AnalyzeResponse:
     request_id = payload.client_request_id
     event_id = uuid.uuid4()
@@ -650,7 +655,12 @@ async def analyze_prompt(
     classifier_outcome = (
         AnalyzeClassifierOutcome(enabled=False)
         if classifier_provider.failure is not None and classifier_provider.failure.code == "CLASSIFIER_RUNTIME_DISABLED"
-        else evaluate_analyze_classifier(text_inputs, classifier_provider, embedding_loader)
+        else evaluate_analyze_classifier(
+            text_inputs,
+            classifier_provider,
+            embedding_loader,
+            verifier_config=verifier_config,
+        )
     )
     action = final_action_for_classifier_outcome(action, classifier_outcome)
     risk_score = score_for_final_action(risk_score, action)

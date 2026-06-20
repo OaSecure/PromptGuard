@@ -24,9 +24,15 @@ from app.ml.classifier.models import (
 from app.ml.classifier.runtime import LrClassifierRuntime
 from app.ml.classifier.service import ClassifierService
 from app.ml.embedding.loader import AtomEmbeddingModelLoader
+from app.ml.verifier import (
+    RobertaVerificationEvidence,
+    RobertaVerificationResult,
+    RobertaVerifierService,
+    VerifierArtifactRef,
+)
 from app.routes import analyze as analyze_route
 from app.routes.auth import get_db_session
-from app.services.analyze_classifier import evaluate_analyze_classifier
+from app.services.analyze_classifier import AnalyzeVerifierConfig, evaluate_analyze_classifier
 
 try:
     from apps.api.tests.test_analyze import (
@@ -48,7 +54,7 @@ except ModuleNotFoundError:
     )
 
 
-def _client(user=None, rules=None, provider=None) -> tuple[TestClient, _FakeSession]:
+def _client(user=None, rules=None, provider=None, verifier_config=None) -> tuple[TestClient, _FakeSession]:
     app = FastAPI()
     app.include_router(analyze_route.router)
     fake_session = _FakeSession(user, rules)
@@ -75,6 +81,9 @@ def _client(user=None, rules=None, provider=None) -> tuple[TestClient, _FakeSess
     embedding_loader_dependency = getattr(analyze_route, "get_atom_embedding_loader", None)
     if embedding_loader_dependency is not None:
         app.dependency_overrides[embedding_loader_dependency] = lambda: None
+    verifier_dependency = getattr(analyze_route, "get_analyze_verifier_config", None)
+    if verifier_dependency is not None:
+        app.dependency_overrides[verifier_dependency] = lambda: verifier_config
     return TestClient(app), fake_session
 
 
@@ -148,6 +157,11 @@ class _CandidateRuntime:
         )
 
 
+class _NoCandidateRuntime:
+    def classify(self, request):
+        return SegmentClassificationResult(input_id=request.input_id)
+
+
 class _RecordingProbabilityPredictor:
     target_labels = ["secret_risk"]
 
@@ -170,6 +184,14 @@ def _artifact() -> ClassifierArtifactRef:
     )
 
 
+def _verifier_artifact() -> VerifierArtifactRef:
+    return VerifierArtifactRef(
+        artifact_id="fake-verifier-artifact",
+        model_version="fake-roberta-v1",
+        runtime_version="verifier-runtime-test",
+    )
+
+
 def _provider_with_runtime(runtime) -> ClassifierRuntimeProviderResult:
     return ClassifierRuntimeProviderResult(
         bundle=BuiltClassifierService(
@@ -177,6 +199,33 @@ def _provider_with_runtime(runtime) -> ClassifierRuntimeProviderResult:
             artifact=_artifact(),
         )
     )
+
+
+class _RecordingVerifierModel:
+    def __init__(self) -> None:
+        self.requests = []
+
+    def verify(self, request):
+        self.requests.append(request)
+        return RobertaVerificationResult(
+            input_id=request.input_id,
+            verifications=[
+                RobertaVerificationEvidence(
+                    segment_id=request.candidates[0].segment_id,
+                    candidate_label=request.candidates[0].candidate_label,
+                    verifier_status="confirmed",
+                    accepted=True,
+                    confidence=0.96,
+                    reason_code_candidates=["VERIFIER_CONFIRMED"],
+                    verifier_model_version="fake-roberta-v1",
+                )
+            ],
+        )
+
+
+class _FailingVerifierModel:
+    def verify(self, request):
+        raise RuntimeError("raw verifier failure sentinel must not leak")
 
 
 def _trained_artifact_zip_path_or_skip() -> Path:
@@ -230,6 +279,79 @@ def test_evaluate_analyze_classifier_embeds_sentence_and_classifies_with_lr_runt
     assert outcome.failure is None
     assert backend.seen_texts == [sentence]
     assert predictor.seen_vectors == [[1.0, 0.0]]
+
+
+def test_evaluate_analyze_classifier_verifies_classifier_candidates_without_raw_leakage() -> None:
+    raw_sentinel = "CLASSIFIER_VERIFIER_RAW_SENTINEL"
+    verifier_model = _RecordingVerifierModel()
+    loader = AtomEmbeddingModelLoader(lambda _model_name: _FakeEmbeddingBackend())
+    provider = _provider_with_runtime(_CandidateRuntime())
+    verifier_config = AnalyzeVerifierConfig(
+        service=RobertaVerifierService(verifier_model),
+        artifact=_verifier_artifact(),
+    )
+    text_inputs = [(0, SimpleNamespace(input_id="in_verify", source="composer", content=f"ordinary note {raw_sentinel}"))]
+
+    outcome = evaluate_analyze_classifier(text_inputs, provider, loader, verifier_config=verifier_config)
+
+    assert outcome.enabled is True
+    assert outcome.has_candidates is True
+    assert outcome.failure is None
+    assert len(verifier_model.requests) == 1
+    verifier_request = verifier_model.requests[0]
+    assert verifier_request.input_id == "in_verify"
+    assert len(verifier_request.candidates) == 1
+    assert verifier_request.candidates[0].candidate_label == "secret_risk"
+    assert outcome.verifier_summaries == [
+        {
+            "verification_count": 1,
+            "accepted_count": 1,
+            "status_counts": {"confirmed": 1, "rejected": 0, "uncertain": 0, "timeout": 0, "failed": 0},
+            "labels": ["secret_risk"],
+            "highest_confidence_bucket": "very_high",
+            "verifier_model_versions": ["fake-roberta-v1"],
+            "failure": None,
+        }
+    ]
+    assert raw_sentinel not in json.dumps(outcome.verifier_summaries)
+    assert raw_sentinel not in json.dumps(verifier_request.model_dump())
+
+
+def test_evaluate_analyze_classifier_skips_verifier_when_classifier_has_no_candidates() -> None:
+    verifier_model = _RecordingVerifierModel()
+    loader = AtomEmbeddingModelLoader(lambda _model_name: _FakeEmbeddingBackend())
+    provider = _provider_with_runtime(_NoCandidateRuntime())
+    verifier_config = AnalyzeVerifierConfig(
+        service=RobertaVerifierService(verifier_model),
+        artifact=_verifier_artifact(),
+    )
+    text_inputs = [(0, SimpleNamespace(input_id="in_no_candidate", source="composer", content="ordinary note"))]
+
+    outcome = evaluate_analyze_classifier(text_inputs, provider, loader, verifier_config=verifier_config)
+
+    assert outcome.enabled is True
+    assert outcome.has_candidates is False
+    assert outcome.failure is None
+    assert outcome.verifier_summaries == []
+    assert verifier_model.requests == []
+
+
+def test_evaluate_analyze_classifier_fails_closed_when_enabled_verifier_fails() -> None:
+    loader = AtomEmbeddingModelLoader(lambda _model_name: _FakeEmbeddingBackend())
+    provider = _provider_with_runtime(_CandidateRuntime())
+    verifier_config = AnalyzeVerifierConfig(
+        service=RobertaVerifierService(_FailingVerifierModel()),
+        artifact=_verifier_artifact(),
+    )
+    text_inputs = [(0, SimpleNamespace(input_id="in_verifier_failure", source="composer", content="ordinary note"))]
+
+    outcome = evaluate_analyze_classifier(text_inputs, provider, loader, verifier_config=verifier_config)
+
+    assert outcome.enabled is True
+    assert outcome.has_candidates is True
+    assert outcome.failure is not None
+    assert outcome.failure.code == "VERIFIER_MODEL_FAILED"
+    assert "raw verifier failure sentinel" not in json.dumps(outcome.failure.model_dump())
 
 
 def test_real_trained_lr_artifact_reaches_analyze_classifier_helper(tmp_path: Path) -> None:
@@ -292,6 +414,32 @@ def test_classifier_disabled_preserves_allow_without_classifier_call(monkeypatch
     assert body["allow_original_send"] is True
     assert body["requires_user_confirmation"] is False
     assert fake_session.commits == 1
+
+
+def test_analyze_route_passes_verifier_config_to_classifier_helper(monkeypatch) -> None:
+    seen = {}
+
+    def capture_classifier(_text_inputs, _provider, _embedding_loader, *, verifier_config=None):
+        seen["verifier_config"] = verifier_config
+        return SimpleNamespace(enabled=True, has_candidates=False, failure=None, verifier_summaries=[])
+
+    verifier_config = AnalyzeVerifierConfig(
+        service=RobertaVerifierService(_RecordingVerifierModel()),
+        artifact=_verifier_artifact(),
+    )
+    monkeypatch.setattr(analyze_route, "evaluate_analyze_classifier", capture_classifier, raising=False)
+    user = _user()
+    client, _fake_session = _client(user, rules=[], provider=_enabled_provider(), verifier_config=verifier_config)
+
+    response = client.post(
+        "/prompts/analyze",
+        json=_analyze_payload(_text_input("in_1", "plain implementation note")),
+        headers=_bearer_header(user.id),
+    )
+
+    assert response.status_code == 200
+    assert seen["verifier_config"] is verifier_config
+    assert "masked_prompt" not in response.json()
 
 
 def test_classifier_candidate_escalates_allow_to_warn_without_raw_leakage(monkeypatch) -> None:
