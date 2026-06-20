@@ -1,13 +1,21 @@
 import json
+import os
+import zipfile
+from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
 
 from app.atoms.models import PipelineFailure
-from app.ml.classifier.factory import BuiltClassifierService, ClassifierRuntimeProviderResult
+from app.ml.classifier.factory import (
+    BuiltClassifierService,
+    ClassifierRuntimeProviderResult,
+    build_classifier_service_from_manifest,
+)
 from app.ml.classifier.models import (
     ClassifierArtifactRef,
     SegmentClassificationCandidate,
@@ -97,6 +105,18 @@ class _FakeEmbeddingBackend:
         return [[1.0, 0.0] for _text in texts]
 
 
+class _FixedDimensionEmbeddingBackend:
+    is_frozen = True
+
+    def __init__(self, dimension: int, model_version: str) -> None:
+        self.dimension = dimension
+        self.model_version = model_version
+
+    def embed_texts(self, texts: list[str], normalize: bool) -> list[list[float]]:
+        vector = [1.0] + [0.0] * (self.dimension - 1)
+        return [vector for _text in texts]
+
+
 class _CandidateRuntime:
     def classify(self, request):
         return SegmentClassificationResult(
@@ -134,6 +154,30 @@ def _provider_with_runtime(runtime) -> ClassifierRuntimeProviderResult:
     )
 
 
+def _trained_artifact_zip_path_or_skip() -> Path:
+    configured_path = os.environ.get("PROMPTGUARD_TEST_CLASSIFIER_ARTIFACT_ZIP")
+    if not configured_path:
+        pytest.skip("set PROMPTGUARD_TEST_CLASSIFIER_ARTIFACT_ZIP to run the trained classifier artifact smoke test")
+
+    artifact_zip_path = Path(configured_path)
+    if not artifact_zip_path.is_absolute():
+        artifact_zip_path = (Path.cwd() / artifact_zip_path).resolve()
+    if not artifact_zip_path.is_file():
+        pytest.skip("configured trained classifier artifact zip was not found")
+    return artifact_zip_path
+
+
+def _trained_joblib_vector_dimension(joblib_path: Path) -> int:
+    joblib = pytest.importorskip("joblib")
+    payload = joblib.load(joblib_path)
+    classifier = payload.get("classifier") if isinstance(payload, dict) else None
+    dimension = getattr(classifier, "n_features_in_", None)
+    if dimension is None and hasattr(classifier, "coef_"):
+        dimension = classifier.coef_.shape[1]
+    assert isinstance(dimension, int) and dimension > 0
+    return dimension
+
+
 def test_evaluate_analyze_classifier_uses_pipeline_and_reports_candidates() -> None:
     loader = AtomEmbeddingModelLoader(lambda _model_name: _FakeEmbeddingBackend())
     provider = _provider_with_runtime(_CandidateRuntime())
@@ -144,6 +188,34 @@ def test_evaluate_analyze_classifier_uses_pipeline_and_reports_candidates() -> N
     assert outcome.enabled is True
     assert outcome.has_candidates is True
     assert outcome.failure is None
+
+
+def test_real_trained_lr_artifact_reaches_analyze_classifier_helper(tmp_path: Path) -> None:
+    artifact_zip_path = _trained_artifact_zip_path_or_skip()
+    artifact_root = tmp_path / "trained_classifier_artifact"
+    with zipfile.ZipFile(artifact_zip_path) as archive:
+        archive.extractall(artifact_root)
+
+    manifest_path = artifact_root / "models" / "context_lr_roberta_best_v205_manifest.json"
+    joblib_path = artifact_root / "models" / "context_with_patch_v205_deploy_candidate_classifier.joblib"
+    bundle = build_classifier_service_from_manifest(manifest_path, artifact_root=artifact_root)
+    vector_dimension = _trained_joblib_vector_dimension(joblib_path)
+    loader = AtomEmbeddingModelLoader(
+        lambda _model_name: _FixedDimensionEmbeddingBackend(
+            vector_dimension,
+            bundle.artifact.embedding_model_version,
+        )
+    )
+    provider = ClassifierRuntimeProviderResult(bundle=bundle)
+    text_inputs = [(0, SimpleNamespace(input_id="in_real_model", source="composer", content="ordinary implementation note"))]
+
+    outcome = evaluate_analyze_classifier(text_inputs, provider, loader)
+
+    assert bundle.artifact.artifact_id == "context_lr_roberta_best_v205"
+    assert bundle.artifact.target_labels
+    assert outcome.enabled is True
+    assert outcome.failure is None
+    assert isinstance(outcome.has_candidates, bool)
 
 
 def test_evaluate_analyze_classifier_fails_closed_when_embedding_unavailable() -> None:
