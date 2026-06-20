@@ -2,7 +2,8 @@ import logging
 
 from app.parser.executor import ParserPlanExecutor
 from app.parser.fakes import FakeParserStepAdapter
-from app.parser.models import ParserExecutionPlan, ParserPlanStep, ParserWorkerPayload
+from app.parser.models import ParserAdapterCapability, ParserExecutionPlan, ParserPlanStep, ParserWorkerPayload
+from app.parser.registry import InMemoryParserAdapterRegistry, ParserAdapterRegistration
 
 
 def test_parser_plan_failure_message_has_no_raw_content(caplog):
@@ -23,6 +24,9 @@ def test_parser_plan_failure_message_has_no_raw_content(caplog):
         ),),
     )
     with caplog.at_level(logging.ERROR):
-        result = ParserPlanExecutor(adapter).execute(payload, None, plan)
+        registry = InMemoryParserAdapterRegistry((ParserAdapterRegistration(
+            ParserAdapterCapability(capability_id="cap-wrap", step_kinds=("wrap_text",)), adapter
+        ),))
+        result = ParserPlanExecutor(registry).execute(payload, None, plan)
     combined = result.failure.message + caplog.text + repr(plan.model_dump())
     assert all(value not in combined for value in sentinels)

@@ -132,6 +132,7 @@ class ParserAdapterCapability(BaseModel):
     capability_id: str
     step_kinds: tuple[StepKind, ...]
     enabled: bool = True
+    license_allowed: bool = True
 
 
 class ParserPlanConfig(BaseModel):

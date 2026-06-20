@@ -2,6 +2,7 @@ from app.atoms.models import ParsedBlock, ParsedDocument
 from app.parser.executor import ParserPlanExecutor
 from app.parser.fakes import FakeParserStepAdapter
 from app.parser.models import (
+    ParserAdapterCapability,
     ParserExecutionPlan,
     ParserFallbackRule,
     ParserPlanStep,
@@ -9,6 +10,7 @@ from app.parser.models import (
     ParserWorkerPayload,
     sanitized_failure,
 )
+from app.parser.registry import InMemoryParserAdapterRegistry, ParserAdapterRegistration
 
 
 def _payload():
@@ -32,6 +34,20 @@ def _document():
     )
 
 
+def _executor(adapter, capability_ids=("cap-one", "cap-two", "cap-primary", "cap-fallback")):
+    registrations = tuple(
+        ParserAdapterRegistration(
+            ParserAdapterCapability(
+                capability_id=capability_id,
+                step_kinds=("wrap_text",),
+            ),
+            adapter,
+        )
+        for capability_id in capability_ids
+    )
+    return ParserPlanExecutor(InMemoryParserAdapterRegistry(registrations))
+
+
 def test_parser_plan_executor_runs_steps_in_order():
     adapter = FakeParserStepAdapter(results={
         "one": ParserStepResult(step_id="one", status="success"),
@@ -40,7 +56,7 @@ def test_parser_plan_executor_runs_steps_in_order():
     plan = ParserExecutionPlan(
         plan_id="ordered", plan_kind="wrap_text", steps=(_step("one", 0), _step("two", 1))
     )
-    result = ParserPlanExecutor(adapter).execute(_payload(), None, plan)
+    result = _executor(adapter).execute(_payload(), None, plan)
     assert adapter.calls == ["one", "two"]
     assert result.parser_status == "parsed"
 
@@ -58,7 +74,7 @@ def test_parser_plan_executor_applies_fallback_rules_only_on_defined_triggers():
             target_step_id="fallback", ordinal=0,
         ),),
     )
-    result = ParserPlanExecutor(adapter).execute(_payload(), None, plan)
+    result = _executor(adapter).execute(_payload(), None, plan)
     assert adapter.calls == ["primary", "fallback"]
     assert result.parser_status == "partial"
 
@@ -75,7 +91,7 @@ def test_undefined_trigger_does_not_apply_fallback():
             target_step_id="fallback", ordinal=0,
         ),),
     )
-    result = ParserPlanExecutor(adapter).execute(_payload(), None, plan)
+    result = _executor(adapter).execute(_payload(), None, plan)
     assert adapter.calls == ["primary"]
     assert result.parser_status == "failed"
 
@@ -84,7 +100,7 @@ def test_parser_plan_executor_preserves_failure_code():
     adapter = FakeParserStepAdapter(results={
         "one": ParserStepResult(step_id="one", status="failed", trigger="step_failed", failure=sanitized_failure("PARSER_LIMIT_EXCEEDED")),
     })
-    result = ParserPlanExecutor(adapter).execute(
+    result = _executor(adapter).execute(
         _payload(), None, ParserExecutionPlan(plan_id="fail", plan_kind="wrap_text", steps=(_step("one", 0),))
     )
     assert result.failure.code == "PARSER_LIMIT_EXCEEDED"
@@ -94,7 +110,7 @@ def test_fake_adapter_partial_result_is_preserved():
     adapter = FakeParserStepAdapter(results={
         "one": ParserStepResult(step_id="one", status="partial", document=_document(), failure=sanitized_failure("PARSER_LIMIT_EXCEEDED")),
     })
-    result = ParserPlanExecutor(adapter).execute(
+    result = _executor(adapter).execute(
         _payload(), None, ParserExecutionPlan(plan_id="partial", plan_kind="wrap_text", steps=(_step("one", 0),))
     )
     assert result.parser_status == "partial"
@@ -103,8 +119,33 @@ def test_fake_adapter_partial_result_is_preserved():
 
 def test_raw_adapter_exception_is_sanitized():
     adapter = FakeParserStepAdapter(exception_message="PRIVATE_RAW_EXCEPTION C:\\private\\secret.pdf")
-    result = ParserPlanExecutor(adapter).execute(
+    result = _executor(adapter).execute(
         _payload(), None, ParserExecutionPlan(plan_id="error", plan_kind="wrap_text", steps=(_step("one", 0),))
     )
     assert result.failure.code == "PARSER_WORKER_FAILED"
     assert "PRIVATE_RAW_EXCEPTION" not in result.failure.message
+
+
+def test_executor_converts_missing_registry_adapter_to_private_structured_failure(caplog):
+    payload = ParserWorkerPayload(
+        input_id="input-private",
+        request_id="request-private",
+        input_kind="text_wrapper",
+        extraction_requirement="wrap_text",
+        text="PRIVATE_RAW_CONTENT",
+    )
+    plan = ParserExecutionPlan(
+        plan_id="missing-adapter",
+        plan_kind="wrap_text",
+        steps=(_step("one", 0),),
+    )
+
+    result = _executor(FakeParserStepAdapter(), capability_ids=()).execute(payload, None, plan)
+
+    assert result.parser_status == "failed"
+    assert result.failure is not None
+    assert result.failure.code == "UNSUPPORTED_FILE_KIND"
+    exposed = result.failure.message + repr(result.failure.metadata) + caplog.text
+    assert "PRIVATE_RAW_CONTENT" not in exposed
+    assert "C:\\private\\secret.pdf" not in exposed
+    assert "PRIVATE_RAW_EXCEPTION" not in exposed
