@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -37,12 +38,20 @@ class Settings(BaseSettings):
     dashboard_cookie_samesite: str = Field(default="lax", alias="DASHBOARD_COOKIE_SAMESITE")
     auth_rate_limit_requests: int = Field(default=10, alias="AUTH_RATE_LIMIT_REQUESTS")
     auth_rate_limit_window_seconds: int = Field(default=60, alias="AUTH_RATE_LIMIT_WINDOW_SECONDS")
+    classifier_runtime_enabled: bool = Field(default=False, alias="PROMPTGUARD_CLASSIFIER_RUNTIME_ENABLED")
+    classifier_manifest_path: str = Field(default="", alias="PROMPTGUARD_CLASSIFIER_MANIFEST_PATH")
 
     def cors_origin_list(self) -> list[str]:
         origins = [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
         if "*" in origins:
             raise ValueError("PROMPTGUARD_CORS_ORIGINS must not contain '*' when credentials are allowed")
         return origins
+
+    def classifier_manifest_path_value(self) -> Path | None:
+        path = self.classifier_manifest_path.strip()
+        if not path:
+            return None
+        return Path(path)
 
 
 @lru_cache
