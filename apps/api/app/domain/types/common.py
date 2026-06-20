@@ -9,8 +9,8 @@ ParserStatus = Literal["parsed", "partial", "failed", "unsupported", "timeout", 
 OcrStatus = Literal["not_applicable", "text_found", "no_text_detected", "timeout", "failed"]
 ScannerStatus = Literal["not_started", "completed", "partial", "timeout", "failed"]
 ExtractionRequirement = Literal["wrap_text", "native_parse", "ocr_required", "native_parse_then_ocr_fallback", "metadata_only", "unsupported", "not_applicable"]
-ParserPlanKind = Literal["wrap_text", "native", "ocr", "native_then_ocr", "unsupported"]
-ParserStepType = Literal["resolve_file", "parse_native", "render_pages", "run_ocr", "merge_blocks"]
+ParserPlanKind = Literal["wrap_text", "native_text", "pdf_native_then_page_ocr", "image_ocr", "office_parse", "spreadsheet_parse", "slide_parse", "code_parse", "metadata_only", "unsupported"]
+ParserStepType = Literal["wrap_text", "native_text_extract", "pdf_native_text_extract", "pdf_coverage_evaluate", "render_ocr_candidate_pages", "ocr_primary", "ocr_fallback", "office_parse", "spreadsheet_parse", "slide_parse", "code_parse", "merge_blocks", "metadata_only", "unsupported"]
 ReasonCode = Literal["NO_RISK_DETECTED", "LEXICAL_DETERMINISTIC_SECRET_SIGNAL", "LEXICAL_HIGH_RISK_PII_SIGNAL", "PROTECTED_TARGET_STRONG_SIGNAL", "RISK_CONTEXT_VERIFIER_CONFIRMED", "RISK_CONTEXT_LR_ONLY", "RISK_CONTEXT_LR_ONLY_VERIFIER_TIMEOUT", "RISK_CONTEXT_LR_ONLY_VERIFIER_FAILED", "RISK_CONTEXT_VERIFIER_UNCERTAIN", "CONTENT_NOT_SCANNED", "PARSER_OR_OCR_FAILED", "UNSUPPORTED_FILE", "EMPTY_INPUT", "INTERNAL_POLICY_REASON_UNMAPPED"]
 
 

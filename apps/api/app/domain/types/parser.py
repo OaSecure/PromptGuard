@@ -65,18 +65,23 @@ class ParserLimits(BaseModel):
 
 
 class ParserWorkerPayload(BaseModel):
-    input_id: str
     request_id: str
-    file_ref: str | None = None
-    text: str | None = None
+    input_id: str
+    input_origin: Literal["composer_text", "converted_paste_text", "pasted_file_ref", "pasted_image_ref", "screenshot_image_ref", "attached_file_ref"]
     file_kind: FileKind | None
     extraction_requirement: ExtractionRequirement
+    file_ref: str | None
+    text: str | None
+    metadata: FileMetadata
+    parser_limits: ParserLimits
+    access_context: "TempFileAccessContext | None" = None
 
 
 class TempFileAccessContext(BaseModel):
-    request_id: str
+    authenticated_subject_id: str
     session_id: str
-    owner_id: str
+    request_id: str
+    temp_scope_id: str | None = None
 
 
 class ResolvedTemporaryFile(BaseModel):
@@ -85,21 +90,37 @@ class ResolvedTemporaryFile(BaseModel):
 
 
 class ParserPlanStep(BaseModel):
+    step_id: str
+    ordinal: int = Field(ge=0)
     step_type: ParserStepType
     adapter_id: str | None = None
+    condition: str | None = None
+    required: bool = True
+    on_failure: Literal["fail", "partial", "continue", "apply_fallback"] = "fail"
 
 
 class ParserFallbackRule(BaseModel):
-    from_step: ParserStepType
-    on_status: ParserStatus
-    to_step: ParserStepType
+    rule_id: str
+    trigger: str
+    fallback_action: Literal["run_step", "mark_partial", "mark_unsupported", "emit_failure"]
+    fallback_target: str | None = None
+    failure_code: str
 
 
 class ParserExecutionPlan(BaseModel):
+    plan_id: str
     plan_kind: ParserPlanKind
+    input_id: str
     steps: list[ParserPlanStep]
     fallback_rules: list[ParserFallbackRule] = Field(default_factory=list)
-    limits: ParserLimits
+    unsupported_reason_code: str | None = None
+
+    @model_validator(mode="after")
+    def steps_are_ordered(self) -> "ParserExecutionPlan":
+        ordinals = [step.ordinal for step in self.steps]
+        if ordinals != sorted(ordinals) or len(ordinals) != len(set(ordinals)):
+            raise ValueError("steps must have unique ascending ordinals")
+        return self
 
 
 class ComponentLicenseMetadata(BaseModel):
