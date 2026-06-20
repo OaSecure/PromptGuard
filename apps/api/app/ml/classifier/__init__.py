@@ -4,7 +4,12 @@ from app.ml.classifier.loader import (
     JoblibLrProbabilityPredictor,
     load_joblib_lr_predictor,
 )
-from app.ml.classifier.manifest import build_classifier_artifact_ref
+from app.ml.classifier.manifest import (
+    ClassifierManifestLoadError,
+    LoadedClassifierManifest,
+    build_classifier_artifact_ref,
+    load_classifier_manifest,
+)
 from app.ml.classifier.metadata import project_classification_result_metadata
 from app.ml.classifier.models import (
     ClassifierArtifactRef,
@@ -21,8 +26,10 @@ __all__ = [
     "ClassifierRuntime",
     "ClassifierRuntimeBuildError",
     "ClassifierService",
+    "ClassifierManifestLoadError",
     "JoblibLrClassifierLoadError",
     "JoblibLrProbabilityPredictor",
+    "LoadedClassifierManifest",
     "LrClassifierRuntime",
     "ProbabilityPredictor",
     "SegmentClassificationCandidate",
@@ -30,6 +37,7 @@ __all__ = [
     "SegmentClassificationResult",
     "build_classifier_artifact_ref",
     "build_lr_classifier_runtime",
+    "load_classifier_manifest",
     "load_joblib_lr_predictor",
     "project_classification_result_metadata",
 ]
