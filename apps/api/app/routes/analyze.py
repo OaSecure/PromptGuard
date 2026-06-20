@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
 from app.core.tokens import utc_now
+from app.interfaces.http.analyze_request import LegacyAnalyzeRequest, adapt_legacy_analyze_request
 from app.masking.placeholder import apply_placeholders
 from app.ml.classifier.factory import ClassifierRuntimeProviderResult, build_classifier_service_from_settings
 from app.ml.embedding import create_qwen3_backend
@@ -662,13 +663,15 @@ def get_analyze_verifier_config(settings: Settings = Depends(get_settings)) -> A
 
 @router.post("/analyze", response_model=AnalyzeResponse, response_model_exclude_none=True)
 async def analyze_prompt(
-    payload: AnalyzeRequest,
+    payload: LegacyAnalyzeRequest,
     current_user: User = Depends(require_active_user),
     session: AsyncSession = Depends(get_db_session),
     classifier_provider: ClassifierRuntimeProviderResult = Depends(get_classifier_runtime_provider),
     embedding_loader: AtomEmbeddingModelLoader | None = Depends(get_atom_embedding_loader),
     verifier_config: AnalyzeVerifierConfig | None = Depends(get_analyze_verifier_config),
 ) -> AnalyzeResponse:
+    adapted_request = adapt_legacy_analyze_request(payload, current_user.login_id)
+    payload = adapted_request.legacy_view
     request_id = payload.client_request_id
     event_id = uuid.uuid4()
     checked_at = utc_now()
