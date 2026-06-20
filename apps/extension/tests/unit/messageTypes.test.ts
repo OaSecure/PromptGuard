@@ -61,8 +61,14 @@ describe("extension message guard", () => {
       { ...validFileInput, content_included: true },
       { ...validFileInput, content: "file content must not cross Analyze JSON" },
       { ...validFileInput, file_ref: "" },
+      { ...validFileInput, file_ref: "https://files.example.test/fref_123" },
+      { ...validFileInput, file_ref: "C:\\Users\\member\\secret.txt" },
+      { ...validFileInput, file_ref: "../secret.txt" },
       { ...validFileInput, file_kind: "raw_filename_trusted" },
-      { ...validFileInput, size_bucket: "tiny" }
+      { ...validFileInput, size_bucket: "tiny" },
+      { ...validFileInput, metadata: { original_filename: "customer.env" } },
+      { ...validFileInput, metadata: { file_content: "raw file text" } },
+      { ...validFileInput, metadata: { nested: { detected_raw_value: "secret-token" } } }
     ];
 
     for (const malformedInput of cases) {

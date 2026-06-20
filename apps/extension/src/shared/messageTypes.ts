@@ -65,10 +65,10 @@ function isAnalyzeInput(value: unknown): boolean {
       value.content_included === false &&
       value.content === undefined &&
       isFileReferenceSource(value.source) &&
-      isNonEmptyString(value.file_ref) &&
+      isSafeFileReference(value.file_ref) &&
       isAnalyzeFileKind(value.file_kind) &&
       (value.size_bucket === undefined || isAnalyzeSizeBucket(value.size_bucket)) &&
-      (value.metadata === undefined || isRecord(value.metadata)) &&
+      (value.metadata === undefined || isSafeMetadata(value.metadata)) &&
       (value.content_unavailable_reason === undefined || isNonEmptyString(value.content_unavailable_reason)) &&
       (value.limit_exceeded === undefined || isNonEmptyString(value.limit_exceeded))
     );
@@ -78,7 +78,7 @@ function isAnalyzeInput(value: unknown): boolean {
   }
   return (
     value.content === undefined &&
-    (value.metadata === undefined || isRecord(value.metadata)) &&
+    (value.metadata === undefined || isSafeMetadata(value.metadata)) &&
     (value.content_unavailable_reason === undefined || isNonEmptyString(value.content_unavailable_reason)) &&
     (value.limit_exceeded === undefined || isNonEmptyString(value.limit_exceeded))
   );
@@ -114,6 +114,34 @@ function isAnalyzeFileKind(value: unknown): boolean {
 
 function isAnalyzeSizeBucket(value: unknown): boolean {
   return value === "empty" || value === "small" || value === "medium" || value === "large";
+}
+
+function isSafeFileReference(value: unknown): value is string {
+  return (
+    isNonEmptyString(value) &&
+    value.length <= 256 &&
+    !value.includes("/") &&
+    !value.includes("\\") &&
+    !value.includes(":") &&
+    !value.includes("..") &&
+    !value.includes("?") &&
+    !value.includes("#")
+  );
+}
+
+function isSafeMetadata(value: unknown): boolean {
+  return isRecord(value) && !containsForbiddenMetadataKey(value);
+}
+
+function containsForbiddenMetadataKey(value: unknown): boolean {
+  if (!isRecord(value)) {
+    return false;
+  }
+  return Object.entries(value).some(([key, nestedValue]) => isForbiddenMetadataKey(key) || containsForbiddenMetadataKey(nestedValue));
+}
+
+function isForbiddenMetadataKey(key: string): boolean {
+  return ["raw_prompt", "file_content", "extracted_text", "detected_raw_value", "detected_raw_values", "original_filename", "filename", "file_name", "path", "local_path"].includes(key.toLowerCase());
 }
 
 function isNonEmptyString(value: unknown): value is string {
