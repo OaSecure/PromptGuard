@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 from typing import Literal, Protocol
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -27,6 +28,7 @@ class RobertaVerificationCandidate(BaseModel):
     candidate_label: str
     classifier_artifact_id: str | None = None
     classifier_runtime_version: str | None = None
+    text: str | None = Field(default=None, exclude=True, repr=False)
 
     @field_validator("segment_id", "candidate_label")
     @classmethod
@@ -36,12 +38,13 @@ class RobertaVerificationCandidate(BaseModel):
         return value
 
     @classmethod
-    def from_classifier_candidate(cls, candidate: SegmentClassificationCandidate) -> "RobertaVerificationCandidate":
+    def from_classifier_candidate(cls, candidate: SegmentClassificationCandidate, *, text: str | None = None) -> "RobertaVerificationCandidate":
         return cls(
             segment_id=candidate.segment_id,
             candidate_label=candidate.label,
             classifier_artifact_id=candidate.artifact_id,
             classifier_runtime_version=candidate.runtime_version,
+            text=text,
         )
 
 
@@ -113,12 +116,19 @@ def build_verification_request_from_classifier(
     classification: SegmentClassificationResult,
     artifact: VerifierArtifactRef,
     timeout_ms: int = 3000,
+    candidate_text_by_segment_id: Mapping[str, str] | None = None,
 ) -> RobertaVerificationRequest:
     if classification.failure is not None:
         raise ValueError("classifier failure cannot create verifier request")
     return RobertaVerificationRequest(
         input_id=input_id,
-        candidates=[RobertaVerificationCandidate.from_classifier_candidate(candidate) for candidate in classification.candidates],
+        candidates=[
+            RobertaVerificationCandidate.from_classifier_candidate(
+                candidate,
+                text=candidate_text_by_segment_id.get(candidate.segment_id) if candidate_text_by_segment_id is not None else None,
+            )
+            for candidate in classification.candidates
+        ],
         artifact=artifact,
         timeout_ms=timeout_ms,
     )
