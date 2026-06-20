@@ -30,8 +30,10 @@ from app.ml.verifier import (
     RobertaVerifierService,
     VerifierArtifactRef,
 )
+from app.scanner import LexicalRule
 from app.routes import analyze as analyze_route
 from app.routes.auth import get_db_session
+from app.services import analyze_classifier as analyze_classifier_service
 from app.services.analyze_classifier import AnalyzeVerifierConfig, evaluate_analyze_classifier
 
 try:
@@ -279,6 +281,56 @@ def test_evaluate_analyze_classifier_embeds_sentence_and_classifies_with_lr_runt
     assert outcome.failure is None
     assert backend.seen_texts == [sentence]
     assert predictor.seen_vectors == [[1.0, 0.0]]
+
+
+def test_evaluate_analyze_classifier_runs_text_frontend_once_and_maps_signals(monkeypatch) -> None:
+    backend = _RecordingEmbeddingBackend()
+    predictor = _RecordingProbabilityPredictor()
+    loader = AtomEmbeddingModelLoader(lambda _model_name: backend)
+    provider = _provider_with_runtime(LrClassifierRuntime(predictor))
+    sentence = "Project Atlas implementation note. Ship only after review."
+    text_inputs = [(0, SimpleNamespace(input_id="in_pipeline", source="composer", content=sentence))]
+    lexical_rules = [
+        LexicalRule(
+            pattern_id="project-atlas",
+            kind="keyword",
+            expression="Project Atlas",
+            signal_type="secret_span",
+        )
+    ]
+    scan_calls = []
+    mapping_requests = []
+    mapping_results = []
+    real_scan = analyze_classifier_service.scan_lexical_signals
+    real_map = analyze_classifier_service.map_signals_to_segments
+
+    def recording_scan(request):
+        scan_calls.append(request)
+        return real_scan(request)
+
+    def recording_map(request):
+        mapping_requests.append(request)
+        result = real_map(request)
+        mapping_results.append(result)
+        return result
+
+    monkeypatch.setattr(analyze_classifier_service, "scan_lexical_signals", recording_scan)
+    monkeypatch.setattr(analyze_classifier_service, "map_signals_to_segments", recording_map)
+
+    outcome = evaluate_analyze_classifier(text_inputs, provider, loader, lexical_rules=lexical_rules)
+
+    assert outcome.enabled is True
+    assert outcome.has_candidates is True
+    assert outcome.failure is None
+    assert len(scan_calls) == 1
+    assert len(mapping_requests) == 1
+    assert len(mapping_results) == 1
+    assert mapping_requests[0].lexical_signals[0].signal_type == "secret_span"
+    assert mapping_results[0].segment_signal_sets[0].signal_count == 1
+    assert mapping_results[0].segment_signal_sets[0].max_severity == "low"
+    assert predictor.seen_vectors == [[1.0, 0.0]]
+    serialized_outcome = json.dumps(outcome.verifier_summaries, default=str)
+    assert "Project Atlas" not in serialized_outcome
 
 
 def test_evaluate_analyze_classifier_verifies_classifier_candidates_without_raw_leakage() -> None:
