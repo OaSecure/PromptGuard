@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -47,6 +48,21 @@ class ResolvedTemporaryFile(BaseModel):
 
     file_ref: str
     file_kind: FileKind
+    local_runtime_ref: str
+
+
+class TemporaryFileRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    file_ref: str
+    authenticated_subject_id: str
+    session_id: str | None
+    request_id: str
+    temp_scope_id: str | None = None
+    state: str
+    expires_at: datetime
+    deleted_at: datetime | None = None
+    file_kind: str
     local_runtime_ref: str
 
 
