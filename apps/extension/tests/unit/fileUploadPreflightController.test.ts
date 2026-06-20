@@ -35,6 +35,32 @@ describe("file upload preflight controller", () => {
     controller.disconnect();
   });
 
+  it("fails closed for mixed supported and unsupported files without partial Analyze fallback", async () => {
+    const page = setupFileInput([
+      textFile("notes.txt", "secret text", "text/plain"),
+      textFile("report.pdf", "pdf bytes", "application/pdf")
+    ]);
+    let calls = 0;
+    const controller = startFileUploadPreflightController({
+      config: DEFAULT_CONFIG,
+      getContext: () => context,
+      sendAnalyze: async (request) => {
+        calls += 1;
+        return responseFor("Allow", request);
+      }
+    });
+
+    dispatchChange(page.input);
+    await waitFor(() => overlayDecision() === "error");
+
+    expect(calls).toBe(0);
+    expect(page.uploads()).toBe(0);
+    expect(overlayText()).not.toContain("secret text");
+    expect(overlayText()).not.toContain("notes.txt");
+    expect(overlayText()).not.toContain("report.pdf");
+    controller.disconnect();
+  });
+
   it("fails closed when Allow does not authorize original upload", async () => {
     const page = setupFileInput([textFile("notes.txt", "hello", "text/plain")]);
     const controller = startFileUploadPreflightController({

@@ -55,6 +55,48 @@ describe("analyze request builder", () => {
     expect(converted).toMatchObject({ source: "converted_paste", content_included: false, content_unavailable_reason: "oversized", limit_exceeded: "MAX_CONVERTED_PASTE_TEXT_BYTES" });
   });
 
+  it("keeps exact text byte limits inclusive and excludes content only after the limit", () => {
+    const exactComposer = createComposerInput({ text: "a".repeat(MAX_COMPOSER_TEXT_BYTES), inputMethod: "ENTER" });
+    const oversizedComposer = createComposerInput({ text: "a".repeat(MAX_COMPOSER_TEXT_BYTES + 1), inputMethod: "ENTER" });
+    const exactConverted = createConvertedPasteInput({ text: "b".repeat(MAX_CONVERTED_PASTE_TEXT_BYTES) });
+    const oversizedConverted = createConvertedPasteInput({ text: "b".repeat(MAX_CONVERTED_PASTE_TEXT_BYTES + 1) });
+
+    expect(exactComposer).toMatchObject({ content_included: true, size_bytes: MAX_COMPOSER_TEXT_BYTES });
+    expect(oversizedComposer).toMatchObject({ content_included: false, size_bytes: MAX_COMPOSER_TEXT_BYTES + 1 });
+    expect(exactConverted).toMatchObject({ content_included: true, size_bytes: MAX_CONVERTED_PASTE_TEXT_BYTES });
+    expect(oversizedConverted).toMatchObject({ content_included: false, size_bytes: MAX_CONVERTED_PASTE_TEXT_BYTES + 1 });
+  });
+
+  it("assigns file reference size buckets at contract boundaries without content", () => {
+    const samples = [
+      [0, "empty"],
+      [1, "small"],
+      [1_048_576, "small"],
+      [1_048_577, "medium"],
+      [10_485_760, "medium"],
+      [10_485_761, "large"]
+    ] as const;
+
+    for (const [sizeBytes, sizeBucket] of samples) {
+      const input = createFileReferenceInput({
+        fileRef: `fref_${sizeBytes}`,
+        fileKind: "plain_text",
+        extension: ".txt",
+        mimeType: "text/plain",
+        sizeBytes
+      });
+
+      expect(input).toMatchObject({
+        kind: "file_reference",
+        source: "attached_file",
+        content_included: false,
+        extension: "txt",
+        size_bucket: sizeBucket
+      });
+      expect("content" in input).toBe(false);
+    }
+  });
+
   it("builds unsupported attachments without original filename leakage", () => {
     const input = createUnsupportedAttachmentInput({
       extension: ".pdf",

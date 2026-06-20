@@ -64,8 +64,10 @@ function isAnalyzeInput(value: unknown): boolean {
     return (
       value.content_included === false &&
       value.content === undefined &&
+      isFileReferenceSource(value.source) &&
       isNonEmptyString(value.file_ref) &&
-      isNonEmptyString(value.file_kind) &&
+      isAnalyzeFileKind(value.file_kind) &&
+      (value.size_bucket === undefined || isAnalyzeSizeBucket(value.size_bucket)) &&
       (value.metadata === undefined || isRecord(value.metadata)) &&
       (value.content_unavailable_reason === undefined || isNonEmptyString(value.content_unavailable_reason)) &&
       (value.limit_exceeded === undefined || isNonEmptyString(value.limit_exceeded))
@@ -100,6 +102,18 @@ function isAnalyzeInputKind(value: unknown): boolean {
 
 function isAnalyzeInputSource(value: unknown): boolean {
   return value === "composer" || value === "converted_paste" || value === "pasted_file" || value === "pasted_image" || value === "screenshot_image" || value === "attached_file" || value === "attachment_chip";
+}
+
+function isFileReferenceSource(value: unknown): boolean {
+  return value === "pasted_file" || value === "pasted_image" || value === "screenshot_image" || value === "attached_file";
+}
+
+function isAnalyzeFileKind(value: unknown): boolean {
+  return value === "plain_text" || value === "pdf" || value === "image" || value === "office_document" || value === "spreadsheet" || value === "slide" || value === "code" || value === "unknown";
+}
+
+function isAnalyzeSizeBucket(value: unknown): boolean {
+  return value === "empty" || value === "small" || value === "medium" || value === "large";
 }
 
 function isNonEmptyString(value: unknown): value is string {

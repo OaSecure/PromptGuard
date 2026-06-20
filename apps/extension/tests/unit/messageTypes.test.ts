@@ -51,6 +51,24 @@ describe("extension message guard", () => {
       })
     ).toBe(false);
   });
+
+  it("rejects legacy file text and malformed v3.5 file references at the runtime boundary", () => {
+    const baseRequest = filesAnalyzeRequest();
+    const validFileInput = fileInput();
+    const cases = [
+      { ...validFileInput, kind: "text", source: "file", content_included: true, content: "legacy file text" },
+      { ...validFileInput, source: "attachment_chip" },
+      { ...validFileInput, content_included: true },
+      { ...validFileInput, content: "file content must not cross Analyze JSON" },
+      { ...validFileInput, file_ref: "" },
+      { ...validFileInput, file_kind: "raw_filename_trusted" },
+      { ...validFileInput, size_bucket: "tiny" }
+    ];
+
+    for (const malformedInput of cases) {
+      expect(isExtensionMessage({ type: "FILES_ANALYZE_REQUEST", payload: { ...baseRequest, inputs: [malformedInput] } })).toBe(false);
+    }
+  });
 });
 
 function promptAnalyzeRequest() {
