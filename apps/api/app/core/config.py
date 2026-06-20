@@ -44,6 +44,9 @@ class Settings(BaseSettings):
     ml_inference_queue_max_workers: int = Field(default=1, alias="PROMPTGUARD_ML_INFERENCE_QUEUE_MAX_WORKERS")
     ml_inference_queue_max_queue_size: int = Field(default=32, alias="PROMPTGUARD_ML_INFERENCE_QUEUE_MAX_QUEUE_SIZE")
     ml_inference_queue_timeout_ms: int = Field(default=3000, alias="PROMPTGUARD_ML_INFERENCE_QUEUE_TIMEOUT_MS")
+    ml_inference_gpu_capacity_enabled: bool = Field(default=False, alias="PROMPTGUARD_ML_INFERENCE_GPU_CAPACITY_ENABLED")
+    ml_inference_gpu_reserved_memory_mb: int = Field(default=1024, alias="PROMPTGUARD_ML_INFERENCE_GPU_RESERVED_MEMORY_MB")
+    ml_inference_gpu_memory_per_worker_mb: int = Field(default=2048, alias="PROMPTGUARD_ML_INFERENCE_GPU_MEMORY_PER_WORKER_MB")
     verifier_runtime_enabled: bool = Field(default=False, alias="PROMPTGUARD_VERIFIER_RUNTIME_ENABLED")
     verifier_manifest_path: str = Field(default="", alias="PROMPTGUARD_VERIFIER_MANIFEST_PATH")
 
