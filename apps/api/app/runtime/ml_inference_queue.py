@@ -64,6 +64,7 @@ class MlInferenceQueueResult(BaseModel):
 class MlInferenceQueueSnapshot(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
+    coordination_scope: Literal["process"] = "process"
     capacity: int
     in_flight_or_queued: int
     submitted_total: int
