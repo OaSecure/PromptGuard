@@ -1,4 +1,6 @@
-import { createAnalyzeRequest, createUnsupportedAttachmentInput } from "../shared/analyzeRequestBuilder";
+import { createAnalyzeRequest, createFileReferenceInput, createUnsupportedAttachmentInput } from "../shared/analyzeRequestBuilder";
+import type { TempUploadResult } from "../background/tempFileUploadClient";
+import type { AnalyzeFileKind } from "../shared/types";
 import { createClientRequestId } from "../shared/hashing";
 import { validateFilePolicy } from "../shared/filePolicy";
 import { isAnalyzeResponse } from "../shared/responseValidation";
@@ -21,6 +23,7 @@ export interface FileUploadPreflightControllerOptions {
   config: ExtensionConfigResponse;
   getContext: () => ExtensionContext;
   sendAnalyze: FilesAnalyzeSender;
+  uploadFile?: (payload: { file: File; requestId: string; fileKind: AnalyzeFileKind; extension: string; mime: string }) => Promise<TempUploadResult | NormalizedError>;
   overlay?: PreflightOverlay;
 }
 
@@ -86,18 +89,26 @@ export function startFileUploadPreflightController(options: FileUploadPreflightC
 
     try {
       const supportedFilesNeedingUpload = policyDecisions.some((decision) => decision.allowed);
-      if (supportedFilesNeedingUpload) {
+      if (supportedFilesNeedingUpload && !options.uploadFile) {
         showFailClosed("File inspection requires temporary file reference support. Files were not attached.", () => void handleAttempt(attempt));
         return;
       }
 
+      const requestId = requestIdForAttempt(attempt);
       const inputs: AnalyzeInput[] = buildMetadataOnlyInputs(snapshots, policyDecisions);
+      for (const [index, snapshot] of snapshots.entries()) {
+        const decision = policyDecisions[index]; if (!decision?.allowed || !options.uploadFile) continue;
+        const fileKind = kindFor(snapshot.file.type, decision.extension);
+        const uploaded = await options.uploadFile({ file: snapshot.file, requestId, fileKind, extension: decision.extension, mime: snapshot.file.type });
+        if (!("file_ref" in uploaded)) throw new Error("upload failed");
+        inputs.push(createFileReferenceInput({ fileRef: uploaded.file_ref, fileKind: uploaded.file_kind, extension: uploaded.extension_hint ?? decision.extension, mimeType: uploaded.mime_hint ?? snapshot.file.type, sizeBytes: snapshot.file.size, sizeBucket: uploaded.size_bucket }));
+      }
       if (inputs.length === 0) {
         showFailClosed("Selected files could not be inspected safely. Files were not attached.", () => void handleAttempt(attempt));
         return;
       }
       const response = await withTimeout(
-        options.sendAnalyze(buildFilesAnalyzeRequest(inputs, options.getContext(), options.config.policy_version, requestIdForAttempt(attempt))),
+        options.sendAnalyze(buildFilesAnalyzeRequest(inputs, options.getContext(), options.config.policy_version, requestId)),
         options.config.timeout_ms
       );
       if (attemptId !== currentAttemptId) {
@@ -197,6 +208,12 @@ export function startFileUploadPreflightController(options: FileUploadPreflightC
       overlay.destroy();
     }
   };
+}
+
+function kindFor(mime: string, extension: string): AnalyzeFileKind {
+  if (mime.startsWith("image/")) return "image"; if (extension === ".pdf") return "pdf";
+  if ([".docx"].includes(extension)) return "office_document"; if ([".xlsx", ".csv"].includes(extension)) return "spreadsheet";
+  if ([".pptx"].includes(extension)) return "slide"; if ([".py", ".js", ".ts", ".sql"].includes(extension)) return "code"; return "plain_text";
 }
 
 /**

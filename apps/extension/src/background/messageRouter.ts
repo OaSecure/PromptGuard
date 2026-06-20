@@ -8,6 +8,7 @@ import { postJson } from "./apiClient";
 import { isExtensionConfigResponse } from "../shared/configValidation";
 import { isNormalizedError } from "../shared/errors";
 import type { AuthLoginResponse, AuthMeResponse, ExtensionConfigResponse, ExtensionMessage, NormalizedError } from "../shared/types";
+import { uploadTempFile } from "./tempFileUploadClient";
 
 /**
  * Routes one validated extension runtime message to its background handler.
@@ -21,6 +22,8 @@ export async function routeMessage(message: ExtensionMessage): Promise<unknown> 
       return analyzePrompt(message.payload);
     case "FILES_ANALYZE_REQUEST":
       return analyzeFiles(message.payload);
+    case "TEMP_FILE_UPLOAD_REQUEST":
+      return uploadTempFile(message.payload);
     case "AUTH_LOGIN_REQUEST":
       return authLogin(message.payload);
     case "AUTH_ME_REQUEST":

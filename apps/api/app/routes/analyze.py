@@ -248,8 +248,8 @@ class AnalyzeDetection(BaseModel):
 class AnalyzeInputResult(BaseModel):
     input_id: str
     input_index: int
-    kind: Literal["text", "attachment_metadata", "unsupported_attachment"]
-    source: Literal["composer", "converted_paste", "attachment_chip"]
+    kind: Literal["text", "file_reference", "attachment_metadata", "unsupported_attachment"]
+    source: Literal["composer", "converted_paste", "attached_file", "pasted_file", "pasted_image", "screenshot_image", "attachment_chip"]
     content_included: bool
     content_scanned: bool
     decision_basis: Literal["no_detection", "detection", "content_unavailable", "metadata_only"]
@@ -260,8 +260,8 @@ class AnalyzeInputResult(BaseModel):
 class ContentUnavailableInput(BaseModel):
     input_id: str
     input_index: int
-    kind: Literal["text", "attachment_metadata", "unsupported_attachment"]
-    source: Literal["composer", "converted_paste", "attachment_chip"]
+    kind: Literal["text", "file_reference", "attachment_metadata", "unsupported_attachment"]
+    source: Literal["composer", "converted_paste", "attached_file", "pasted_file", "pasted_image", "screenshot_image", "attachment_chip"]
     reason: str
     limit_exceeded: str | None = None
 
@@ -363,6 +363,8 @@ def event_input_rows(event_id: uuid.UUID, input_results: list[AnalyzeInputResult
     inputs_by_index = {index: item for index, item in enumerate(payload.inputs)}
     rows: list[EventInput] = []
     for result in input_results:
+        if result.kind == "file_reference":
+            continue
         input_item = inputs_by_index[result.input_index]
         rows.append(
             EventInput(
@@ -513,6 +515,9 @@ def input_results_for_payload(payload: AnalyzeRequest, detection_input_indexes: 
         if item.content_included:
             content_scanned = item.kind == "text"
             decision_basis = "detection" if index in detection_input_indexes else "no_detection"
+        elif item.kind == "file_reference":
+            content_scanned = False
+            decision_basis = "content_unavailable"
         elif item.kind == "attachment_metadata":
             content_scanned = False
             decision_basis = "metadata_only"

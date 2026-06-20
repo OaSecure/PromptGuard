@@ -214,6 +214,7 @@ export type ExtensionMessage =
   | { type: "PROMPT_ANALYZE_REQUEST"; payload: AnalyzeRequest }
   | { type: "PROMPT_ANALYZE_RESULT"; payload: AnalyzeResponse | NormalizedError }
   | { type: "FILES_ANALYZE_REQUEST"; payload: AnalyzeRequest }
+  | { type: "TEMP_FILE_UPLOAD_REQUEST"; payload: { file: File; requestId: string; fileKind: AnalyzeFileKind; extension: string; mime: string } }
   | { type: "FILES_ANALYZE_RESULT"; payload: AnalyzeResponse | NormalizedError }
   | { type: "AUTH_LOGIN_REQUEST"; payload: { login_id: string; password: string } }
   | { type: "AUTH_ME_REQUEST" }

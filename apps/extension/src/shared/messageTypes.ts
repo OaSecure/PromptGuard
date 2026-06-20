@@ -19,6 +19,8 @@ export function isExtensionMessage(value: unknown): value is ExtensionMessage {
       return isRecord(value.payload);
     case "FILES_ANALYZE_REQUEST":
       return isAnalyzeRequest(value.payload);
+    case "TEMP_FILE_UPLOAD_REQUEST":
+      return isRecord(value.payload) && value.payload.file instanceof File && isNonEmptyString(value.payload.requestId) && isAnalyzeFileKind(value.payload.fileKind);
     case "FILES_ANALYZE_RESULT":
     case "CONFIG_SYNC_RESULT":
     case "GET_CONFIG_RESULT":

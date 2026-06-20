@@ -49,6 +49,10 @@ class Settings(BaseSettings):
     ml_inference_gpu_memory_per_worker_mb: int = Field(default=2048, alias="PROMPTGUARD_ML_INFERENCE_GPU_MEMORY_PER_WORKER_MB")
     verifier_runtime_enabled: bool = Field(default=False, alias="PROMPTGUARD_VERIFIER_RUNTIME_ENABLED")
     verifier_manifest_path: str = Field(default="", alias="PROMPTGUARD_VERIFIER_MANIFEST_PATH")
+    temp_file_encryption_key: str = Field(default="", alias="PROMPTGUARD_TEMP_FILE_ENCRYPTION_KEY")
+    temp_file_dir: str = Field(default=".promptguard-temp", alias="PROMPTGUARD_TEMP_FILE_DIR")
+    temp_file_ttl_seconds: int = Field(default=900, gt=0, alias="PROMPTGUARD_TEMP_FILE_TTL_SECONDS")
+    temp_file_max_bytes: int = Field(default=1_048_576, gt=0, alias="PROMPTGUARD_TEMP_FILE_MAX_BYTES")
 
     def cors_origin_list(self) -> list[str]:
         origins = [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
