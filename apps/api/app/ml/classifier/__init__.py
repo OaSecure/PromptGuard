@@ -18,7 +18,7 @@ from app.ml.classifier.manifest import (
     build_classifier_artifact_ref,
     load_classifier_manifest,
 )
-from app.ml.classifier.metadata import project_classification_result_metadata
+from app.ml.classifier.metadata import project_classification_result_metadata, project_classification_signal_summary
 from app.ml.classifier.models import (
     ClassifierArtifactRef,
     ProbabilityPredictor,
@@ -53,4 +53,5 @@ __all__ = [
     "load_classifier_manifest",
     "load_joblib_lr_predictor",
     "project_classification_result_metadata",
+    "project_classification_signal_summary",
 ]
