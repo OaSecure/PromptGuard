@@ -1,0 +1,6 @@
+from typing import Protocol
+
+
+class KeyValueStoragePort(Protocol):
+    def get(self, key: str) -> bytes | None: ...
+    def put(self, key: str, value: bytes) -> None: ...

@@ -1,0 +1,1 @@
+"""Analyze application-local contracts."""

@@ -1,0 +1,1 @@
+{"signal_id":"signal_0001","input_id":"in_synthetic_text","block_id":"block_0001","signal_type":"token_candidate","pattern_id":"pattern_synthetic","match_basis":"heuristic_regex","normalized_range":{"start":0,"end":5},"original_range":{"start":0,"end":5},"severity_hint":"medium","deterministic":false,"value_fingerprint":null,"metadata":{}}
