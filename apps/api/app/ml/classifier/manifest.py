@@ -21,6 +21,7 @@ class ClassifierManifestLoadError(Exception):
 class LoadedClassifierManifest:
     artifact: ClassifierArtifactRef
     lr_model_path: Path
+    artifact_root: Path
 
 
 def build_classifier_artifact_ref(
@@ -102,7 +103,7 @@ def load_classifier_manifest(
             message="classifier manifest payload is invalid",
         ) from exc
 
-    return LoadedClassifierManifest(artifact=artifact, lr_model_path=lr_model_path)
+    return LoadedClassifierManifest(artifact=artifact, lr_model_path=lr_model_path, artifact_root=root)
 
 
 def _infer_artifact_root(manifest_path: Path) -> Path:

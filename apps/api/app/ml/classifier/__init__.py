@@ -1,4 +1,10 @@
-from app.ml.classifier.factory import ClassifierRuntimeBuildError, build_lr_classifier_runtime
+from app.ml.classifier.factory import (
+    BuiltClassifierService,
+    ClassifierRuntimeBuildError,
+    ClassifierServiceBuildError,
+    build_classifier_service_from_manifest,
+    build_lr_classifier_runtime,
+)
 from app.ml.classifier.loader import (
     JoblibLrClassifierLoadError,
     JoblibLrProbabilityPredictor,
@@ -26,7 +32,9 @@ __all__ = [
     "ClassifierRuntime",
     "ClassifierRuntimeBuildError",
     "ClassifierService",
+    "ClassifierServiceBuildError",
     "ClassifierManifestLoadError",
+    "BuiltClassifierService",
     "JoblibLrClassifierLoadError",
     "JoblibLrProbabilityPredictor",
     "LoadedClassifierManifest",
@@ -35,6 +43,7 @@ __all__ = [
     "SegmentClassificationCandidate",
     "SegmentClassificationRequest",
     "SegmentClassificationResult",
+    "build_classifier_service_from_manifest",
     "build_classifier_artifact_ref",
     "build_lr_classifier_runtime",
     "load_classifier_manifest",
