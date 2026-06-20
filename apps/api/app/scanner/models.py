@@ -1,12 +1,25 @@
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.atoms.models import TextRange
 from app.normalization.models import NormalizedDocument
 
 SeverityHint = Literal["info", "low", "medium", "high", "critical"]
 ScannerStatus = Literal["not_started", "completed", "partial", "timeout", "failed"]
+FORBIDDEN_SIGNAL_METADATA_KEYS = frozenset(
+    {
+        "raw_value",
+        "matched_value",
+        "value",
+        "action",
+        "recommended_action",
+        "reason_code",
+        "user_message",
+        "user_notice",
+        "confidence_hint",
+    }
+)
 
 
 class LexicalRule(BaseModel):
@@ -37,6 +50,14 @@ class LexicalSignal(BaseModel):
     severity_hint: SeverityHint | None = None
     value_fingerprint: str | None = None
     metadata: dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("metadata")
+    @classmethod
+    def reject_raw_or_policy_metadata(cls, value: dict[str, str]) -> dict[str, str]:
+        forbidden = FORBIDDEN_SIGNAL_METADATA_KEYS.intersection(value)
+        if forbidden:
+            raise ValueError(f"forbidden lexical signal metadata keys: {', '.join(sorted(forbidden))}")
+        return value
 
 
 class ScannerFailure(BaseModel):
