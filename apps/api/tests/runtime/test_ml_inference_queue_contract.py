@@ -43,6 +43,16 @@ def test_ml_inference_queue_invokes_handler_and_returns_result():
     queue.shutdown()
 
 
+def test_ml_inference_queue_accepts_per_job_operation_without_payload_metadata():
+    queue = MlInferenceQueue(max_workers=1, max_queue_size=1)
+
+    result = queue.execute(_job(metadata={"model": "lr"}), timeout_ms=100, operation=lambda: {"label": "safe"})
+
+    assert result.status == "succeeded"
+    assert result.value == {"label": "safe"}
+    queue.shutdown()
+
+
 def test_ml_inference_job_metadata_allows_only_safe_coarse_fields():
     job = _job(metadata={"model": "lr", "queue": "primary", "segment_count": 2, "timeout_ms": 3000})
 

@@ -30,6 +30,7 @@ from app.ml.verifier import (
     RobertaVerifierService,
     VerifierArtifactRef,
 )
+from app.runtime.ml_inference_queue import MlInferenceQueue
 from app.scanner import LexicalRule
 from app.routes import analyze as analyze_route
 from app.routes.auth import get_db_session
@@ -56,7 +57,7 @@ except ModuleNotFoundError:
     )
 
 
-def _client(user=None, rules=None, provider=None, verifier_config=None) -> tuple[TestClient, _FakeSession]:
+def _client(user=None, rules=None, provider=None, verifier_config=None, inference_queue=None) -> tuple[TestClient, _FakeSession]:
     app = FastAPI()
     app.include_router(analyze_route.router)
     fake_session = _FakeSession(user, rules)
@@ -86,6 +87,9 @@ def _client(user=None, rules=None, provider=None, verifier_config=None) -> tuple
     verifier_dependency = getattr(analyze_route, "get_analyze_verifier_config", None)
     if verifier_dependency is not None:
         app.dependency_overrides[verifier_dependency] = lambda: verifier_config
+    inference_queue_dependency = getattr(analyze_route, "get_ml_inference_queue", None)
+    if inference_queue_dependency is not None:
+        app.dependency_overrides[inference_queue_dependency] = lambda: inference_queue
     return TestClient(app), fake_session
 
 
@@ -164,6 +168,15 @@ class _NoCandidateRuntime:
         return SegmentClassificationResult(input_id=request.input_id)
 
 
+class _BlockingRuntime:
+    def __init__(self):
+        self.release = None
+
+    def classify(self, request):
+        self.release.wait(timeout=1)
+        return SegmentClassificationResult(input_id=request.input_id)
+
+
 class _RecordingProbabilityPredictor:
     target_labels = ["secret_risk"]
 
@@ -230,6 +243,15 @@ class _FailingVerifierModel:
         raise RuntimeError("raw verifier failure sentinel must not leak")
 
 
+class _BlockingVerifierModel:
+    def __init__(self, release):
+        self.release = release
+
+    def verify(self, request):
+        self.release.wait(timeout=1)
+        return RobertaVerificationResult(input_id=request.input_id)
+
+
 def _trained_artifact_zip_path_or_skip() -> Path:
     configured_path = os.environ.get("PROMPTGUARD_TEST_CLASSIFIER_ARTIFACT_ZIP")
     if not configured_path:
@@ -281,6 +303,75 @@ def test_evaluate_analyze_classifier_embeds_sentence_and_classifies_with_lr_runt
     assert outcome.failure is None
     assert backend.seen_texts == [sentence]
     assert predictor.seen_vectors == [[1.0, 0.0]]
+
+
+def test_evaluate_analyze_classifier_uses_inference_queue_for_classifier() -> None:
+    loader = AtomEmbeddingModelLoader(lambda _model_name: _FakeEmbeddingBackend())
+    provider = _provider_with_runtime(_CandidateRuntime())
+    queue = MlInferenceQueue(max_workers=1, max_queue_size=1)
+    text_inputs = [(0, SimpleNamespace(input_id="in_queued", source="composer", content="ordinary implementation note"))]
+
+    outcome = evaluate_analyze_classifier(text_inputs, provider, loader, inference_queue=queue)
+
+    assert outcome.enabled is True
+    assert outcome.has_candidates is True
+    assert outcome.failure is None
+    queue.shutdown()
+
+
+def test_evaluate_analyze_classifier_fails_closed_when_classifier_queue_times_out() -> None:
+    from threading import Event
+
+    runtime = _BlockingRuntime()
+    runtime.release = Event()
+    loader = AtomEmbeddingModelLoader(lambda _model_name: _FakeEmbeddingBackend())
+    provider = _provider_with_runtime(runtime)
+    queue = MlInferenceQueue(max_workers=1, max_queue_size=1)
+    text_inputs = [(0, SimpleNamespace(input_id="in_timeout", source="composer", content="ordinary implementation note"))]
+
+    outcome = evaluate_analyze_classifier(text_inputs, provider, loader, inference_queue=queue, inference_timeout_ms=1)
+    runtime.release.set()
+
+    assert outcome.enabled is True
+    assert outcome.has_candidates is False
+    assert outcome.failure is not None
+    assert outcome.failure.code == "ML_INFERENCE_TIMEOUT"
+    assert "ordinary implementation note" not in json.dumps(outcome.failure.model_dump())
+    queue.shutdown()
+
+
+def test_evaluate_analyze_classifier_fails_closed_when_classifier_queue_is_full() -> None:
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+
+    release = Event()
+    runtime = _BlockingRuntime()
+    runtime.release = release
+    loader = AtomEmbeddingModelLoader(lambda _model_name: _FakeEmbeddingBackend())
+    provider = _provider_with_runtime(runtime)
+    queue = MlInferenceQueue(max_workers=1, max_queue_size=1)
+
+    def evaluate(input_id: str):
+        return evaluate_analyze_classifier(
+            [(0, SimpleNamespace(input_id=input_id, source="composer", content="ordinary implementation note"))],
+            provider,
+            loader,
+            inference_queue=queue,
+            inference_timeout_ms=500,
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as callers:
+        first = callers.submit(evaluate, "in_first")
+        second = callers.submit(evaluate, "in_second")
+        outcome = evaluate("in_third")
+        release.set()
+        first.result()
+        second.result()
+
+    assert outcome.enabled is True
+    assert outcome.failure is not None
+    assert outcome.failure.code == "ML_INFERENCE_LIMIT_EXCEEDED"
+    queue.shutdown()
 
 
 def test_evaluate_analyze_classifier_runs_text_frontend_once_and_maps_signals(monkeypatch) -> None:
@@ -407,6 +498,37 @@ def test_evaluate_analyze_classifier_fails_closed_when_enabled_verifier_fails() 
     assert "raw verifier failure sentinel" not in json.dumps(outcome.failure.model_dump())
 
 
+def test_evaluate_analyze_classifier_fails_closed_when_verifier_queue_times_out() -> None:
+    from threading import Event
+
+    release = Event()
+    loader = AtomEmbeddingModelLoader(lambda _model_name: _FakeEmbeddingBackend())
+    provider = _provider_with_runtime(_CandidateRuntime())
+    verifier_config = AnalyzeVerifierConfig(
+        service=RobertaVerifierService(_BlockingVerifierModel(release)),
+        artifact=_verifier_artifact(),
+    )
+    queue = MlInferenceQueue(max_workers=1, max_queue_size=1)
+    text_inputs = [(0, SimpleNamespace(input_id="in_verifier_timeout", source="composer", content="ordinary note"))]
+
+    outcome = evaluate_analyze_classifier(
+        text_inputs,
+        provider,
+        loader,
+        verifier_config=verifier_config,
+        inference_queue=queue,
+        inference_timeout_ms=1,
+    )
+    release.set()
+
+    assert outcome.enabled is True
+    assert outcome.has_candidates is True
+    assert outcome.failure is not None
+    assert outcome.failure.code == "ML_INFERENCE_TIMEOUT"
+    assert "ordinary note" not in json.dumps(outcome.failure.model_dump())
+    queue.shutdown()
+
+
 def test_real_trained_lr_artifact_reaches_analyze_classifier_helper(tmp_path: Path) -> None:
     artifact_zip_path = _trained_artifact_zip_path_or_skip()
     artifact_root = tmp_path / "trained_classifier_artifact"
@@ -469,20 +591,28 @@ def test_classifier_disabled_preserves_allow_without_classifier_call(monkeypatch
     assert fake_session.commits == 1
 
 
-def test_analyze_route_passes_verifier_config_to_classifier_helper(monkeypatch) -> None:
+def test_analyze_route_passes_verifier_config_and_queue_to_classifier_helper(monkeypatch) -> None:
     seen = {}
 
-    def capture_classifier(_text_inputs, _provider, _embedding_loader, *, verifier_config=None):
+    def capture_classifier(_text_inputs, _provider, _embedding_loader, *, verifier_config=None, inference_queue=None, **_kwargs):
         seen["verifier_config"] = verifier_config
+        seen["inference_queue"] = inference_queue
         return SimpleNamespace(enabled=True, has_candidates=False, failure=None, verifier_summaries=[])
 
     verifier_config = AnalyzeVerifierConfig(
         service=RobertaVerifierService(_RecordingVerifierModel()),
         artifact=_verifier_artifact(),
     )
+    inference_queue = MlInferenceQueue(max_workers=1, max_queue_size=1)
     monkeypatch.setattr(analyze_route, "evaluate_analyze_classifier", capture_classifier, raising=False)
     user = _user()
-    client, _fake_session = _client(user, rules=[], provider=_enabled_provider(), verifier_config=verifier_config)
+    client, _fake_session = _client(
+        user,
+        rules=[],
+        provider=_enabled_provider(),
+        verifier_config=verifier_config,
+        inference_queue=inference_queue,
+    )
 
     response = client.post(
         "/prompts/analyze",
@@ -492,7 +622,9 @@ def test_analyze_route_passes_verifier_config_to_classifier_helper(monkeypatch) 
 
     assert response.status_code == 200
     assert seen["verifier_config"] is verifier_config
+    assert seen["inference_queue"] is inference_queue
     assert "masked_prompt" not in response.json()
+    inference_queue.shutdown()
 
 
 def test_classifier_candidate_escalates_allow_to_warn_without_raw_leakage(monkeypatch) -> None:

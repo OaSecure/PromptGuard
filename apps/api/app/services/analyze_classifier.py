@@ -24,6 +24,7 @@ from app.ml.verifier import (
     project_verification_signal_summary,
 )
 from app.normalization import NormalizerRequest, normalize_document
+from app.runtime.ml_inference_queue import MlInferenceJob, MlInferenceQueue
 from app.scanner import (
     LexicalRule,
     LexicalScanRequest,
@@ -37,6 +38,7 @@ CLASSIFIER_RUNTIME_DISABLED = "CLASSIFIER_RUNTIME_DISABLED"
 ANALYZE_CLASSIFIER_FAILED = "ANALYZE_CLASSIFIER_FAILED"
 NORMALIZATION_FAILED = "NORMALIZATION_FAILED"
 LEXICAL_SCAN_FAILED = "LEXICAL_SCAN_FAILED"
+DEFAULT_ANALYZE_ML_INFERENCE_TIMEOUT_MS = 3000
 
 _MAPPING_SIGNAL_TYPES = {
     "pii_span",
@@ -72,6 +74,8 @@ def evaluate_analyze_classifier(
     *,
     verifier_config: AnalyzeVerifierConfig | None = None,
     lexical_rules: list[LexicalRule] | None = None,
+    inference_queue: MlInferenceQueue | None = None,
+    inference_timeout_ms: int = DEFAULT_ANALYZE_ML_INFERENCE_TIMEOUT_MS,
 ) -> AnalyzeClassifierOutcome:
     if _is_disabled(provider_result):
         return AnalyzeClassifierOutcome(enabled=False)
@@ -151,13 +155,20 @@ def evaluate_analyze_classifier(
         if segment_embedding_result.failure is not None:
             return AnalyzeClassifierOutcome(enabled=True, failure=segment_embedding_result.failure)
 
-        classification_result = provider_result.bundle.service.classify(
-            SegmentClassificationRequest(
-                input_id=input_id,
-                segment_embeddings=segment_embedding_result.segment_embeddings,
-                artifact=provider_result.bundle.artifact,
-            )
+        classification_request = SegmentClassificationRequest(
+            input_id=input_id,
+            segment_embeddings=segment_embedding_result.segment_embeddings,
+            artifact=provider_result.bundle.artifact,
         )
+        classification_result = _run_classifier_inference(
+            input_id,
+            classification_request,
+            provider_result,
+            inference_queue,
+            inference_timeout_ms,
+        )
+        if isinstance(classification_result, PipelineFailure):
+            return AnalyzeClassifierOutcome(enabled=True, failure=classification_result)
         if classification_result.failure is not None:
             return AnalyzeClassifierOutcome(enabled=True, failure=classification_result.failure)
 
@@ -175,7 +186,20 @@ def evaluate_analyze_classifier(
                     for candidate in classification_result.candidates
                 },
             )
-            verification_result = verifier_config.service.verify(verification_request)
+            verification_result = _run_verifier_inference(
+                input_id,
+                verification_request,
+                verifier_config,
+                inference_queue,
+                inference_timeout_ms,
+            )
+            if isinstance(verification_result, PipelineFailure):
+                return AnalyzeClassifierOutcome(
+                    enabled=True,
+                    has_candidates=True,
+                    failure=verification_result,
+                    verifier_summaries=verifier_summaries,
+                )
             if verification_result.failure is not None:
                 return AnalyzeClassifierOutcome(
                     enabled=True,
@@ -190,6 +214,62 @@ def evaluate_analyze_classifier(
 
 def _is_disabled(provider_result: ClassifierRuntimeProviderResult) -> bool:
     return provider_result.failure is not None and provider_result.failure.code == CLASSIFIER_RUNTIME_DISABLED
+
+
+def _run_classifier_inference(
+    input_id: str,
+    request: SegmentClassificationRequest,
+    provider_result: ClassifierRuntimeProviderResult,
+    inference_queue: MlInferenceQueue | None,
+    timeout_ms: int,
+):
+    if inference_queue is None:
+        return provider_result.bundle.service.classify(request)
+    result = inference_queue.execute(
+        MlInferenceJob(
+            job_id=f"{input_id}:classifier",
+            request_id=input_id,
+            task_type="classifier",
+            metadata={
+                "model": "classifier",
+                "segment_count": len(request.segment_embeddings),
+                "timeout_ms": timeout_ms,
+            },
+        ),
+        timeout_ms=timeout_ms,
+        operation=lambda: provider_result.bundle.service.classify(request),
+    )
+    if result.status != "succeeded":
+        return _failure(result.failure_code or ANALYZE_CLASSIFIER_FAILED)
+    return result.value
+
+
+def _run_verifier_inference(
+    input_id: str,
+    request,
+    verifier_config: AnalyzeVerifierConfig,
+    inference_queue: MlInferenceQueue | None,
+    timeout_ms: int,
+):
+    if inference_queue is None:
+        return verifier_config.service.verify(request)
+    result = inference_queue.execute(
+        MlInferenceJob(
+            job_id=f"{input_id}:verifier",
+            request_id=input_id,
+            task_type="verifier",
+            metadata={
+                "model": "verifier",
+                "candidate_count": len(request.candidates),
+                "timeout_ms": timeout_ms,
+            },
+        ),
+        timeout_ms=timeout_ms,
+        operation=lambda: verifier_config.service.verify(request),
+    )
+    if result.status != "succeeded":
+        return _failure(result.failure_code or ANALYZE_CLASSIFIER_FAILED)
+    return result.value
 
 
 def _document_for_input(item: object) -> ParsedDocument:
