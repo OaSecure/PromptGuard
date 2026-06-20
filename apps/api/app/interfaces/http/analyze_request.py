@@ -6,6 +6,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from app.domain.types.common import FileKind, SizeBucket
 
+# PR1 defines internal v3 contracts but no shared version constant. Keep the
+# compatibility version owned by this HTTP boundary until a shared constant exists.
 ANALYZE_SCHEMA_VERSION: Final[Literal["v3"]] = "v3"
 
 TEXT_SOURCES = ("composer", "converted_paste", "file")

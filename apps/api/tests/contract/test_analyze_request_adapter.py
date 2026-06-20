@@ -25,7 +25,7 @@ def test_maps_text_metadata_and_unsupported_inputs_in_order():
     unsupported = {"input_id": "chip_2", "kind": "unsupported_attachment", "source": "attachment_chip", "size_bytes": 20,
                    "content_included": False, "content_unavailable_reason": "unsupported"}
     adapted = adapt_legacy_analyze_request(request(text("composer_1", "hello"), text("paste_1", "paste", "converted_paste"), metadata, unsupported), "trusted_login")
-    assert adapted.v3_request.schema_version == ANALYZE_SCHEMA_VERSION == "v3"
+    assert adapted.v3_request.schema_version == ANALYZE_SCHEMA_VERSION
     assert adapted.v3_request.login_id == "trusted_login"
     assert [item.input_id for item in adapted.v3_request.inputs] == ["composer_1", "paste_1", "chip_1", "chip_2"]
     assert adapted.v3_request.inputs[2].content_unavailable_reason == "metadata_only"
@@ -50,6 +50,21 @@ def test_public_request_rejects_new_and_parallel_fields(field):
 def test_public_input_rejects_file_ref_and_duplicate_ids():
     with pytest.raises(ValidationError): request({**text("in_1", "hello"), "file_ref": "fr_synthetic"})
     with pytest.raises(ValidationError): request(text("in_1", "hello"), text("in_1", "again"))
+
+
+def test_pr0_supported_attachment_metadata_remains_accepted():
+    metadata = {"extension": "pdf", "mime": "application/pdf", "size_bytes": 42,
+                "attachment_kind": "file", "attachment_index": 0}
+    item = {"input_id": "chip_1", "kind": "attachment_metadata", "source": "attachment_chip", "size_bytes": 42,
+            "content_included": False, "metadata": metadata}
+    assert request(item).inputs[0].metadata == metadata
+
+
+@pytest.mark.parametrize("key", ["name", "filename", "file_name", "original_filename", "path", "url"])
+def test_pr0_forbidden_attachment_identity_and_location_metadata_stays_rejected(key):
+    item = {"input_id": "chip_1", "kind": "attachment_metadata", "source": "attachment_chip", "size_bytes": 42,
+            "content_included": False, "metadata": {key: "forbidden-value"}}
+    with pytest.raises(ValidationError): request(item)
 
 
 def test_null_and_omitted_optional_fields_map_identically():
