@@ -51,11 +51,16 @@ class LegacyAnalyzeContext(BaseModel):
 class LegacyAnalyzeInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     input_id: str = Field(min_length=1, max_length=80, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$")
-    kind: Literal["text", "attachment_metadata", "unsupported_attachment"]
-    source: Literal["composer", "converted_paste", "attachment_chip"]
+    kind: Literal["text", "file_reference", "attachment_metadata", "unsupported_attachment"]
+    source: Literal["composer", "converted_paste", "attached_file", "pasted_file", "pasted_image", "screenshot_image", "attachment_chip"]
     size_bytes: int = Field(ge=0, le=2_147_483_647)
     content_included: bool
     content: str | None = Field(default=None, max_length=1_048_576)
+    file_ref: str | None = None
+    file_kind: FileKind | None = None
+    mime: str | None = None
+    extension: str | None = None
+    size_bucket: SizeBucket | None = None
     metadata: dict[str, Any] | None = None
     content_unavailable_reason: Literal["oversized", "unsupported", "metadata_only", "unavailable"] | None = None
     limit_exceeded: Literal["MAX_ANALYZE_REQUEST_BYTES", "MAX_COMPOSER_TEXT_BYTES", "MAX_CONVERTED_PASTE_TEXT_BYTES"] | None = None
@@ -70,6 +75,8 @@ class LegacyAnalyzeInput(BaseModel):
     @model_validator(mode="after")
     def validate_contract(self) -> "LegacyAnalyzeInput":
         if self.kind == "text":
+            if self.file_ref is not None or self.file_kind is not None:
+                raise ValueError("text input forbids file reference fields")
             if self.source not in TEXT_SOURCES:
                 raise ValueError("text input source must be composer or converted_paste")
             if self.content_included:
@@ -89,6 +96,13 @@ class LegacyAnalyzeInput(BaseModel):
                     raise ValueError("content_unavailable text input must include a reason")
                 if self.limit_exceeded is None and self.content_unavailable_reason == "oversized":
                     raise ValueError("oversized text input must include limit_exceeded")
+        elif self.kind == "file_reference":
+            if self.source not in {"attached_file", "pasted_file", "pasted_image", "screenshot_image"}:
+                raise ValueError("file_reference has invalid source")
+            if not self.file_ref or not re.fullmatch(r"fref_[A-Za-z0-9_-]{32,}", self.file_ref):
+                raise ValueError("file_reference requires opaque file_ref")
+            if self.file_kind is None or self.content is not None or self.content_included:
+                raise ValueError("file_reference requires file_kind and forbids content")
         elif self.kind == "attachment_metadata":
             if self.source != "attachment_chip":
                 raise ValueError("attachment_metadata source must be attachment_chip")
@@ -151,8 +165,9 @@ def adapt_legacy_analyze_request(request: LegacyAnalyzeRequest, authenticated_lo
 def _adapt_input(item: LegacyAnalyzeInput) -> AnalyzeInputItemV3:
     metadata = item.metadata or {}
     return AnalyzeInputItemV3(input_id=item.input_id, kind=item.kind, source=item.source, content_included=item.content_included,
-                              content=item.content, mime=_string(metadata.get("mime")), extension=_string(metadata.get("extension")),
-                              size_bucket="unknown" if item.kind != "text" else None,
+                              content=item.content, file_ref=item.file_ref, file_kind=item.file_kind,
+                              mime=item.mime or _string(metadata.get("mime")), extension=item.extension or _string(metadata.get("extension")),
+                              size_bucket=item.size_bucket or ("unknown" if item.kind not in {"text", "file_reference"} else None),
                               content_unavailable_reason=item.content_unavailable_reason or ("metadata_only" if item.kind == "attachment_metadata" else None))
 
 

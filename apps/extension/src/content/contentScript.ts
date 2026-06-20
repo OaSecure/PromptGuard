@@ -75,6 +75,7 @@ function installPreflight(root: HTMLElement): void {
   fileUploadController = startFileUploadPreflightController({
     config: activeConfig,
     getContext: currentContext,
+    uploadFile: (payload) => chrome.runtime.sendMessage({ type: "TEMP_FILE_UPLOAD_REQUEST", payload }),
     sendAnalyze: (payload) => chrome.runtime.sendMessage({ type: "FILES_ANALYZE_REQUEST", payload })
   });
 }

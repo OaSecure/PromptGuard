@@ -17,8 +17,10 @@ from app.routes.health import router as health_router
 from app.routes.setup import router as setup_router
 from app.routes.stats import router as stats_router
 from app.routes.status import router as status_router
+from app.routes.temp_files import router as temp_files_router, validate_temp_storage_settings
 
 settings = get_settings()
+validate_temp_storage_settings()
 
 app = FastAPI(
     title="PromptGuard API",
@@ -63,3 +65,4 @@ app.include_router(health_router)
 app.include_router(setup_router)
 app.include_router(stats_router)
 app.include_router(status_router)
+app.include_router(temp_files_router)
