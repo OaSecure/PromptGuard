@@ -95,8 +95,9 @@ describe("ChatGPT-like fixture", () => {
     expect(JSON.stringify(capturedPromptRequest)).not.toContain("stale-history.zip");
 
     fileInput.dispatchEvent(new Event("change", { bubbles: true, cancelable: true }));
-    await waitFor(() => uploadEvents === 1);
-    expect(fileRequests).toBe(1);
+    await waitFor(() => overlayDecision() === "error");
+    expect(uploadEvents).toBe(0);
+    expect(fileRequests).toBe(0);
 
     shutdownPromptGuardContentScript();
     vi.unstubAllGlobals();
@@ -161,8 +162,9 @@ describe("ChatGPT-like fixture", () => {
     expect(promptRequests).toBe(1);
 
     fileInput.dispatchEvent(new Event("change", { bubbles: true, cancelable: true }));
-    await waitFor(() => uploadEvents === 1);
-    expect(fileRequests).toBe(1);
+    await waitFor(() => overlayDecision() === "error");
+    expect(uploadEvents).toBe(0);
+    expect(fileRequests).toBe(0);
 
     resolveConfig!(DEFAULT_CONFIG);
     await initialization;
@@ -299,6 +301,10 @@ function fileListLike(files: File[]): FileList {
     list[index] = file;
   });
   return list as FileList;
+}
+
+function overlayDecision(): string | undefined {
+  return document.querySelector<HTMLElement>("#promptguard-preflight-overlay")?.dataset.promptguardDecision;
 }
 
 async function waitFor(predicate: () => boolean): Promise<void> {
