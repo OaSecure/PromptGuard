@@ -3,6 +3,12 @@ from typing import Any
 
 from app.atoms.builder import build_atoms
 from app.atoms.models import AtomBuildRequest, ParsedBlock, ParsedDocument, PipelineFailure
+from app.mapping import (
+    LexicalSignal as MappingLexicalSignal,
+    SignalMappingPolicy,
+    SignalMappingRequest,
+    map_signals_to_segments,
+)
 from app.ml.classifier.factory import ClassifierRuntimeProviderResult
 from app.ml.classifier.metadata import project_classification_signal_summary
 from app.ml.classifier.models import SegmentClassificationRequest
@@ -17,11 +23,31 @@ from app.ml.verifier import (
     build_verification_request_from_classifier,
     project_verification_signal_summary,
 )
+from app.normalization import NormalizerRequest, normalize_document
+from app.scanner import (
+    LexicalRule,
+    LexicalScanRequest,
+    LexicalSignal as ScannerLexicalSignal,
+    scan_lexical_signals,
+)
 from app.segmenter.builder import build_segments
 from app.segmenter.models import SegmentBuildRequest, SegmentPolicy
 
 CLASSIFIER_RUNTIME_DISABLED = "CLASSIFIER_RUNTIME_DISABLED"
 ANALYZE_CLASSIFIER_FAILED = "ANALYZE_CLASSIFIER_FAILED"
+NORMALIZATION_FAILED = "NORMALIZATION_FAILED"
+LEXICAL_SCAN_FAILED = "LEXICAL_SCAN_FAILED"
+
+_MAPPING_SIGNAL_TYPES = {
+    "pii_span",
+    "secret_span",
+    "secret_fingerprint",
+    "token_candidate",
+    "protected_target_hit",
+    "custom_regex_hit",
+    "sensitive_value_pattern_hit",
+    "context_trigger_hit",
+}
 
 
 @dataclass(frozen=True)
@@ -45,6 +71,7 @@ def evaluate_analyze_classifier(
     embedding_loader: AtomEmbeddingModelLoader | None,
     *,
     verifier_config: AnalyzeVerifierConfig | None = None,
+    lexical_rules: list[LexicalRule] | None = None,
 ) -> AnalyzeClassifierOutcome:
     if _is_disabled(provider_result):
         return AnalyzeClassifierOutcome(enabled=False)
@@ -62,7 +89,21 @@ def evaluate_analyze_classifier(
         if not isinstance(content, str) or not content.strip():
             continue
 
-        atom_result = build_atoms(AtomBuildRequest(document=_document_for_input(item)))
+        document = _document_for_input(item)
+        normalized_document = normalize_document(NormalizerRequest(document=document))
+        if normalized_document.failures:
+            return AnalyzeClassifierOutcome(enabled=True, failure=_failure(NORMALIZATION_FAILED))
+
+        scan_result = scan_lexical_signals(
+            LexicalScanRequest(
+                normalized_document=normalized_document,
+                rules=lexical_rules or [],
+            )
+        )
+        if scan_result.failures:
+            return AnalyzeClassifierOutcome(enabled=True, failure=_failure(LEXICAL_SCAN_FAILED))
+
+        atom_result = build_atoms(AtomBuildRequest(document=document))
         if atom_result.failures:
             return AnalyzeClassifierOutcome(enabled=True, failure=atom_result.failures[0])
         if not atom_result.atoms:
@@ -85,6 +126,18 @@ def evaluate_analyze_classifier(
         )
         if segment_result.failure is not None:
             return AnalyzeClassifierOutcome(enabled=True, failure=segment_result.failure)
+
+        mapping_result = map_signals_to_segments(
+            SignalMappingRequest(
+                input_id=input_id,
+                segments=segment_result.segments,
+                atoms=atom_result.atoms,
+                lexical_signals=[_mapping_signal_from_scanner(signal) for signal in scan_result.signals],
+                mapping_policy=SignalMappingPolicy(),
+            )
+        )
+        if mapping_result.failure is not None:
+            return AnalyzeClassifierOutcome(enabled=True, failure=mapping_result.failure)
 
         segment_embedding_result = build_segment_embeddings(
             SegmentEmbeddingBuildRequest(
@@ -111,13 +164,14 @@ def evaluate_analyze_classifier(
         summary = project_classification_signal_summary(classification_result)
         has_candidates = has_candidates or bool(summary["has_candidates"])
         if summary["has_candidates"] and verifier_config is not None:
+            segment_text_by_id = {segment.segment_id: segment.text for segment in segment_result.segments}
             verification_request = build_verification_request_from_classifier(
                 input_id=input_id,
                 classification=classification_result,
                 artifact=verifier_config.artifact,
                 timeout_ms=verifier_config.timeout_ms,
                 candidate_text_by_segment_id={
-                    candidate.segment_id: content
+                    candidate.segment_id: segment_text_by_id.get(candidate.segment_id, "")
                     for candidate in classification_result.candidates
                 },
             )
@@ -153,6 +207,29 @@ def _document_for_input(item: object) -> ParsedDocument:
         ],
         parser_id="analyze-input-v1",
     )
+
+
+def _mapping_signal_from_scanner(signal: ScannerLexicalSignal) -> MappingLexicalSignal:
+    return MappingLexicalSignal(
+        signal_id=signal.signal_id,
+        input_id=signal.input_id,
+        block_id=signal.block_id,
+        signal_type=_mapping_signal_type(signal.signal_type),
+        pattern_id=signal.pattern_id,
+        match_basis="keyword" if signal.match_basis == "keyword" else "deterministic_regex",
+        normalized_range=signal.normalized_range,
+        original_range=signal.original_range,
+        severity_hint=signal.severity_hint or "low",
+        deterministic=signal.deterministic,
+        value_fingerprint=signal.value_fingerprint,
+        metadata=dict(signal.metadata),
+    )
+
+
+def _mapping_signal_type(signal_type: str) -> str:
+    if signal_type in _MAPPING_SIGNAL_TYPES:
+        return signal_type
+    return "custom_regex_hit"
 
 
 def _failure(code: str) -> PipelineFailure:
