@@ -20,6 +20,7 @@ from app.masking.placeholder import apply_placeholders
 from app.ml.classifier.factory import ClassifierRuntimeProviderResult, build_classifier_service_from_settings
 from app.ml.embedding import create_qwen3_backend
 from app.ml.embedding.loader import AtomEmbeddingModelLoader
+from app.ml.gpu_capacity import GpuWorkerCapacityPolicy, TorchCudaGpuCapacityProbe, resolve_gpu_worker_capacity
 from app.ml.verifier import VerifierServiceBuildError, build_verifier_service_from_manifest
 from app.runtime.ml_inference_queue import MlInferenceQueue
 from app.models.auth import User
@@ -672,9 +673,23 @@ def _cached_ml_inference_queue(
 def get_ml_inference_queue(settings: Settings = Depends(get_settings)) -> MlInferenceQueue | None:
     return _cached_ml_inference_queue(
         settings.ml_inference_queue_enabled,
-        settings.ml_inference_queue_max_workers,
+        _resolve_ml_inference_max_workers(settings),
         settings.ml_inference_queue_max_queue_size,
     )
+
+
+def _resolve_ml_inference_max_workers(settings: Settings) -> int:
+    decision = resolve_gpu_worker_capacity(
+        GpuWorkerCapacityPolicy(
+            enabled=settings.ml_inference_gpu_capacity_enabled,
+            configured_workers=settings.ml_inference_queue_max_workers,
+            max_workers=settings.ml_inference_queue_max_workers,
+            reserved_memory_mb=settings.ml_inference_gpu_reserved_memory_mb,
+            memory_per_worker_mb=settings.ml_inference_gpu_memory_per_worker_mb,
+        ),
+        probe=TorchCudaGpuCapacityProbe(),
+    )
+    return decision.worker_count
 
 
 @router.post("/analyze", response_model=AnalyzeResponse, response_model_exclude_none=True)
