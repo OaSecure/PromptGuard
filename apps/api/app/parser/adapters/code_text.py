@@ -9,7 +9,7 @@ from app.parser.models import (
 from app.parser.ports import ResolvedFileContentSourcePort
 
 
-class NativeTextAdapter:
+class CodeTextParserAdapter:
     def __init__(self, content_source: ResolvedFileContentSourcePort) -> None:
         self._content_source = content_source
 
@@ -20,10 +20,10 @@ class NativeTextAdapter:
         resolved_file: ResolvedTemporaryFile | None,
     ) -> ParserStepResult:
         if (
-            step.step_kind != "native_text_extract"
-            or payload.file_kind != "plain_text"
+            step.step_kind != "code_parse"
+            or payload.file_kind != "code"
             or resolved_file is None
-            or resolved_file.file_kind != "plain_text"
+            or resolved_file.file_kind != "code"
         ):
             return self._failure(step.step_id, "UNSUPPORTED_FILE_KIND")
 
@@ -40,10 +40,15 @@ class NativeTextAdapter:
         blocks = []
         if text:
             blocks.append(ParsedBlock(
-                block_id="native-text-0",
+                block_id="code-text-0",
                 input_id=payload.input_id,
                 text=text,
-                source_type="plain_text_block",
+                source_type="code_block",
+                location={
+                    "kind": "code",
+                    "line_start": 1,
+                    "line_end": max(1, len(text.splitlines())),
+                },
             ))
         return ParserStepResult(
             step_id=step.step_id,
@@ -52,9 +57,10 @@ class NativeTextAdapter:
                 input_id=payload.input_id,
                 blocks=blocks,
                 file_ref=payload.file_ref,
-                file_type="plain_text",
-                parser_id="native-text-contract",
+                file_type="code",
+                parser_id="code-text-contract",
                 parser_status="parsed",
+                ocr_status="not_applicable",
             ),
         )
 
