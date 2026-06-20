@@ -53,6 +53,23 @@ def test_ml_inference_queue_accepts_per_job_operation_without_payload_metadata()
     queue.shutdown()
 
 
+def test_ml_inference_queue_snapshot_tracks_safe_success_counters():
+    queue = MlInferenceQueue(max_workers=1, max_queue_size=2)
+
+    result = queue.execute(_job(job_id="telemetry-success"), timeout_ms=100, operation=lambda: "ok")
+    snapshot = queue.snapshot()
+
+    assert result.status == "succeeded"
+    assert snapshot.capacity == 3
+    assert snapshot.in_flight_or_queued == 0
+    assert snapshot.submitted_total == 1
+    assert snapshot.succeeded_total == 1
+    assert snapshot.timeout_total == 0
+    assert snapshot.failed_total == 0
+    assert snapshot.limit_exceeded_total == 0
+    queue.shutdown()
+
+
 def test_ml_inference_job_metadata_allows_only_safe_coarse_fields():
     job = _job(metadata={"model": "lr", "queue": "primary", "segment_count": 2, "timeout_ms": 3000})
 
@@ -129,6 +146,7 @@ def test_ml_inference_queue_returns_fail_closed_timeout():
     assert result.status == "timeout"
     assert result.failure_code == "ML_INFERENCE_TIMEOUT"
     assert result.value is None
+    assert queue.snapshot().timeout_total == 1
     queue.shutdown()
 
 
@@ -171,6 +189,7 @@ def test_ml_inference_queue_returns_fail_closed_when_capacity_is_exceeded():
     assert result.status == "failed"
     assert result.failure_code == "ML_INFERENCE_LIMIT_EXCEEDED"
     assert result.value is None
+    assert queue.snapshot().limit_exceeded_total == 1
     queue.shutdown()
 
 
@@ -186,6 +205,7 @@ def test_ml_inference_queue_returns_sanitized_failure_on_handler_exception():
     assert result.failure_code == "ML_INFERENCE_WORKER_FAILED"
     assert result.value is None
     assert "PRIVATE_RAW_BACKEND_DETAIL" not in str(result.model_dump())
+    assert queue.snapshot().failed_total == 1
     queue.shutdown()
 
 
@@ -225,6 +245,26 @@ def test_ml_inference_result_shape_has_no_policy_or_raw_content_fields():
             "raw_logits",
         }
     )
+
+
+def test_ml_inference_queue_snapshot_has_no_raw_content_or_model_payload_fields():
+    snapshot = MlInferenceQueue(max_workers=1, max_queue_size=1).snapshot()
+
+    fields = set(snapshot.__class__.model_fields)
+    assert fields.isdisjoint(
+        {
+            "raw_prompt",
+            "file_content",
+            "extracted_text",
+            "atom_text",
+            "embedding",
+            "vector",
+            "raw_logits",
+            "model_internals",
+            "original_filename",
+        }
+    )
+    assert "raw" not in str(snapshot.model_dump()).lower()
 
 
 def _imports(path: Path) -> set[str]:
