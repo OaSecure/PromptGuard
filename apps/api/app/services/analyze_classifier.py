@@ -1,4 +1,5 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Any
 
 from app.atoms.builder import build_atoms
 from app.atoms.models import AtomBuildRequest, ParsedBlock, ParsedDocument, PipelineFailure
@@ -10,6 +11,12 @@ from app.ml.embedding.models import AtomEmbeddingRequest
 from app.ml.embedding.worker import embed_atoms
 from app.ml.segment_embedding.builder import build_segment_embeddings
 from app.ml.segment_embedding.models import SegmentEmbeddingBuildRequest, SegmentEmbeddingPolicy
+from app.ml.verifier import (
+    RobertaVerifierService,
+    VerifierArtifactRef,
+    build_verification_request_from_classifier,
+    project_verification_signal_summary,
+)
 from app.segmenter.builder import build_segments
 from app.segmenter.models import SegmentBuildRequest, SegmentPolicy
 
@@ -22,12 +29,22 @@ class AnalyzeClassifierOutcome:
     enabled: bool
     has_candidates: bool = False
     failure: PipelineFailure | None = None
+    verifier_summaries: list[dict[str, Any]] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class AnalyzeVerifierConfig:
+    service: RobertaVerifierService
+    artifact: VerifierArtifactRef
+    timeout_ms: int = 3000
 
 
 def evaluate_analyze_classifier(
     text_inputs: list[tuple[int, object]],
     provider_result: ClassifierRuntimeProviderResult,
     embedding_loader: AtomEmbeddingModelLoader | None,
+    *,
+    verifier_config: AnalyzeVerifierConfig | None = None,
 ) -> AnalyzeClassifierOutcome:
     if _is_disabled(provider_result):
         return AnalyzeClassifierOutcome(enabled=False)
@@ -38,6 +55,7 @@ def evaluate_analyze_classifier(
         )
 
     has_candidates = False
+    verifier_summaries: list[dict[str, Any]] = []
     for _index, item in text_inputs:
         input_id = getattr(item, "input_id", "")
         content = getattr(item, "content", None)
@@ -92,8 +110,24 @@ def evaluate_analyze_classifier(
 
         summary = project_classification_signal_summary(classification_result)
         has_candidates = has_candidates or bool(summary["has_candidates"])
+        if summary["has_candidates"] and verifier_config is not None:
+            verification_request = build_verification_request_from_classifier(
+                input_id=input_id,
+                classification=classification_result,
+                artifact=verifier_config.artifact,
+                timeout_ms=verifier_config.timeout_ms,
+            )
+            verification_result = verifier_config.service.verify(verification_request)
+            if verification_result.failure is not None:
+                return AnalyzeClassifierOutcome(
+                    enabled=True,
+                    has_candidates=True,
+                    failure=verification_result.failure,
+                    verifier_summaries=verifier_summaries,
+                )
+            verifier_summaries.append(project_verification_signal_summary(verification_result))
 
-    return AnalyzeClassifierOutcome(enabled=True, has_candidates=has_candidates)
+    return AnalyzeClassifierOutcome(enabled=True, has_candidates=has_candidates, verifier_summaries=verifier_summaries)
 
 
 def _is_disabled(provider_result: ClassifierRuntimeProviderResult) -> bool:
