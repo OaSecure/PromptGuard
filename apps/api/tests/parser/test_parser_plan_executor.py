@@ -124,3 +124,28 @@ def test_raw_adapter_exception_is_sanitized():
     )
     assert result.failure.code == "PARSER_WORKER_FAILED"
     assert "PRIVATE_RAW_EXCEPTION" not in result.failure.message
+
+
+def test_executor_converts_missing_registry_adapter_to_private_structured_failure(caplog):
+    payload = ParserWorkerPayload(
+        input_id="input-private",
+        request_id="request-private",
+        input_kind="text_wrapper",
+        extraction_requirement="wrap_text",
+        text="PRIVATE_RAW_CONTENT",
+    )
+    plan = ParserExecutionPlan(
+        plan_id="missing-adapter",
+        plan_kind="wrap_text",
+        steps=(_step("one", 0),),
+    )
+
+    result = _executor(FakeParserStepAdapter(), capability_ids=()).execute(payload, None, plan)
+
+    assert result.parser_status == "failed"
+    assert result.failure is not None
+    assert result.failure.code == "UNSUPPORTED_FILE_KIND"
+    exposed = result.failure.message + repr(result.failure.metadata) + caplog.text
+    assert "PRIVATE_RAW_CONTENT" not in exposed
+    assert "C:\\private\\secret.pdf" not in exposed
+    assert "PRIVATE_RAW_EXCEPTION" not in exposed
