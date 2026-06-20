@@ -10,6 +10,7 @@ from app.parser.models import (
     TempFileAccessContext,
     ParserPlanStep,
     ParserStepResult,
+    StepKind,
 )
 
 
@@ -37,6 +38,14 @@ class ParserStepAdapterPort(Protocol):
         payload: ParserWorkerPayload,
         resolved_file: ResolvedTemporaryFile | None,
     ) -> ParserStepResult: ...
+
+
+class ParserAdapterRegistryPort(Protocol):
+    def resolve_adapter(
+        self,
+        capability_id: str,
+        step_kind: StepKind,
+    ) -> ParserStepAdapterPort: ...
 
 
 class FileParserRunnerPort(Protocol):
