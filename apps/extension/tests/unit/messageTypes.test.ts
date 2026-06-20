@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { isExtensionMessage } from "../../src/shared/messageTypes";
-import { createAnalyzeRequest, createAttachmentMetadataInput, createComposerInput, createFileTextInput } from "../../src/shared/analyzeRequestBuilder";
+import { createAnalyzeRequest, createAttachmentMetadataInput, createComposerInput, createFileReferenceInput } from "../../src/shared/analyzeRequestBuilder";
 import type { ExtensionContext } from "../../src/shared/types";
 
 describe("extension message guard", () => {
@@ -61,7 +61,7 @@ function filesAnalyzeRequest() {
   return createAnalyzeRequest(
     context(),
     "cfg_2026_06_09",
-    [createFileTextInput({ extension: ".txt", mimeType: "text/plain", sizeBytes: 4, text: "text" }), createAttachmentMetadataInput({ extension: ".png", mimeType: "image/png", sizeBytes: 4, attachmentKind: "image", attachmentIndex: 1 })],
+    [createFileReferenceInput({ fileRef: "fref_opaque_123", fileKind: "plain_text", extension: ".txt", mimeType: "text/plain", sizeBytes: 4 }), createAttachmentMetadataInput({ extension: ".png", mimeType: "image/png", sizeBytes: 4, attachmentKind: "image", attachmentIndex: 1 })],
     "frq_test"
   );
 }
@@ -69,11 +69,12 @@ function filesAnalyzeRequest() {
 function fileInput() {
   return {
     input_id: "in_test",
-    kind: "text",
-    source: "file",
+    kind: "file_reference",
+    source: "attached_file",
     size_bytes: 4,
-    content_included: true,
-    content: "text"
+    content_included: false,
+    file_ref: "fref_opaque_123",
+    file_kind: "plain_text"
   };
 }
 

@@ -2,7 +2,9 @@ import { DEFAULT_POLICY_VERSION } from "./constants";
 import { createClientRequestId } from "./hashing";
 import type {
   AnalyzeInput,
+  AnalyzeFileKind,
   AnalyzeRequest,
+  AnalyzeSizeBucket,
   ContentUnavailableReason,
   ExtensionContext,
   LimitExceededCode,
@@ -13,8 +15,6 @@ import type {
 export const MAX_COMPOSER_TEXT_BYTES = 262_144;
 /** Converted-paste byte ceiling before the input becomes metadata-only. */
 export const MAX_CONVERTED_PASTE_TEXT_BYTES = 1_048_576;
-/** File text byte ceiling before the input becomes metadata-only. */
-export const MAX_FILE_TEXT_SCAN_BYTES = 1_048_576;
 
 /** Options for the composer text input item. */
 export interface ComposerInputOptions {
@@ -27,12 +27,15 @@ export interface ConvertedPasteInputOptions {
   text: string;
 }
 
-/** Options for a scanned text-file input item. */
-export interface FileTextInputOptions {
+/** Options for a file-reference input item created after upload/temp. */
+export interface FileReferenceInputOptions {
+  fileRef: string;
+  fileKind: AnalyzeFileKind;
   extension: string;
   mimeType: string;
-  text: string;
   sizeBytes: number;
+  sizeBucket?: AnalyzeSizeBucket;
+  source?: "pasted_file" | "pasted_image" | "screenshot_image" | "attached_file";
 }
 
 /** Options for a metadata-only attachment item. */
@@ -73,22 +76,19 @@ export function createConvertedPasteInput(options: ConvertedPasteInputOptions): 
   return createTextInput("converted_paste", options.text, MAX_CONVERTED_PASTE_TEXT_BYTES);
 }
 
-/** Creates a text-file input or its oversized metadata-only fallback. */
-export function createFileTextInput(options: FileTextInputOptions): AnalyzeInput {
-  if (options.sizeBytes > MAX_FILE_TEXT_SCAN_BYTES) {
-    return createUnavailableTextInput("file", options.sizeBytes, "oversized", "MAX_FILE_TEXT_SCAN_BYTES");
-  }
+/** Creates a file-reference input from an opaque upload/temp result. */
+export function createFileReferenceInput(options: FileReferenceInputOptions): AnalyzeInput {
   return {
     input_id: createClientRequestId("in"),
-    kind: "text",
-    source: "file",
+    kind: "file_reference",
+    source: options.source ?? "attached_file",
     size_bytes: options.sizeBytes,
-    content_included: true,
-    content: options.text,
-    metadata: {
-      extension: trimLeadingDot(options.extension),
-      mime: options.mimeType || "text/plain"
-    }
+    content_included: false,
+    file_ref: options.fileRef,
+    file_kind: options.fileKind,
+    mime: options.mimeType,
+    extension: trimLeadingDot(options.extension),
+    size_bucket: options.sizeBucket ?? sizeBucketForBytes(options.sizeBytes)
   };
 }
 
@@ -131,7 +131,7 @@ export function createUnsupportedAttachmentInput(options: UnsupportedAttachmentO
 
 /** Creates a metadata-only text input for oversized or unavailable content. */
 export function createUnavailableTextInput(
-  source: "composer" | "converted_paste" | "file",
+  source: "composer" | "converted_paste",
   sizeBytes: number,
   reason: ContentUnavailableReason,
   limitExceeded: LimitExceededCode
@@ -179,4 +179,17 @@ function trimLeadingDot(value: string): string {
 
 function utf8Length(value: string): number {
   return new TextEncoder().encode(value).length;
+}
+
+function sizeBucketForBytes(sizeBytes: number): AnalyzeSizeBucket {
+  if (sizeBytes <= 0) {
+    return "empty";
+  }
+  if (sizeBytes <= 1_048_576) {
+    return "small";
+  }
+  if (sizeBytes <= 10_485_760) {
+    return "medium";
+  }
+  return "large";
 }

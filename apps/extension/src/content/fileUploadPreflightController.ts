@@ -1,18 +1,17 @@
-import { createAnalyzeRequest, createFileTextInput, createUnavailableTextInput, createUnsupportedAttachmentInput } from "../shared/analyzeRequestBuilder";
+import { createAnalyzeRequest, createUnsupportedAttachmentInput } from "../shared/analyzeRequestBuilder";
 import { createClientRequestId } from "../shared/hashing";
 import { validateFilePolicy } from "../shared/filePolicy";
 import { isAnalyzeResponse } from "../shared/responseValidation";
 import type { AnalyzeInput, AnalyzeRequest, AnalyzeResponse, ExtensionConfigResponse, ExtensionContext, NormalizedError } from "../shared/types";
 import { createFileUploadSnapshots, type FileUploadAttempt } from "./fileUploadSnapshot";
 import { installFileUploadInterceptor, replayFileUploadAttempt, type FileUploadInterceptor } from "./fileUploadInterceptor";
-import { readAllowedTextFiles } from "./textFileReader";
 import { createPreflightOverlay, type PreflightOverlay } from "./preflightOverlay";
 
-/** Sends one text-file inspection request through the background boundary. */
+/** Sends one attachment inspection request through the background boundary. */
 export type FilesAnalyzeSender = (request: AnalyzeRequest) => Promise<AnalyzeResponse | NormalizedError>;
 
 /**
- * Configures the text-file upload preflight controller.
+ * Configures the file upload preflight controller.
  *
  * `getContext` runs at attach time so each file inspection request carries the
  * current service domain and extension version without persisting page state.
@@ -31,11 +30,10 @@ export interface FileUploadPreflightController {
 }
 
 /**
- * Starts text-file inspection for input and drop attach attempts.
+ * Starts file upload preflight for input and drop attach attempts.
  *
- * The controller validates policy before reading content, reads only supported
- * text files in memory, and replays the attach attempt only after a validated
- * Allow or confirmed Warn decision.
+ * The controller validates policy without reading file content. Until the
+ * upload/temp file_ref client exists, supported file handles fail closed.
  */
 export function startFileUploadPreflightController(options: FileUploadPreflightControllerOptions): FileUploadPreflightController {
   const doc = options.document ?? document;
@@ -84,17 +82,20 @@ export function startFileUploadPreflightController(options: FileUploadPreflightC
 
     const attemptId = ++currentAttemptId;
     analyzing = true;
-    overlay.show({ decision: "analyzing", message: "Inspecting attached text files.", actions: [] });
+    overlay.show({ decision: "analyzing", message: "Inspecting attached files.", actions: [] });
 
     try {
-      const files = await readAllowedTextFiles(
-        snapshots.filter((_, index) => policyDecisions[index]?.allowed),
-        policyDecisions.filter((decision) => decision.allowed)
-      );
-      const inputs: AnalyzeInput[] = [
-        ...files.map((file) => createFileTextInput({ extension: file.extension, mimeType: file.mime_type, sizeBytes: file.size_bytes, text: file.content_text })),
-        ...buildMetadataOnlyInputs(snapshots, policyDecisions)
-      ];
+      const supportedFilesNeedingUpload = policyDecisions.some((decision) => decision.allowed);
+      if (supportedFilesNeedingUpload) {
+        showFailClosed("File inspection requires temporary file reference support. Files were not attached.", () => void handleAttempt(attempt));
+        return;
+      }
+
+      const inputs: AnalyzeInput[] = buildMetadataOnlyInputs(snapshots, policyDecisions);
+      if (inputs.length === 0) {
+        showFailClosed("Selected files could not be inspected safely. Files were not attached.", () => void handleAttempt(attempt));
+        return;
+      }
       const response = await withTimeout(
         options.sendAnalyze(buildFilesAnalyzeRequest(inputs, options.getContext(), options.config.policy_version, requestIdForAttempt(attempt))),
         options.config.timeout_ms
@@ -130,7 +131,7 @@ export function startFileUploadPreflightController(options: FileUploadPreflightC
       case "Warn":
         overlay.show({
           decision: "warn",
-          message: "PromptGuard found attached file content that may need review.",
+          message: "PromptGuard found attached files that may need review.",
           actions: [
             {
               label: "Continue",
@@ -199,7 +200,7 @@ export function startFileUploadPreflightController(options: FileUploadPreflightC
 }
 
 /**
- * Builds a files Analyze request from already-read text file entries.
+ * Builds a files Analyze request from contract-safe attachment inputs.
  *
  * Original filenames are intentionally absent; file results are correlated
  * through generated client IDs and metadata that is safe to send.
@@ -272,7 +273,15 @@ function buildMetadataOnlyInputs(
       return [];
     }
     if (decision.reason === "file_too_large") {
-      return [createUnavailableTextInput("file", snapshot.file.size, "oversized", "MAX_FILE_TEXT_SCAN_BYTES")];
+      return [
+        createUnsupportedAttachmentInput({
+          extension: decision.extension,
+          mimeType: snapshot.file.type,
+          sizeBytes: snapshot.file.size,
+          attachmentIndex: index,
+          reason: "oversized"
+        })
+      ];
     }
     if (decision.reason === "excluded_extension" || decision.reason === "unsupported_extension" || decision.reason === "non_text_mime") {
       return [

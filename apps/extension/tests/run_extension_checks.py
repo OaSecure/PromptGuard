@@ -36,6 +36,7 @@ def main() -> int:
     failures.extend(scan_dist_for_forbidden_seeds())
     failures.extend(scan_dist_for_content_script_module_syntax())
     failures.extend(scan_src_for_raw_console_logging())
+    failures.extend(scan_src_for_legacy_file_text_paths())
     failures.extend(scan_src_for_exported_surface_docs())
 
     if failures:
@@ -107,6 +108,20 @@ def scan_dist_for_content_script_module_syntax() -> list[str]:
 
 def scan_src_for_raw_console_logging() -> list[str]:
     return scan_paths([EXTENSION_DIR / "src"], ["console.log", "console.error", "console.warn"], "console logging in source")
+
+
+def scan_src_for_legacy_file_text_paths() -> list[str]:
+    patterns = [
+        "createFileTextInput",
+        "readAllowedTextFiles",
+        "FileReader",
+        "readAsText",
+        "file.text(",
+        'source: "file"',
+        'source === "file"',
+        "MAX_FILE_TEXT_SCAN_BYTES",
+    ]
+    return scan_paths([EXTENSION_DIR / "src"], patterns, "legacy file-text Analyze path")
 
 
 def scan_src_for_exported_surface_docs() -> list[str]:

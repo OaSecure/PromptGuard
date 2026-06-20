@@ -6,20 +6,23 @@ export type RiskLevel = "low" | "medium" | "high" | "critical";
 export type AiService = "CHATGPT";
 /** User interaction that started a prompt inspection request. */
 export type PromptInputMethod = "CLICK" | "ENTER" | "UNKNOWN";
-/** Unified Analyze input kinds accepted by the MVP API. */
-export type AnalyzeInputKind = "text" | "attachment_metadata" | "unsupported_attachment";
-/** Unified Analyze input sources accepted by the MVP API. */
-export type AnalyzeInputSource = "composer" | "converted_paste" | "file" | "attachment_chip";
+/** Unified Analyze input kinds accepted by the v3.5 API contract. */
+export type AnalyzeInputKind = "text" | "file_reference" | "attachment_metadata" | "unsupported_attachment";
+/** Unified Analyze input sources accepted by the v3.5 API contract. */
+export type AnalyzeInputSource = "composer" | "converted_paste" | "pasted_file" | "pasted_image" | "screenshot_image" | "attached_file" | "attachment_chip";
 /** Content-unavailable reasons accepted by the MVP API. */
 export type ContentUnavailableReason = "oversized" | "unsupported" | "metadata_only" | "unavailable";
 /** Limit-exceeded identifiers accepted by the MVP API. */
 export type LimitExceededCode =
   | "MAX_ANALYZE_REQUEST_BYTES"
   | "MAX_COMPOSER_TEXT_BYTES"
-  | "MAX_CONVERTED_PASTE_TEXT_BYTES"
-  | "MAX_FILE_TEXT_SCAN_BYTES";
+  | "MAX_CONVERTED_PASTE_TEXT_BYTES";
 /** Input-result decision basis values returned by the MVP API. */
 export type AnalyzeDecisionBasis = "no_detection" | "detection" | "content_unavailable" | "metadata_only";
+/** Coarse server-side file kind used without trusting client filenames. */
+export type AnalyzeFileKind = "plain_text" | "pdf" | "image" | "office_document" | "spreadsheet" | "slide" | "code" | "unknown";
+/** Coarse file size bucket; exact bytes remain runtime-only where possible. */
+export type AnalyzeSizeBucket = "empty" | "small" | "medium" | "large";
 
 /** Metadata summary for one policy detection without raw detected values. */
 export interface AnalyzeDetection {
@@ -83,6 +86,11 @@ export interface AnalyzeInput {
   size_bytes: number;
   content_included: boolean;
   content?: string;
+  file_ref?: string;
+  file_kind?: AnalyzeFileKind;
+  mime?: string;
+  extension?: string;
+  size_bucket?: AnalyzeSizeBucket;
   metadata?: Record<string, unknown>;
   content_unavailable_reason?: ContentUnavailableReason;
   limit_exceeded?: LimitExceededCode;
@@ -148,7 +156,7 @@ export interface AiServiceConfig {
   };
 }
 
-/** File limits and allow/exclude lists used before reading file contents. */
+/** File limits and allow/exclude lists used before upload/temp handoff. */
 export interface FileUploadPolicy {
   enabled: boolean;
   max_file_size_bytes: number;
@@ -192,7 +200,7 @@ export type FileInspectionState =
   | "USER_ATTEMPT_ATTACH"
   | "CAPTURE_FILE_EVENT"
   | "VALIDATE_FILE_POLICY"
-  | "READ_TEXT_IN_MEMORY"
+  | "REQUIRE_TEMP_FILE_REFERENCE"
   | "ANALYZING_FILES"
   | "FILE_ALLOW"
   | "FILE_WARN"

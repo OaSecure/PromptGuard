@@ -13,31 +13,25 @@ const context: ExtensionContext = {
 };
 
 describe("file upload preflight controller", () => {
-  it("intercepts file input change, sends request without original filename, and replays Allow once", async () => {
+  it("fails closed for supported file handles until upload/temp returns file_ref", async () => {
     const page = setupFileInput([textFile("notes.txt", "hello", "text/plain")]);
-    let captured: AnalyzeRequest | undefined;
+    let calls = 0;
     const controller = startFileUploadPreflightController({
       config: DEFAULT_CONFIG,
       getContext: () => context,
       sendAnalyze: async (request) => {
-        captured = request;
+        calls += 1;
         return responseFor("Allow", request);
       }
     });
 
     dispatchChange(page.input);
-    await waitFor(() => page.uploads() === 1);
+    await waitFor(() => overlayDecision() === "error");
 
-    expect(page.uploads()).toBe(1);
-    expect(captured?.inputs).toHaveLength(1);
-    expect(captured?.inputs[0]).toMatchObject({
-      kind: "text",
-      source: "file",
-      size_bytes: 5,
-      content: "hello"
-    });
-    expect(Object.keys(captured!.inputs[0])).not.toContain("name");
-    expect(JSON.stringify(captured)).not.toContain("notes.txt");
+    expect(page.uploads()).toBe(0);
+    expect(calls).toBe(0);
+    expect(overlayText()).not.toContain("hello");
+    expect(overlayText()).not.toContain("notes.txt");
     controller.disconnect();
   });
 
@@ -82,7 +76,7 @@ describe("file upload preflight controller", () => {
   });
 
   it("fails closed when Warn does not authorize original upload", async () => {
-    const page = setupFileInput([textFile("notes.txt", "token-like marker", "text/plain")]);
+    const page = setupFileInput([textFile("report.pdf", "pdf", "application/pdf")]);
     const controller = startFileUploadPreflightController({
       config: DEFAULT_CONFIG,
       getContext: () => context,
@@ -101,7 +95,7 @@ describe("file upload preflight controller", () => {
   });
 
   it("replays Warn only after confirmation when original upload is authorized", async () => {
-    const page = setupFileInput([textFile("notes.txt", "token-like marker", "text/plain")]);
+    const page = setupFileInput([textFile("report.pdf", "pdf", "application/pdf")]);
     const controller = startFileUploadPreflightController({
       config: DEFAULT_CONFIG,
       getContext: () => context,
@@ -120,7 +114,7 @@ describe("file upload preflight controller", () => {
   });
 
   it("does not render server user_message raw text in Warn, Mask, or Block overlays", async () => {
-    const warnPage = setupFileInput([textFile("notes.txt", "hello", "text/plain")]);
+    const warnPage = setupFileInput([textFile("report.pdf", "pdf", "application/pdf")]);
     const warnController = startFileUploadPreflightController({
       config: DEFAULT_CONFIG,
       getContext: () => context,
@@ -132,7 +126,7 @@ describe("file upload preflight controller", () => {
     expect(overlayText()).not.toContain("secret-value");
     warnController.disconnect();
 
-    const maskPage = setupFileInput([textFile("notes.txt", "hello", "text/plain")]);
+    const maskPage = setupFileInput([textFile("report.pdf", "pdf", "application/pdf")]);
     const maskController = startFileUploadPreflightController({
       config: DEFAULT_CONFIG,
       getContext: () => context,
@@ -144,7 +138,7 @@ describe("file upload preflight controller", () => {
     expect(overlayText()).not.toContain("secret-value");
     maskController.disconnect();
 
-    const blockPage = setupFileInput([textFile("notes.txt", "hello", "text/plain")]);
+    const blockPage = setupFileInput([textFile("report.pdf", "pdf", "application/pdf")]);
     const blockController = startFileUploadPreflightController({
       config: DEFAULT_CONFIG,
       getContext: () => context,
@@ -158,7 +152,7 @@ describe("file upload preflight controller", () => {
   });
 
   it("fails closed for Block and timeout", async () => {
-    const blockPage = setupFileInput([textFile("notes.txt", "blocked", "text/plain")]);
+    const blockPage = setupFileInput([textFile("report.pdf", "pdf", "application/pdf")]);
     const blockController = startFileUploadPreflightController({
       config: DEFAULT_CONFIG,
       getContext: () => context,
@@ -170,7 +164,7 @@ describe("file upload preflight controller", () => {
     expect(blockPage.uploads()).toBe(0);
     blockController.disconnect();
 
-    const timeoutPage = setupFileInput([textFile("notes.txt", "slow", "text/plain")]);
+    const timeoutPage = setupFileInput([textFile("report.pdf", "pdf", "application/pdf")]);
     const timeoutController = startFileUploadPreflightController({
       config: { ...DEFAULT_CONFIG, timeout_ms: 1 },
       getContext: () => context,
@@ -200,7 +194,7 @@ describe("file upload preflight controller", () => {
     dropZone.dispatchEvent(nonFileDrop);
     expect(nonFileDrop.defaultPrevented).toBe(false);
 
-    const fileDrop = dropEvent([textFile("notes.txt", "hello", "text/plain")]);
+    const fileDrop = dropEvent([textFile("report.pdf", "pdf", "application/pdf")]);
     dropZone.dispatchEvent(fileDrop);
     await waitFor(() => calls === 1);
 
@@ -210,7 +204,7 @@ describe("file upload preflight controller", () => {
   });
 
   it("fails closed for malformed files Analyze responses", async () => {
-    const page = setupFileInput([textFile("notes.txt", "hello", "text/plain")]);
+    const page = setupFileInput([textFile("report.pdf", "pdf", "application/pdf")]);
     const controller = startFileUploadPreflightController({
       config: DEFAULT_CONFIG,
       getContext: () => context,
@@ -229,7 +223,7 @@ describe("file upload preflight controller", () => {
   });
 
   it("reuses the same client_request_id when the same blocked attach attempt is retried", async () => {
-    const page = setupFileInput([textFile("notes.txt", "hello", "text/plain")]);
+    const page = setupFileInput([textFile("report.pdf", "pdf", "application/pdf")]);
     const requestIds: string[] = [];
     let attempt = 0;
     const controller = startFileUploadPreflightController({

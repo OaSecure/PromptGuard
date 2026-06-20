@@ -57,6 +57,20 @@ function isAnalyzeInput(value: unknown): boolean {
   if (typeof value.content_included !== "boolean") {
     return false;
   }
+  if (value.kind === "text" && value.source !== "composer" && value.source !== "converted_paste") {
+    return false;
+  }
+  if (value.kind === "file_reference") {
+    return (
+      value.content_included === false &&
+      value.content === undefined &&
+      isNonEmptyString(value.file_ref) &&
+      isNonEmptyString(value.file_kind) &&
+      (value.metadata === undefined || isRecord(value.metadata)) &&
+      (value.content_unavailable_reason === undefined || isNonEmptyString(value.content_unavailable_reason)) &&
+      (value.limit_exceeded === undefined || isNonEmptyString(value.limit_exceeded))
+    );
+  }
   if (value.content_included) {
     return typeof value.content === "string";
   }
@@ -81,11 +95,11 @@ function isExtensionContext(value: unknown): boolean {
 }
 
 function isAnalyzeInputKind(value: unknown): boolean {
-  return value === "text" || value === "attachment_metadata" || value === "unsupported_attachment";
+  return value === "text" || value === "file_reference" || value === "attachment_metadata" || value === "unsupported_attachment";
 }
 
 function isAnalyzeInputSource(value: unknown): boolean {
-  return value === "composer" || value === "converted_paste" || value === "file" || value === "attachment_chip";
+  return value === "composer" || value === "converted_paste" || value === "pasted_file" || value === "pasted_image" || value === "screenshot_image" || value === "attached_file" || value === "attachment_chip";
 }
 
 function isNonEmptyString(value: unknown): value is string {
