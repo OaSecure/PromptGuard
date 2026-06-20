@@ -4,7 +4,7 @@ import { mockFilesAnalyze } from "./mockApi";
 import type { AnalyzeRequest, AnalyzeResponse, NormalizedError } from "../shared/types";
 
 /**
- * Analyzes text-file content through mock mode or the configured real API.
+ * Analyzes contract-safe attachment inputs through mock mode or the configured real API.
  *
  * The file request already omits original filenames; this client preserves that
  * boundary while adding background-only auth and API settings.

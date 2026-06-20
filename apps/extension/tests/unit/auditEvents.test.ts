@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildFilesInspectionAuditEvent, buildPromptInspectionAuditEvent } from "../../src/shared/auditEvents";
-import { createAnalyzeRequest, createComposerInput, createFileTextInput } from "../../src/shared/analyzeRequestBuilder";
+import { createAnalyzeRequest, createComposerInput, createFileReferenceInput } from "../../src/shared/analyzeRequestBuilder";
 import { containsForbiddenDiagnosticKey } from "../../src/shared/sanitize";
 import type { AnalyzeResponse, ExtensionContext } from "../../src/shared/types";
 
@@ -70,7 +70,7 @@ describe("inspection audit events", () => {
   });
 
   it("builds file audit metadata without file content, filenames, or raw detections", () => {
-    const request = createAnalyzeRequest(context, "cfg_file", [createFileTextInput({ extension: ".txt", mimeType: "text/plain", sizeBytes: 64, text: "SEEDED_FILE_SHOULD_NOT_SURVIVE" })], "frq_test");
+    const request = createAnalyzeRequest(context, "cfg_file", [createFileReferenceInput({ fileRef: "fref_opaque_123", fileKind: "plain_text", extension: ".txt", mimeType: "text/plain", sizeBytes: 64 })], "frq_test");
     const response: AnalyzeResponse = {
       event_id: "evt_files",
       request_id: "req_files",
@@ -85,10 +85,10 @@ describe("inspection audit events", () => {
         {
           input_id: request.inputs[0].input_id,
           input_index: 0,
-          kind: "text",
+          kind: "file_reference",
           category: "Built-in",
           type: "DB_CONNECTION_STRING",
-          source: "file",
+          source: "attached_file",
           rule_id: null,
           detector_id: "mock",
           severity: "critical",

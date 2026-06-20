@@ -16,10 +16,11 @@ export interface FilePolicyDecision {
 }
 
 /**
- * Decides which files are safe to read for the text-only MVP.
+ * Decides which files are safe to pass into the attachment inspection flow.
  *
- * The policy check runs before `File.text()` so unsupported files, oversized
- * batches, and non-text MIME types are rejected without touching file content.
+ * The policy check runs before any upload/temp handoff, so unsupported files,
+ * oversized batches, and non-text MIME types are rejected without touching
+ * file content.
  */
 export function validateFilePolicy(files: FilePolicyInput[], policy: FileUploadPolicy): FilePolicyDecision[] {
   if (!policy.enabled) {

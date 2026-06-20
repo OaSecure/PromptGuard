@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_POLICY_VERSION } from "../../src/shared/constants";
-import { createAnalyzeRequest, createComposerInput, createFileTextInput, createUnsupportedAttachmentInput } from "../../src/shared/analyzeRequestBuilder";
+import { createAnalyzeRequest, createComposerInput, createFileReferenceInput, createUnsupportedAttachmentInput } from "../../src/shared/analyzeRequestBuilder";
 import { mockFilesAnalyze, mockPromptAnalyze } from "../../src/background/mockApi";
 import type { ExtensionContext } from "../../src/shared/types";
 
@@ -33,17 +33,16 @@ describe("mock API", () => {
     expect(response.masked_prompt).toBeUndefined();
   });
 
-  it("warns for unsupported attachments and blocks env-like file content in mock mode", async () => {
+  it("warns for unsupported attachments and does not inspect file-reference content in mock mode", async () => {
     const warnRequest = createAnalyzeRequest(context, DEFAULT_POLICY_VERSION, [createUnsupportedAttachmentInput({ extension: ".pdf", mimeType: "application/pdf", sizeBytes: 12, attachmentIndex: 0 })], "frq_warn");
-    const blockRequest = createAnalyzeRequest(context, DEFAULT_POLICY_VERSION, [createFileTextInput({ extension: ".env", mimeType: "text/plain", sizeBytes: 42, text: "DATABASE_URL=postgres://example" })], "frq_block");
+    const fileRefRequest = createAnalyzeRequest(context, DEFAULT_POLICY_VERSION, [createFileReferenceInput({ fileRef: "fref_opaque_123", fileKind: "plain_text", extension: ".env", mimeType: "text/plain", sizeBytes: 42 })], "frq_file_ref");
 
     const warnResponse = await mockFilesAnalyze(warnRequest);
-    const blockResponse = await mockFilesAnalyze(blockRequest);
+    const fileRefResponse = await mockFilesAnalyze(fileRefRequest);
 
     expect(warnResponse.action).toBe("Warn");
     expect(warnResponse.requires_user_confirmation).toBe(true);
-    expect(blockResponse.action).toBe("Block");
-    expect(blockResponse.allow_original_send).toBe(false);
-    expect(blockResponse.detections[0].type).toBe("DB_CONNECTION_STRING");
+    expect(fileRefResponse.action).toBe("Allow");
+    expect(JSON.stringify(fileRefRequest)).not.toContain("DATABASE_URL");
   });
 });

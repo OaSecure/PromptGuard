@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { routeMessage } from "../../src/background/messageRouter";
-import { createAnalyzeRequest, createComposerInput, createFileTextInput } from "../../src/shared/analyzeRequestBuilder";
+import { createAnalyzeRequest, createComposerInput, createFileReferenceInput } from "../../src/shared/analyzeRequestBuilder";
 import { DEFAULT_CONFIG, STORAGE_KEYS } from "../../src/shared/constants";
 import type { AnalyzeRequest, AuthMeResponse } from "../../src/shared/types";
 
@@ -495,7 +495,7 @@ function filesAnalyzeRequest(): AnalyzeRequest {
       locale: "ko-KR"
     },
     DEFAULT_CONFIG.policy_version,
-    [createFileTextInput({ extension: ".txt", mimeType: "text/plain", sizeBytes: 11, text: "safe file" })]
+    [createFileReferenceInput({ fileRef: "fref_opaque_123", fileKind: "plain_text", extension: ".txt", mimeType: "text/plain", sizeBytes: 11 })]
   );
 }
 

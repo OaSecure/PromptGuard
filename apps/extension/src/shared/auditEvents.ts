@@ -46,7 +46,7 @@ export function buildPromptInspectionAuditEvent(request: AnalyzeRequest, respons
   };
 }
 
-/** Builds a metadata-only audit event for one text-file inspection response. */
+/** Builds a metadata-only audit event for one attachment inspection response. */
 export function buildFilesInspectionAuditEvent(request: AnalyzeRequest, response: AnalyzeResponse): InspectionAuditEvent {
   return {
     surface: "files",
@@ -62,6 +62,6 @@ export function buildFilesInspectionAuditEvent(request: AnalyzeRequest, response
     page_url_origin: request.context.page_url_origin,
     extension_version: request.context.extension_version,
     detection_count: response.detections.reduce((total, detection) => total + Math.max(0, detection.match_count), 0),
-    file_count: request.inputs.filter((input) => input.source === "file" || input.source === "attachment_chip").length
+    file_count: request.inputs.filter((input) => input.kind === "file_reference" || input.source === "attachment_chip").length
   };
 }

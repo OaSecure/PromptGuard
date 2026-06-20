@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { createAnalyzeRequest, createComposerInput, createFileTextInput } from "../../src/shared/analyzeRequestBuilder";
+import { createAnalyzeRequest, createComposerInput, createFileReferenceInput } from "../../src/shared/analyzeRequestBuilder";
 import { isAnalyzeResponse } from "../../src/shared/responseValidation";
 import type { AnalyzeResponse, DecisionAction, ExtensionContext } from "../../src/shared/types";
 
@@ -15,10 +15,10 @@ describe("PR0 extension current behavior snapshots", () => {
     expect(responses).toMatchSnapshot();
   });
 
-  it("freezes composer and legacy file-text request payload", () => {
+  it("freezes composer and file-reference request payload", () => {
     const request = createAnalyzeRequest(context, "snapshot_config", [
       createComposerInput({ text: "composer snapshot text", inputMethod: "CLICK" }),
-      createFileTextInput({ extension: ".txt", mimeType: "text/plain", text: "snapshot marker", sizeBytes: 15 })
+      createFileReferenceInput({ fileRef: "fref_snapshot_opaque", fileKind: "plain_text", extension: ".txt", mimeType: "text/plain", sizeBytes: 15 })
     ], "snapshot_request");
     const normalized = { ...request, inputs: request.inputs.map((input) => ({ ...input, input_id: "<GENERATED_ID>" })) };
     const fixturePath = resolve(process.cwd(), "tests/fixtures/current_behavior/request_builder.json");

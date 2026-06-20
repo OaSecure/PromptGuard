@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { isExtensionMessage } from "../../src/shared/messageTypes";
-import { createAnalyzeRequest, createAttachmentMetadataInput, createComposerInput, createFileTextInput } from "../../src/shared/analyzeRequestBuilder";
+import { createAnalyzeRequest, createAttachmentMetadataInput, createComposerInput, createFileReferenceInput } from "../../src/shared/analyzeRequestBuilder";
 import type { ExtensionContext } from "../../src/shared/types";
 
 describe("extension message guard", () => {
@@ -51,6 +51,30 @@ describe("extension message guard", () => {
       })
     ).toBe(false);
   });
+
+  it("rejects legacy file text and malformed v3.5 file references at the runtime boundary", () => {
+    const baseRequest = filesAnalyzeRequest();
+    const validFileInput = fileInput();
+    const cases = [
+      { ...validFileInput, kind: "text", source: "file", content_included: true, content: "legacy file text" },
+      { ...validFileInput, source: "attachment_chip" },
+      { ...validFileInput, content_included: true },
+      { ...validFileInput, content: "file content must not cross Analyze JSON" },
+      { ...validFileInput, file_ref: "" },
+      { ...validFileInput, file_ref: "https://files.example.test/fref_123" },
+      { ...validFileInput, file_ref: "C:\\Users\\member\\secret.txt" },
+      { ...validFileInput, file_ref: "../secret.txt" },
+      { ...validFileInput, file_kind: "raw_filename_trusted" },
+      { ...validFileInput, size_bucket: "tiny" },
+      { ...validFileInput, metadata: { original_filename: "customer.env" } },
+      { ...validFileInput, metadata: { file_content: "raw file text" } },
+      { ...validFileInput, metadata: { nested: { detected_raw_value: "secret-token" } } }
+    ];
+
+    for (const malformedInput of cases) {
+      expect(isExtensionMessage({ type: "FILES_ANALYZE_REQUEST", payload: { ...baseRequest, inputs: [malformedInput] } })).toBe(false);
+    }
+  });
 });
 
 function promptAnalyzeRequest() {
@@ -61,7 +85,7 @@ function filesAnalyzeRequest() {
   return createAnalyzeRequest(
     context(),
     "cfg_2026_06_09",
-    [createFileTextInput({ extension: ".txt", mimeType: "text/plain", sizeBytes: 4, text: "text" }), createAttachmentMetadataInput({ extension: ".png", mimeType: "image/png", sizeBytes: 4, attachmentKind: "image", attachmentIndex: 1 })],
+    [createFileReferenceInput({ fileRef: "fref_opaque_123", fileKind: "plain_text", extension: ".txt", mimeType: "text/plain", sizeBytes: 4 }), createAttachmentMetadataInput({ extension: ".png", mimeType: "image/png", sizeBytes: 4, attachmentKind: "image", attachmentIndex: 1 })],
     "frq_test"
   );
 }
@@ -69,11 +93,12 @@ function filesAnalyzeRequest() {
 function fileInput() {
   return {
     input_id: "in_test",
-    kind: "text",
-    source: "file",
+    kind: "file_reference",
+    source: "attached_file",
     size_bytes: 4,
-    content_included: true,
-    content: "text"
+    content_included: false,
+    file_ref: "fref_opaque_123",
+    file_kind: "plain_text"
   };
 }
 
