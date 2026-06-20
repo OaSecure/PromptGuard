@@ -81,12 +81,11 @@ def post_snapshot(rules, inputs):
 
 
 @pytest.mark.parametrize(("action", "fixture"), [("ALLOW", "allow_basic_text.json"), ("WARN", "warn_basic_text.json"),
-                                                    ("MASK", "mask_composer.json"), ("BLOCK", "block_legacy_file_text.json")])
+                                                    ("MASK", "mask_composer.json"), ("BLOCK", "block_basic_text.json")])
 def test_current_action_response_and_event_snapshots(action, fixture):
     rules = [] if action == "ALLOW" else [rule(action)]
-    source = "file" if action == "BLOCK" else "composer"
     content = "ordinary Korean 한글" if action == "ALLOW" else "snapshot marker"
-    actual = post_snapshot(rules, [text("input_1", content, source)])
+    actual = post_snapshot(rules, [text("input_1", content)])
     assert_storage_privacy(actual["storage"])
     assert_matches_snapshot(fixture, actual)
 

@@ -10,8 +10,8 @@ from app.domain.types.common import FileKind, SizeBucket
 # compatibility version owned by this HTTP boundary until a shared constant exists.
 ANALYZE_SCHEMA_VERSION: Final[Literal["v3"]] = "v3"
 
-TEXT_SOURCES = ("composer", "converted_paste", "file")
-TEXT_SOURCE_LIMITS = {"composer": 262_144, "converted_paste": 1_048_576, "file": 1_048_576}
+TEXT_SOURCES = ("composer", "converted_paste")
+TEXT_SOURCE_LIMITS = {"composer": 262_144, "converted_paste": 1_048_576}
 FORBIDDEN_METADATA_KEYS = {"name", "filename", "file_name", "original_filename", "path", "url"}
 SECRET_LIKE_ID_RE = re.compile(r"(?:gh[pousr]_|sk-[A-Za-z0-9]|xox[baprs]-|AKIA[0-9A-Z]|postgres://|mysql://|bearer|private[_-]?key)", re.IGNORECASE)
 
@@ -52,13 +52,13 @@ class LegacyAnalyzeInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     input_id: str = Field(min_length=1, max_length=80, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$")
     kind: Literal["text", "attachment_metadata", "unsupported_attachment"]
-    source: Literal["composer", "converted_paste", "file", "attachment_chip"]
+    source: Literal["composer", "converted_paste", "attachment_chip"]
     size_bytes: int = Field(ge=0, le=2_147_483_647)
     content_included: bool
     content: str | None = Field(default=None, max_length=1_048_576)
     metadata: dict[str, Any] | None = None
     content_unavailable_reason: Literal["oversized", "unsupported", "metadata_only", "unavailable"] | None = None
-    limit_exceeded: Literal["MAX_ANALYZE_REQUEST_BYTES", "MAX_COMPOSER_TEXT_BYTES", "MAX_CONVERTED_PASTE_TEXT_BYTES", "MAX_FILE_TEXT_SCAN_BYTES"] | None = None
+    limit_exceeded: Literal["MAX_ANALYZE_REQUEST_BYTES", "MAX_COMPOSER_TEXT_BYTES", "MAX_CONVERTED_PASTE_TEXT_BYTES"] | None = None
 
     @field_validator("input_id")
     @classmethod
@@ -71,7 +71,7 @@ class LegacyAnalyzeInput(BaseModel):
     def validate_contract(self) -> "LegacyAnalyzeInput":
         if self.kind == "text":
             if self.source not in TEXT_SOURCES:
-                raise ValueError("text input source must be composer, converted_paste, or file")
+                raise ValueError("text input source must be composer or converted_paste")
             if self.content_included:
                 if self.content is None or not self.content.strip():
                     raise ValueError("included text input must include non-blank content")
@@ -137,20 +137,15 @@ class AnalyzeRequestV3(BaseModel):
 class AdaptedAnalyzeRequest(BaseModel):
     v3_request: AnalyzeRequestV3
     legacy_view: LegacyAnalyzeRequest
-    legacy_file_text_sidecar: list[LegacyAnalyzeInput]
 
 
 def adapt_legacy_analyze_request(request: LegacyAnalyzeRequest, authenticated_login_id: str) -> AdaptedAnalyzeRequest:
-    v3_inputs: list[AnalyzeInputItemV3] = []
-    sidecar: list[LegacyAnalyzeInput] = []
+    v3_inputs = []
     for item in request.inputs:
-        if item.kind == "text" and item.source == "file":
-            sidecar.append(item)
-            continue
         v3_inputs.append(_adapt_input(item))
     return AdaptedAnalyzeRequest(v3_request=AnalyzeRequestV3(request_id=request.client_request_id, login_id=authenticated_login_id,
                                  extension_version=request.context.extension_version, inputs=v3_inputs),
-                                 legacy_view=request, legacy_file_text_sidecar=sidecar)
+                                 legacy_view=request)
 
 
 def _adapt_input(item: LegacyAnalyzeInput) -> AnalyzeInputItemV3:

@@ -121,7 +121,7 @@ class EventInput(Base):
             name="ck_event_inputs_kind",
         ),
         CheckConstraint(
-            "source in ('composer', 'converted_paste', 'file', 'attachment_chip')",
+            "source in ('composer', 'converted_paste', 'pasted_file', 'pasted_image', 'screenshot_image', 'attached_file', 'attachment_chip')",
             name="ck_event_inputs_source",
         ),
         CheckConstraint(
