@@ -2,7 +2,10 @@ import { getAuthState } from "./authStore";
 import { getSettings } from "./configStore";
 import type { AnalyzeFileKind, AnalyzeSizeBucket, NormalizedError } from "../shared/types";
 
+/** Safe metadata returned after an encrypted temporary upload. */
 export interface TempUploadResult { file_ref: string; file_kind: AnalyzeFileKind; mime_hint?: string; extension_hint?: string; size_bucket: AnalyzeSizeBucket; expires_at: string }
+
+/** Uploads a file to the authenticated temporary-file boundary. */
 export async function uploadTempFile(payload: { file: File; requestId: string; fileKind: AnalyzeFileKind; extension: string; mime: string }): Promise<TempUploadResult | NormalizedError> {
   const settings = await getSettings(); const auth = await getAuthState(); const form = new FormData();
   form.append("file", new Blob([payload.file], { type: payload.file.type }), "upload.bin");
