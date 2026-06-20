@@ -116,6 +116,10 @@ def evaluate_analyze_classifier(
                 classification=classification_result,
                 artifact=verifier_config.artifact,
                 timeout_ms=verifier_config.timeout_ms,
+                candidate_text_by_segment_id={
+                    candidate.segment_id: content
+                    for candidate in classification_result.candidates
+                },
             )
             verification_result = verifier_config.service.verify(verification_request)
             if verification_result.failure is not None:
