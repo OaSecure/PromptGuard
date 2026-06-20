@@ -8,6 +8,7 @@ from app.parser.models import (
     ResolvedPlanRequest,
     ResolvedTemporaryFile,
     TempFileAccessContext,
+    TemporaryFileRecord,
     ParserPlanStep,
     ParserStepResult,
     StepKind,
@@ -16,6 +17,10 @@ from app.parser.models import (
 
 class TemporaryFileResolverPort(Protocol):
     def resolve(self, file_ref: str, access_context: TempFileAccessContext) -> ResolvedTemporaryFile: ...
+
+
+class TemporaryFileRecordRepositoryPort(Protocol):
+    def get(self, file_ref: str) -> TemporaryFileRecord | None: ...
 
 
 class ResolvedFileContentSourcePort(Protocol):
