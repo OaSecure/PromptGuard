@@ -67,6 +67,7 @@ def test_ml_inference_queue_snapshot_tracks_safe_success_counters():
     assert snapshot.timeout_total == 0
     assert snapshot.failed_total == 0
     assert snapshot.limit_exceeded_total == 0
+    assert snapshot.coordination_scope == "process"
     queue.shutdown()
 
 
@@ -265,6 +266,14 @@ def test_ml_inference_queue_snapshot_has_no_raw_content_or_model_payload_fields(
         }
     )
     assert "raw" not in str(snapshot.model_dump()).lower()
+
+
+def test_ml_inference_queue_snapshot_does_not_claim_distributed_coordination():
+    snapshot = MlInferenceQueue(max_workers=1, max_queue_size=1).snapshot()
+
+    assert snapshot.coordination_scope == "process"
+    assert "redis" not in str(snapshot.model_dump()).lower()
+    assert "distributed" not in str(snapshot.model_dump()).lower()
 
 
 def _imports(path: Path) -> set[str]:
