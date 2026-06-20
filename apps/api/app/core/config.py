@@ -40,6 +40,10 @@ class Settings(BaseSettings):
     auth_rate_limit_window_seconds: int = Field(default=60, alias="AUTH_RATE_LIMIT_WINDOW_SECONDS")
     classifier_runtime_enabled: bool = Field(default=False, alias="PROMPTGUARD_CLASSIFIER_RUNTIME_ENABLED")
     classifier_manifest_path: str = Field(default="", alias="PROMPTGUARD_CLASSIFIER_MANIFEST_PATH")
+    ml_inference_queue_enabled: bool = Field(default=True, alias="PROMPTGUARD_ML_INFERENCE_QUEUE_ENABLED")
+    ml_inference_queue_max_workers: int = Field(default=1, alias="PROMPTGUARD_ML_INFERENCE_QUEUE_MAX_WORKERS")
+    ml_inference_queue_max_queue_size: int = Field(default=32, alias="PROMPTGUARD_ML_INFERENCE_QUEUE_MAX_QUEUE_SIZE")
+    ml_inference_queue_timeout_ms: int = Field(default=3000, alias="PROMPTGUARD_ML_INFERENCE_QUEUE_TIMEOUT_MS")
     verifier_runtime_enabled: bool = Field(default=False, alias="PROMPTGUARD_VERIFIER_RUNTIME_ENABLED")
     verifier_manifest_path: str = Field(default="", alias="PROMPTGUARD_VERIFIER_MANIFEST_PATH")
 

@@ -21,6 +21,7 @@ from app.ml.classifier.factory import ClassifierRuntimeProviderResult, build_cla
 from app.ml.embedding import create_qwen3_backend
 from app.ml.embedding.loader import AtomEmbeddingModelLoader
 from app.ml.verifier import VerifierServiceBuildError, build_verifier_service_from_manifest
+from app.runtime.ml_inference_queue import MlInferenceQueue
 from app.models.auth import User
 from app.models.events import AnalysisEvent, EventDetection, EventInput, IdempotencyKey
 from app.models.filters import FilterRule
@@ -657,6 +658,25 @@ def get_analyze_verifier_config(settings: Settings = Depends(get_settings)) -> A
     )
 
 
+@lru_cache(maxsize=8)
+def _cached_ml_inference_queue(
+    enabled: bool,
+    max_workers: int,
+    max_queue_size: int,
+) -> MlInferenceQueue | None:
+    if not enabled:
+        return None
+    return MlInferenceQueue(max_workers=max_workers, max_queue_size=max_queue_size)
+
+
+def get_ml_inference_queue(settings: Settings = Depends(get_settings)) -> MlInferenceQueue | None:
+    return _cached_ml_inference_queue(
+        settings.ml_inference_queue_enabled,
+        settings.ml_inference_queue_max_workers,
+        settings.ml_inference_queue_max_queue_size,
+    )
+
+
 @router.post("/analyze", response_model=AnalyzeResponse, response_model_exclude_none=True)
 async def analyze_prompt(
     payload: LegacyAnalyzeRequest,
@@ -665,6 +685,8 @@ async def analyze_prompt(
     classifier_provider: ClassifierRuntimeProviderResult = Depends(get_classifier_runtime_provider),
     embedding_loader: AtomEmbeddingModelLoader | None = Depends(get_atom_embedding_loader),
     verifier_config: AnalyzeVerifierConfig | None = Depends(get_analyze_verifier_config),
+    inference_queue: MlInferenceQueue | None = Depends(get_ml_inference_queue),
+    settings: Settings = Depends(get_settings),
 ) -> AnalyzeResponse:
     adapted_request = adapt_legacy_analyze_request(payload, current_user.login_id)
     payload = adapted_request.legacy_view
@@ -692,6 +714,8 @@ async def analyze_prompt(
             classifier_provider,
             embedding_loader,
             verifier_config=verifier_config,
+            inference_queue=inference_queue,
+            inference_timeout_ms=settings.ml_inference_queue_timeout_ms,
         )
     )
     action = final_action_for_classifier_outcome(action, classifier_outcome)

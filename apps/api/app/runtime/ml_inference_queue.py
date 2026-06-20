@@ -62,23 +62,31 @@ class MlInferenceQueueResult(BaseModel):
 
 
 MlInferenceHandler = Callable[[MlInferenceJob], Any]
+MlInferenceOperation = Callable[[], Any]
 
 
 class MlInferenceQueue:
-    def __init__(self, handler: MlInferenceHandler, max_workers: int, max_queue_size: int) -> None:
+    def __init__(self, handler: MlInferenceHandler | None = None, max_workers: int = 1, max_queue_size: int = 1) -> None:
         if max_workers < 1 or max_queue_size < 1:
             raise ValueError("worker and queue sizes must be positive")
         self._handler = handler
         self._executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="ml-inference-worker")
         self._capacity = BoundedSemaphore(max_workers + max_queue_size)
 
-    def execute(self, job: MlInferenceJob, timeout_ms: int) -> MlInferenceQueueResult:
+    def execute(
+        self,
+        job: MlInferenceJob,
+        timeout_ms: int,
+        *,
+        operation: MlInferenceOperation | None = None,
+    ) -> MlInferenceQueueResult:
         if timeout_ms < 1:
             raise ValueError("timeout_ms must be positive")
+        runner = operation or self._operation_from_handler(job)
         if not self._capacity.acquire(blocking=False):
             return self._failure(job.job_id, "ML_INFERENCE_LIMIT_EXCEEDED")
         try:
-            future = self._executor.submit(self._handler, job)
+            future = self._executor.submit(runner)
         except Exception:
             self._capacity.release()
             logger.error(
@@ -101,6 +109,11 @@ class MlInferenceQueue:
 
     def shutdown(self) -> None:
         self._executor.shutdown(wait=True, cancel_futures=True)
+
+    def _operation_from_handler(self, job: MlInferenceJob) -> MlInferenceOperation:
+        if self._handler is None:
+            raise ValueError("ml inference operation is required when no default handler is configured")
+        return lambda: self._handler(job)
 
     @staticmethod
     def _failure(job_id: str, code: str, status: MlInferenceStatus = "failed") -> MlInferenceQueueResult:
