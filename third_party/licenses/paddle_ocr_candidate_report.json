@@ -72,7 +72,19 @@
       "redistribution_verified": false,
       "commercial_use_verified": false,
       "notice_obligations_verified": false,
-      "default_distribution": false
+      "default_distribution": false,
+      "license_research": {
+        "archive_inspected": true,
+        "archive_license_files": [],
+        "model_specific_grant_found": false,
+        "repository_license_used_as_weight_grant": false,
+        "official_sources_checked": [
+          "https://github.com/PaddlePaddle/PaddleOCR/blob/main/docs/version3.x/model_list.md",
+          "https://github.com/PaddlePaddle/PaddleX/blob/develop/paddlex/configs/modules/text_detection/PP-OCRv5_mobile_det.yaml",
+          "https://github.com/PaddlePaddle/PaddleOCR/blob/v3.7.0/LICENSE"
+        ],
+        "conclusion": "blocked-no-model-specific-license-grant"
+      }
     },
     {
       "model_id": "korean_PP-OCRv3_mobile_rec",
@@ -86,7 +98,19 @@
       "redistribution_verified": false,
       "commercial_use_verified": false,
       "notice_obligations_verified": false,
-      "default_distribution": false
+      "default_distribution": false,
+      "license_research": {
+        "archive_inspected": true,
+        "archive_license_files": [],
+        "model_specific_grant_found": false,
+        "repository_license_used_as_weight_grant": false,
+        "official_sources_checked": [
+          "https://github.com/PaddlePaddle/PaddleOCR/blob/main/docs/version3.x/model_list.md",
+          "https://github.com/PaddlePaddle/PaddleX/blob/develop/paddlex/configs/modules/text_recognition/korean_PP-OCRv3_mobile_rec.yaml",
+          "https://github.com/PaddlePaddle/PaddleOCR/blob/v3.7.0/LICENSE"
+        ],
+        "conclusion": "blocked-no-model-specific-license-grant"
+      }
     },
     {
       "model_id": "en_PP-OCRv4_mobile_rec",
@@ -100,7 +124,19 @@
       "redistribution_verified": false,
       "commercial_use_verified": false,
       "notice_obligations_verified": false,
-      "default_distribution": false
+      "default_distribution": false,
+      "license_research": {
+        "archive_inspected": true,
+        "archive_license_files": [],
+        "model_specific_grant_found": false,
+        "repository_license_used_as_weight_grant": false,
+        "official_sources_checked": [
+          "https://github.com/PaddlePaddle/PaddleOCR/blob/main/docs/version3.x/model_list.md",
+          "https://github.com/PaddlePaddle/PaddleX/blob/develop/paddlex/configs/modules/text_recognition/en_PP-OCRv4_mobile_rec.yaml",
+          "https://github.com/PaddlePaddle/PaddleOCR/blob/v3.7.0/LICENSE"
+        ],
+        "conclusion": "blocked-no-model-specific-license-grant"
+      }
     }
   ],
   "excluded_model_families": [
@@ -115,6 +151,80 @@
     "network_access_at_runtime": "forbidden",
     "provisioning": "pre-provisioned-checksum-verified-assets-only",
     "missing_asset_behavior": "fail-closed"
+  },
+  "approval_matrix": [
+    {
+      "model_id": "PP-OCRv5_mobile_det",
+      "decision": "blocked",
+      "commercial_use": "unverified",
+      "redistribution": "unverified",
+      "notice_obligations": "unverified"
+    },
+    {
+      "model_id": "korean_PP-OCRv3_mobile_rec",
+      "decision": "blocked",
+      "commercial_use": "unverified",
+      "redistribution": "unverified",
+      "notice_obligations": "unverified"
+    },
+    {
+      "model_id": "en_PP-OCRv4_mobile_rec",
+      "decision": "blocked",
+      "commercial_use": "unverified",
+      "redistribution": "unverified",
+      "notice_obligations": "unverified"
+    }
+  ],
+  "primary_stack_decision": "blocked",
+  "transitive_dependency_review": {
+    "status": "blocked-not-locked",
+    "resolver_probe": {
+      "environment": "CPython 3.12 / manylinux2014_x86_64 / CPU-only",
+      "resolved_paddlex_version": "3.7.1",
+      "result": "resolution-succeeded-but-artifacts-and-licenses-not-locked",
+      "resolved_distribution_count": 73
+    },
+    "root_requirements": [
+      "paddleocr==3.7.0",
+      "paddlepaddle==3.3.1",
+      "paddlex[ocr-core]>=3.7.0,<3.8.0"
+    ],
+    "mandatory_review_scope": [
+      "paddlex[ocr-core]",
+      "all resolved Python distributions and platform wheels",
+      "opencv-contrib-python and other native wheels",
+      "bundled native libraries in paddlepaddle wheels",
+      "model-source clients pulled by PaddleX including aistudio-sdk, huggingface-hub, and modelscope"
+    ],
+    "notable_resolved_dependencies": [
+      "paddlex==3.7.1",
+      "opencv-contrib-python==4.10.0.84",
+      "aistudio-sdk==0.3.8",
+      "huggingface-hub==1.20.1",
+      "modelscope==1.37.1",
+      "pypdfium2==5.10.1",
+      "pyclipper==1.4.0",
+      "shapely==2.1.2"
+    ],
+    "forbidden_feature_extras": [
+      "doc-parser",
+      "genai-client",
+      "ie",
+      "trans"
+    ]
+  },
+  "runtime_compatibility": {
+    "decision": "blocked-runtime-policy-required",
+    "project_ci_python": "3.12",
+    "published_cpython_wheels": ["3.9", "3.10", "3.11", "3.12", "3.13"],
+    "supported_os_architectures": [
+      "Linux x86_64",
+      "Windows amd64",
+      "macOS arm64"
+    ],
+    "unsupported_python": ["3.14"],
+    "impact": "The default CI can resolve CPU wheels on Python 3.12, but Python 3.14 developer or production environments cannot install paddlepaddle 3.3.1 from an official wheel.",
+    "required_resolution": "pin OCR worker runtime to CPython 3.12 or 3.13"
   },
   "blockers": [
     "No model-specific official license grant was found for the three inference archives; the PaddleOCR repository Apache-2.0 license is not treated as model-weight evidence.",
