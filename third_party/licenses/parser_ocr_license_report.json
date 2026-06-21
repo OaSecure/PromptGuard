@@ -1,0 +1,19 @@
+{
+  "decisions": [
+    {
+      "decision": "allow",
+      "license_id": "BSD-3-Clause",
+      "name": "pypdf",
+      "notice_license_preservation_required": true,
+      "reason": "permissive_license",
+      "source_disclosure_required": false,
+      "version": "6.13.3"
+    }
+  ],
+  "ocr_model_weights": {
+    "reason": "no_ocr_model_dependency_in_scope",
+    "status": "not_applicable"
+  },
+  "schema_version": "1",
+  "scope": "parser_ocr"
+}

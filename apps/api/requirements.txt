@@ -8,6 +8,7 @@ joblib==1.5.3
 pydantic-settings==2.11.0
 PyJWT==2.10.1
 pytest==8.4.2
+pypdf==6.13.3
 python-multipart==0.0.20
 redis==6.4.0
 SQLAlchemy==2.0.43
