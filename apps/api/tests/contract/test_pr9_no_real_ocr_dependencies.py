@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 API_ROOT = Path(__file__).parents[2]
-FORBIDDEN = {"paddleocr", "pytesseract", "fitz", "pdf2image"}
+FORBIDDEN = {"paddleocr", "paddle", "paddlepaddle", "pytesseract", "fitz", "pdf2image"}
 PARSER_FAILURE_CODES = {
     "PDF_RENDER_FAILED",
     "OCR_ENGINE_UNAVAILABLE",
@@ -15,12 +15,12 @@ PARSER_FAILURE_CODES = {
 }
 
 
-def test_no_real_ocr_or_forbidden_pdf_renderer_dependency():
+def test_default_core_requirements_have_no_real_ocr_dependency():
     requirements = (API_ROOT / "requirements.txt").read_text(encoding="utf-8").lower()
     assert all(name not in requirements for name in FORBIDDEN)
 
 
-def test_parser_source_has_no_real_ocr_or_renderer_import():
+def test_parser_core_has_no_concrete_ocr_or_renderer_import():
     imported = set()
     for path in (API_ROOT / "app" / "parser").rglob("*.py"):
         tree = ast.parse(path.read_text(encoding="utf-8"))
