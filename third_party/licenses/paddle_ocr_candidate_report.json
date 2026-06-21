@@ -1,0 +1,133 @@
+{
+  "schema_version": "1",
+  "scope": "development_contract_pr10_b2_a",
+  "reviewed_at": "2026-06-21",
+  "status": "blocked",
+  "approved_for_dependency_addition": false,
+  "approved_for_default_distribution": false,
+  "package_candidates": [
+    {
+      "name": "paddleocr",
+      "version": "3.7.0",
+      "cpu_only": true,
+      "package_source": "https://pypi.org/project/paddleocr/3.7.0/",
+      "license_id": "Apache-2.0",
+      "license_evidence_url": "https://github.com/PaddlePaddle/PaddleOCR/blob/v3.7.0/LICENSE",
+      "requires_python": ">=3.8",
+      "direct_dependencies": [
+        "paddlex[ocr-core]>=3.7.0,<3.8.0",
+        "PyYAML>=6",
+        "requests",
+        "aiohttp>=3.8.0",
+        "typing-extensions>=4.12"
+      ],
+      "transitive_dependency_status": "unresolved-blocker",
+      "wheel_artifacts": [
+        {
+          "filename": "paddleocr-3.7.0-py3-none-any.whl",
+          "platform": "any",
+          "sha256": "c0f0a81ad4112727f30c6fcf986ac0ef6a120d31ee0991a01fae0357ee32d338"
+        }
+      ]
+    },
+    {
+      "name": "paddlepaddle",
+      "version": "3.3.1",
+      "cpu_only": true,
+      "package_source": "https://pypi.org/project/paddlepaddle/3.3.1/",
+      "license_id": "Apache-2.0",
+      "license_evidence_url": "https://github.com/PaddlePaddle/Paddle/blob/v3.3.1/LICENSE",
+      "requires_python": "CPython 3.9-3.13 wheels",
+      "supported_platforms": [
+        "manylinux1_x86_64",
+        "win_amd64",
+        "macosx_11_0_arm64"
+      ],
+      "unsupported_project_runtime": "CPython 3.14",
+      "transitive_dependency_status": "unresolved-blocker",
+      "wheel_artifacts": [
+        {
+          "filename": "paddlepaddle-3.3.1-cp312-cp312-manylinux1_x86_64.whl",
+          "platform": "linux-x86_64-cpython312",
+          "sha256": "9016fc497213e1101261684321fbb31ef5960019ef39cb07ded27bc70e2a9858"
+        },
+        {
+          "filename": "paddlepaddle-3.3.1-cp312-cp312-win_amd64.whl",
+          "platform": "windows-amd64-cpython312",
+          "sha256": "324b5122cf3887dfbd15db17f36e2421ef923fd4569d26111bf1a21fe84d442b"
+        }
+      ]
+    }
+  ],
+  "model_candidates": [
+    {
+      "model_id": "PP-OCRv5_mobile_det",
+      "model_version": "paddle3.0.0-official-inference",
+      "role": "text_detection",
+      "language_scope": ["korean", "english", "numeric"],
+      "source_url": "https://paddle-model-ecology.bj.bcebos.com/paddlex/official_inference_model/paddle3.0.0/PP-OCRv5_mobile_det_infer.tar",
+      "sha256": "50446e5d01ac2a73d5319c89513281f6578414c888c602f9af13f93feefffc58",
+      "size_bytes": 4935680,
+      "license_id": "LicenseRef-Unclear",
+      "redistribution_verified": false,
+      "commercial_use_verified": false,
+      "notice_obligations_verified": false,
+      "default_distribution": false
+    },
+    {
+      "model_id": "korean_PP-OCRv3_mobile_rec",
+      "model_version": "paddle3.0.0-official-inference",
+      "role": "text_recognition",
+      "language_scope": ["korean", "english", "numeric"],
+      "source_url": "https://paddle-model-ecology.bj.bcebos.com/paddlex/official_inference_model/paddle3.0.0/korean_PP-OCRv3_mobile_rec_infer.tar",
+      "sha256": "3619636ffce1f4b93cf76ddc0bfb7bdb9c15af1ec2fc1d02554384f0e70d5a17",
+      "size_bytes": 10055680,
+      "license_id": "LicenseRef-Unclear",
+      "redistribution_verified": false,
+      "commercial_use_verified": false,
+      "notice_obligations_verified": false,
+      "default_distribution": false
+    },
+    {
+      "model_id": "en_PP-OCRv4_mobile_rec",
+      "model_version": "paddle3.0.0-official-inference",
+      "role": "text_recognition",
+      "language_scope": ["english", "numeric"],
+      "source_url": "https://paddle-model-ecology.bj.bcebos.com/paddlex/official_inference_model/paddle3.0.0/en_PP-OCRv4_mobile_rec_infer.tar",
+      "sha256": "42067abe43473ce9d68e3b4bf050765038062acfd810f7e1738af078c3198c8a",
+      "size_bytes": 7833600,
+      "license_id": "LicenseRef-Unclear",
+      "redistribution_verified": false,
+      "commercial_use_verified": false,
+      "notice_obligations_verified": false,
+      "default_distribution": false
+    }
+  ],
+  "excluded_model_families": [
+    "orientation",
+    "classification",
+    "layout",
+    "PP-Structure",
+    "VLM"
+  ],
+  "model_delivery_policy": {
+    "automatic_download": "forbidden",
+    "network_access_at_runtime": "forbidden",
+    "provisioning": "pre-provisioned-checksum-verified-assets-only",
+    "missing_asset_behavior": "fail-closed"
+  },
+  "blockers": [
+    "No model-specific official license grant was found for the three inference archives; the PaddleOCR repository Apache-2.0 license is not treated as model-weight evidence.",
+    "Commercial use, redistribution, default-distribution, and NOTICE obligations for each model archive remain unverified.",
+    "The complete platform-specific transitive dependency closure and licenses for paddleocr 3.7.0, paddlex 3.7.x, and paddlepaddle 3.3.1 are not yet locked and reviewed.",
+    "PaddlePaddle 3.3.1 publishes no CPython 3.14 wheel; project CI uses CPython 3.12 but the current local interpreter is CPython 3.14."
+  ],
+  "evidence": {
+    "package_metadata": [
+      "https://pypi.org/pypi/paddleocr/3.7.0/json",
+      "https://pypi.org/pypi/paddlepaddle/3.3.1/json"
+    ],
+    "official_model_list": "https://github.com/PaddlePaddle/PaddleOCR/blob/main/docs/version3.x/model_list.md",
+    "checksum_method": "SHA-256 calculated from bytes downloaded from each source_url on 2026-06-21"
+  }
+}
