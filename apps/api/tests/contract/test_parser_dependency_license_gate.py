@@ -88,7 +88,9 @@ def test_forbidden_pdf_and_ocr_stacks_are_absent_from_default_dependencies():
     assert requirements.isdisjoint(forbidden)
 
 
-def test_pdf_foundation_remains_not_implemented():
+def test_pdf_adapter_uses_pinned_parser_without_ocr_or_renderer_dependencies():
     source = (REPO_ROOT / "apps" / "api" / "app" / "parser" / "adapters" / "pdf_foundation.py").read_text(encoding="utf-8")
-    assert "PARSER_NOT_IMPLEMENTED" in source
-    assert "import pypdf" not in source
+    assert "from pypdf import PdfReader" in source
+    assert "PARSER_NOT_IMPLEMENTED" not in source
+    for forbidden in ("pypdfium2", "paddleocr", "pytesseract"):
+        assert forbidden not in source.lower()

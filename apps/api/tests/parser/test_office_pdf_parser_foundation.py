@@ -1,7 +1,9 @@
 import ast
+import io
 from pathlib import Path
 
 import pytest
+from pypdf import PdfWriter
 
 from app.parser.adapters.office_foundation import OfficeParserFoundationAdapter
 from app.parser.adapters.pdf_foundation import PdfParserFoundationAdapter
@@ -102,6 +104,14 @@ def _step(step_kind: str, capability_id: str = "foundation-capability") -> Parse
     )
 
 
+def _blank_pdf() -> bytes:
+    stream = io.BytesIO()
+    writer = PdfWriter()
+    writer.add_blank_page(width=200, height=200)
+    writer.write(stream)
+    return stream.getvalue()
+
+
 def _exposed(result, caplog) -> str:
     failure = result.failure
     return " ".join((
@@ -163,11 +173,14 @@ def test_plan_resolver_selects_pdf_and_office_paths():
         assert resolution.plan.plan_kind == expected_plan_kind
 
 
-def test_pdf_foundation_recognizes_pdf_container_as_partial():
-    result = PdfParserFoundationAdapter(FakeResolvedFileContentSource(b"%PDF-1.7\nbody")).execute_step(
+def test_pdf_native_adapter_parses_valid_pdf_container():
+    result = PdfParserFoundationAdapter(FakeResolvedFileContentSource(_blank_pdf())).execute_step(
         _step("pdf_native_text_extract"), _payload("pdf"), _resolved_file("pdf")
     )
-    _assert_partial_foundation(result, "pdf")
+    assert result.status == "success"
+    assert result.document is not None
+    assert result.document.parser_status == "parsed"
+    assert result.document.metadata["page_coverage_inputs"][0]["page_index"] == 1
 
 
 @pytest.mark.parametrize(
@@ -206,19 +219,21 @@ def test_empty_container_follows_existing_parsed_empty_contract(adapter, step_ki
 
 
 @pytest.mark.parametrize(
-    ("adapter", "step_kind", "file_kind"),
+    ("adapter", "step_kind", "file_kind", "expected_code"),
     [
-        (PdfParserFoundationAdapter(FakeResolvedFileContentSource(b"not-pdf")), "pdf_native_text_extract", "pdf"),
-        (OfficeParserFoundationAdapter(FakeResolvedFileContentSource(b"not-office")), "office_parse", "office_document"),
-        (OfficeParserFoundationAdapter(FakeResolvedFileContentSource(b"PK malformed")), "spreadsheet_parse", "spreadsheet"),
-        (OfficeParserFoundationAdapter(FakeResolvedFileContentSource(b"not-office")), "slide_parse", "slide"),
+        (PdfParserFoundationAdapter(FakeResolvedFileContentSource(b"not-pdf")), "pdf_native_text_extract", "pdf", "PDF_PARSE_FAILED"),
+        (OfficeParserFoundationAdapter(FakeResolvedFileContentSource(b"not-office")), "office_parse", "office_document", "PARSER_WORKER_FAILED"),
+        (OfficeParserFoundationAdapter(FakeResolvedFileContentSource(b"PK malformed")), "spreadsheet_parse", "spreadsheet", "PARSER_WORKER_FAILED"),
+        (OfficeParserFoundationAdapter(FakeResolvedFileContentSource(b"not-office")), "slide_parse", "slide", "PARSER_WORKER_FAILED"),
     ],
 )
-def test_malformed_container_returns_sanitized_failure(adapter, step_kind, file_kind, caplog):
+def test_malformed_container_returns_sanitized_failure(
+    adapter, step_kind, file_kind, expected_code, caplog
+):
     result = adapter.execute_step(_step(step_kind), _payload(file_kind), _resolved_file(file_kind))
     assert result.status == "failed"
     assert result.failure is not None
-    assert result.failure.code == "PARSER_WORKER_FAILED"
+    assert result.failure.code == expected_code
     _assert_private_values_hidden(result, caplog)
 
 
@@ -265,7 +280,7 @@ def test_mismatch_and_missing_resolved_file_are_distinct(
 @pytest.mark.parametrize(
     ("adapter", "step_kind", "plan_kind", "file_kind", "content"),
     [
-        (PdfParserFoundationAdapter(FakeResolvedFileContentSource(b"%PDF-1.7")), "pdf_native_text_extract", "pdf_native_then_page_ocr", "pdf", b"%PDF-1.7"),
+        (PdfParserFoundationAdapter(FakeResolvedFileContentSource(_blank_pdf())), "pdf_native_text_extract", "pdf_native_then_page_ocr", "pdf", _blank_pdf()),
         (OfficeParserFoundationAdapter(FakeResolvedFileContentSource(b"PK\x03\x04")), "office_parse", "office_parse", "office_document", b"PK\x03\x04"),
     ],
 )
@@ -285,9 +300,9 @@ def test_runner_executor_registry_foundation_smoke(
     )
     result = runner.run(_payload(file_kind))
     if file_kind == "pdf":
-        assert result.parser_status == "partial"
-        assert result.failure is not None
-        assert result.failure.code == "PARSER_NOT_IMPLEMENTED"
+        assert result.parser_status == "parsed"
+        assert result.failure is None
+        assert result.document is not None
     else:
         assert result.parser_status == "failed"
         assert result.failure is not None
@@ -298,7 +313,7 @@ def test_office_pdf_adapters_do_not_import_forbidden_pipeline_or_parser_dependen
     adapter_root = Path(__file__).parents[2] / "app" / "parser" / "adapters"
     forbidden = {
         "scanner", "normalization", "classifier", "verifier", "policy",
-        "pypdf", "pypdfium2", "pdfplumber", "fitz", "docx", "openpyxl", "pptx",
+        "pypdfium2", "pdfplumber", "fitz", "docx", "openpyxl", "pptx",
     }
     for filename in ("pdf_foundation.py", "office_foundation.py"):
         tree = ast.parse((adapter_root / filename).read_text(encoding="utf-8"))
@@ -314,3 +329,5 @@ def test_office_pdf_adapters_do_not_import_forbidden_pipeline_or_parser_dependen
             if isinstance(node, ast.ImportFrom) and node.module
         )
         assert imports.isdisjoint(forbidden)
+        if filename == "office_foundation.py":
+            assert "pypdf" not in imports
