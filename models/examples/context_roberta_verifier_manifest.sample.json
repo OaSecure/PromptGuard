@@ -1,0 +1,14 @@
+{
+  "manifest_version": "context_roberta_verifier_v205",
+  "selected": {
+    "verifier_dir": "models/context_verifier_klue_roberta_base_patch_v204_all_from_v177_1ep_lr1e6",
+    "target_labels_json": "models/context_target_labels.sample.json",
+    "label_definitions_json": "models/context_label_definitions.sample.json",
+    "verifier_threshold_mode": "global",
+    "verifier_threshold": 0.5,
+    "max_length_tokens": 384,
+    "chunk_chars": 900,
+    "chunk_overlap": 120,
+    "max_chunks": 8
+  }
+}

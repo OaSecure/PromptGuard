@@ -1,0 +1,17 @@
+{
+  "SECRET_CREDENTIAL_CONTEXT": {
+    "positive": "The candidate describes secrets, credentials, access tokens, API keys, passwords, or private connection material.",
+    "negative": "The candidate only discusses generic authentication concepts without exposing or requesting secret material.",
+    "boundary": "Confirm only when the candidate is about sensitive credential handling, disclosure, or transfer."
+  },
+  "PERSONAL_DATA_CONTEXT": {
+    "positive": "The candidate describes person-level data such as private identifiers, contact information, or sensitive personal records.",
+    "negative": "The candidate only discusses public examples, synthetic placeholders, or non-personal aggregate information.",
+    "boundary": "Confirm only when the candidate involves person-level data in a risky handling context."
+  },
+  "PROPRIETARY_CODE_CONTEXT": {
+    "positive": "The candidate describes internal or proprietary implementation details, private source code, or security-sensitive code paths.",
+    "negative": "The candidate only discusses public APIs, open-source examples, or generic programming concepts.",
+    "boundary": "Confirm only when the candidate points to private implementation or security-sensitive code context."
+  }
+}

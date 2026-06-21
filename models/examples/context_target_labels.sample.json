@@ -1,0 +1,7 @@
+{
+  "target_labels": [
+    "SECRET_CREDENTIAL_CONTEXT",
+    "PERSONAL_DATA_CONTEXT",
+    "PROPRIETARY_CODE_CONTEXT"
+  ]
+}

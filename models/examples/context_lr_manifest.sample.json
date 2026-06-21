@@ -1,0 +1,8 @@
+{
+  "manifest_version": "context_lr_roberta_best_v205",
+  "selected": {
+    "lr_model": "models/context_with_patch_v205_deploy_candidate_classifier.joblib",
+    "target_labels_json": "models/context_target_labels.sample.json",
+    "candidate_threshold": 0.575
+  }
+}
