@@ -59,6 +59,57 @@ def test_model_candidates_are_checksum_pinned_but_not_license_approved():
         assert model["default_distribution"] is False
 
 
+def test_each_model_records_model_specific_license_research_without_inference():
+    for model in _report()["model_candidates"]:
+        research = model["license_research"]
+        assert research["archive_inspected"] is True
+        assert research["archive_license_files"] == []
+        assert research["model_specific_grant_found"] is False
+        assert research["repository_license_used_as_weight_grant"] is False
+        assert research["official_sources_checked"]
+        assert all(source.startswith("https://") for source in research["official_sources_checked"])
+        assert research["conclusion"] == "blocked-no-model-specific-license-grant"
+
+
+def test_primary_stack_cannot_be_approved_when_any_model_review_is_incomplete():
+    report = _report()
+    reviews = report["approval_matrix"]
+    assert {item["model_id"] for item in reviews} == REQUIRED_MODELS
+    assert any(item["decision"] == "blocked" for item in reviews)
+    assert report["primary_stack_decision"] == "blocked"
+    assert report["approved_for_dependency_addition"] is False
+    assert report["approved_for_default_distribution"] is False
+    for review in reviews:
+        assert review["decision"] == "blocked"
+        assert review["commercial_use"] == "unverified"
+        assert review["redistribution"] == "unverified"
+        assert review["notice_obligations"] == "unverified"
+
+
+def test_transitive_review_scope_and_runtime_matrix_are_explicit():
+    report = _report()
+    review = report["transitive_dependency_review"]
+    assert review["status"] == "blocked-not-locked"
+    assert review["root_requirements"] == [
+        "paddleocr==3.7.0",
+        "paddlepaddle==3.3.1",
+        "paddlex[ocr-core]>=3.7.0,<3.8.0",
+    ]
+    assert "paddlex[ocr-core]" in review["mandatory_review_scope"]
+    assert "bundled native libraries in paddlepaddle wheels" in review["mandatory_review_scope"]
+    assert review["forbidden_feature_extras"] == [
+        "doc-parser",
+        "genai-client",
+        "ie",
+        "trans",
+    ]
+    matrix = report["runtime_compatibility"]
+    assert matrix["decision"] == "blocked-runtime-policy-required"
+    assert matrix["project_ci_python"] == "3.12"
+    assert matrix["unsupported_python"] == ["3.14"]
+    assert matrix["required_resolution"] == "pin OCR worker runtime to CPython 3.12 or 3.13"
+
+
 def test_only_detection_and_recognition_models_are_candidates():
     report = _report()
     assert report["excluded_model_families"] == [
