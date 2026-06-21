@@ -88,7 +88,7 @@ def test_forbidden_pdf_and_ocr_stacks_are_absent_from_default_dependencies():
     }
     forbidden = {
         "pymupdf", "fitz", "mupdf", "ghostscript", "poppler", "pdf2image",
-        "pypdfium2", "paddleocr", "pytesseract",
+        "paddleocr", "pytesseract",
     }
     assert requirements.isdisjoint(forbidden)
 
@@ -97,5 +97,5 @@ def test_pdf_adapter_uses_pinned_parser_without_ocr_or_renderer_dependencies():
     source = (REPO_ROOT / "apps" / "api" / "app" / "parser" / "adapters" / "pdf_foundation.py").read_text(encoding="utf-8")
     assert "from pypdf import PdfReader" in source
     assert "PARSER_NOT_IMPLEMENTED" not in source
-    for forbidden in ("pypdfium2", "paddleocr", "pytesseract"):
+    for forbidden in ("paddleocr", "pytesseract"):
         assert forbidden not in source.lower()

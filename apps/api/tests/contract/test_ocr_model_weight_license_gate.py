@@ -25,9 +25,11 @@ def test_model_weight_license_report_exists_and_has_v352_schema():
     report = json.loads(REPORT.read_text(encoding="utf-8"))
     assert report["schema_version"] == "1"
     assert report["scope"] == "parser_ocr_runtime_assets"
-    assert report["assets"] == []
+    assert report["assets"]
     assert report["asset_types_in_scope"] == sorted(REQUIRED_ASSET_TYPES)
-    assert report["status"] == "no_real_ocr_runtime_assets_in_scope"
+    assert report["status"] == "pdf_renderer_runtime_asset_registered"
+    for asset in report["assets"]:
+        _validate_asset(asset)
 
 
 @pytest.mark.parametrize("asset_type", sorted(REQUIRED_ASSET_TYPES))

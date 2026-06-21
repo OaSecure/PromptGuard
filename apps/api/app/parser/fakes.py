@@ -112,6 +112,9 @@ class FakePdfRenderer:
             raise RuntimeError("fake renderer failure")
         return OcrImageInput(image_handle=f"fake-rendered-page-{page}", page=page)
 
+    def release(self, image: OcrImageInput) -> None:
+        return None
+
 
 class FakeOcrEngine:
     engine_id = "fake-ocr"

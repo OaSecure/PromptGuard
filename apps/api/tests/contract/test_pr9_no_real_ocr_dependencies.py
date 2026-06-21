@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 API_ROOT = Path(__file__).parents[2]
-FORBIDDEN = {"paddleocr", "pytesseract", "pypdfium2", "fitz", "pdf2image"}
+FORBIDDEN = {"paddleocr", "pytesseract", "fitz", "pdf2image"}
 PARSER_FAILURE_CODES = {
     "PDF_RENDER_FAILED",
     "OCR_ENGINE_UNAVAILABLE",
@@ -15,7 +15,7 @@ PARSER_FAILURE_CODES = {
 }
 
 
-def test_pr9_adds_no_real_ocr_or_pdf_renderer_dependency():
+def test_no_real_ocr_or_forbidden_pdf_renderer_dependency():
     requirements = (API_ROOT / "requirements.txt").read_text(encoding="utf-8").lower()
     assert all(name not in requirements for name in FORBIDDEN)
 
