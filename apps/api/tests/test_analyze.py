@@ -12,6 +12,7 @@ from sqlalchemy import Index
 from sqlalchemy.exc import IntegrityError
 
 from app.core.tokens import create_access_token
+from app.domain.types.policy import PolicyDecision
 from app.models.events import AnalysisEvent, EventDetection, EventInput, IdempotencyKey
 from app.models.filters import FilterRule
 from app.routes import analyze as analyze_route
@@ -881,6 +882,30 @@ def test_analyze_applies_block_mask_warn_action_priority() -> None:
     assert block_response.status_code == 200
     assert block_response.json()["action"] == "Block"
     assert block_response.json()["risk_level"] == "critical"
+
+
+def test_analyze_uses_policy_orchestrator_decision_without_recomputing_action() -> None:
+    class ForcedBlockPolicy:
+        def decide(self, _request):
+            return PolicyDecision(
+                action="block",
+                reason_code="INTERNAL_POLICY_REASON_UNMAPPED",
+                severity="high",
+            )
+
+    user = _user()
+    client, _ = _client(user, rules=[])
+    client.app.dependency_overrides[analyze_route.get_policy_orchestrator] = ForcedBlockPolicy
+
+    response = client.post(
+        "/prompts/analyze",
+        headers=_bearer_header(user.id),
+        json=_analyze_payload(_text_input("in_1", "ordinary text")),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["action"] == "Block"
+    assert response.json()["risk_score"] == 95
 
 
 def test_analyze_rejects_mixed_legacy_file_text_before_partial_processing() -> None:

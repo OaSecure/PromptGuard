@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.application.analyze.policy_adapter import build_policy_request, get_policy_orchestrator, to_legacy_action
 from app.core.config import Settings, get_settings
 from app.core.tokens import utc_now
 from app.interfaces.http.analyze_request import LegacyAnalyzeRequest, adapt_legacy_analyze_request
@@ -26,11 +27,11 @@ from app.runtime.ml_inference_queue import MlInferenceQueue
 from app.models.auth import User
 from app.models.events import AnalysisEvent, EventDetection, EventInput, IdempotencyKey
 from app.models.filters import FilterRule
+from app.ports.policy import PolicyOrchestratorPort
 from app.routes.auth import get_db_session, require_active_user
 from app.services.analyze_classifier import AnalyzeClassifierOutcome, AnalyzeVerifierConfig, evaluate_analyze_classifier
 from app.services.filter_rules import (
     RuleMatch,
-    action_for_matches,
     detections_for_masking,
     evaluate_filter_rules,
     load_active_filter_rules,
@@ -541,33 +542,6 @@ def input_results_for_payload(payload: AnalyzeRequest, detection_input_indexes: 
     return results
 
 
-def final_action_for_payload(action: str, payload: AnalyzeRequest) -> str:
-    if unavailable_inputs(payload):
-        return ACTION_BLOCK
-    return action
-
-
-def final_action_for_analyze_result(action: str, payload: AnalyzeRequest, matched_inputs: list[tuple[int, AnalyzeInput, list[RuleMatch]]]) -> str:
-    action = final_action_for_payload(action, payload)
-    has_non_composer_mask = any(
-        item.source != "composer" and any(match.action == ACTION_MASK for match in item_matches)
-        for _index, item, item_matches in matched_inputs
-    )
-    if action == ACTION_MASK and has_non_composer_mask:
-        return ACTION_BLOCK
-    return action
-
-
-def final_action_for_classifier_outcome(action: str, classifier_outcome: AnalyzeClassifierOutcome) -> str:
-    if not classifier_outcome.enabled:
-        return action
-    if classifier_outcome.failure is not None:
-        return ACTION_BLOCK
-    if action == ACTION_ALLOW and classifier_outcome.has_candidates:
-        return ACTION_WARN
-    return action
-
-
 def score_for_final_action(score: int, action: str) -> int:
     if action == ACTION_BLOCK:
         return max(score, 95)
@@ -707,6 +681,7 @@ async def analyze_prompt(
     verifier_config: AnalyzeVerifierConfig | None = Depends(get_analyze_verifier_config),
     inference_queue: MlInferenceQueue | None = Depends(get_ml_inference_queue),
     settings: Settings = Depends(get_settings),
+    policy_orchestrator: PolicyOrchestratorPort = Depends(get_policy_orchestrator),
 ) -> AnalyzeResponse:
     adapted_request = adapt_legacy_analyze_request(payload, current_user.login_id)
     payload = adapted_request.legacy_view
@@ -723,9 +698,7 @@ async def analyze_prompt(
     matches = [match for _index, _item, item_matches in matched_inputs for match in item_matches]
     detection_target = first_composer_input([(index, item) for index, item, item_matches in matched_inputs if item_matches])
     risk_score = score_for_matches(matches)
-    action = action_for_matches(matches)
     has_unavailable_input = bool(unavailable_inputs(payload))
-    action = final_action_for_analyze_result(action, payload, matched_inputs)
     classifier_outcome = (
         AnalyzeClassifierOutcome(enabled=False)
         if classifier_provider.failure is not None and classifier_provider.failure.code == "CLASSIFIER_RUNTIME_DISABLED"
@@ -738,7 +711,8 @@ async def analyze_prompt(
             inference_timeout_ms=settings.ml_inference_queue_timeout_ms,
         )
     )
-    action = final_action_for_classifier_outcome(action, classifier_outcome)
+    policy_request = build_policy_request(request_id, payload.inputs, matched_inputs, classifier_outcome)
+    action = to_legacy_action(policy_orchestrator.decide(policy_request).action)
     risk_score = score_for_final_action(risk_score, action)
     risk_level = risk_level_for_score(risk_score)
     masking_matches = []
