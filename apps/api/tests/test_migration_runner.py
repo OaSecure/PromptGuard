@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from alembic.config import Config
@@ -22,6 +23,10 @@ def load_env_example_text() -> str:
 
 def load_start_api_script() -> str:
     return (repo_api_root() / "scripts" / "start_api.sh").read_text(encoding="utf-8")
+
+
+def repo_root() -> Path:
+    return repo_api_root().parents[1]
 
 
 def get_migration_head() -> str:
@@ -56,6 +61,46 @@ def test_compose_uses_startup_runner_and_v1_admin_default() -> None:
     assert "ACCESS_TOKEN_SECRET=" not in start_api_script
     assert "REFRESH_TOKEN_SECRET=" not in start_api_script
     assert "DATABASE_URL=" not in start_api_script
+
+
+def test_compose_mounts_model_artifacts_read_only_and_documents_manifest_paths() -> None:
+    compose_text = load_compose_text()
+    env_example_text = load_env_example_text()
+
+    assert "./models:/opt/promptguard/models:ro" in compose_text
+    assert (
+        "PROMPTGUARD_CLASSIFIER_RUNTIME_ENABLED: ${PROMPTGUARD_CLASSIFIER_RUNTIME_ENABLED:-false}"
+        in compose_text
+    )
+    assert "PROMPTGUARD_CLASSIFIER_MANIFEST_PATH: ${PROMPTGUARD_CLASSIFIER_MANIFEST_PATH:-}" in compose_text
+    assert "PROMPTGUARD_VERIFIER_RUNTIME_ENABLED: ${PROMPTGUARD_VERIFIER_RUNTIME_ENABLED:-false}" in compose_text
+    assert "PROMPTGUARD_VERIFIER_MANIFEST_PATH: ${PROMPTGUARD_VERIFIER_MANIFEST_PATH:-}" in compose_text
+    assert "PROMPTGUARD_CLASSIFIER_MANIFEST_PATH=/opt/promptguard/models/context_lr_manifest.json" in env_example_text
+    assert (
+        "PROMPTGUARD_VERIFIER_MANIFEST_PATH=/opt/promptguard/models/context_roberta_verifier_manifest.json"
+        in env_example_text
+    )
+
+
+def test_model_artifact_directory_documents_samples_without_real_artifacts() -> None:
+    model_root = repo_root() / "models"
+    examples_root = model_root / "examples"
+    readme_text = (model_root / "README.md").read_text(encoding="utf-8")
+    lr_manifest = json.loads((examples_root / "context_lr_manifest.sample.json").read_text(encoding="utf-8"))
+    verifier_manifest = json.loads(
+        (examples_root / "context_roberta_verifier_manifest.sample.json").read_text(encoding="utf-8")
+    )
+    target_labels = json.loads((examples_root / "context_target_labels.sample.json").read_text(encoding="utf-8"))
+    label_definitions = json.loads((examples_root / "context_label_definitions.sample.json").read_text(encoding="utf-8"))
+
+    assert "./models:/opt/promptguard/models:ro" in readme_text
+    assert "Do not commit real model artifacts to Git" in readme_text
+    assert lr_manifest["selected"]["lr_model"].endswith(".joblib")
+    assert lr_manifest["selected"]["target_labels_json"] == "models/context_target_labels.sample.json"
+    assert verifier_manifest["selected"]["verifier_dir"].startswith("models/")
+    assert verifier_manifest["selected"]["label_definitions_json"] == "models/context_label_definitions.sample.json"
+    assert target_labels["target_labels"]
+    assert set(target_labels["target_labels"]) == set(label_definitions)
 
 
 def test_wbs48_required_metadata_tables_exist() -> None:

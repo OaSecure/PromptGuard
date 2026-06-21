@@ -22,6 +22,10 @@ services:
       DASHBOARD_CSRF_COOKIE_NAME: ${DASHBOARD_CSRF_COOKIE_NAME:-promptguard_dashboard_csrf}
       DASHBOARD_COOKIE_SECURE: ${DASHBOARD_COOKIE_SECURE:-false}
       DASHBOARD_COOKIE_SAMESITE: ${DASHBOARD_COOKIE_SAMESITE:-lax}
+      PROMPTGUARD_CLASSIFIER_RUNTIME_ENABLED: ${PROMPTGUARD_CLASSIFIER_RUNTIME_ENABLED:-false}
+      PROMPTGUARD_CLASSIFIER_MANIFEST_PATH: ${PROMPTGUARD_CLASSIFIER_MANIFEST_PATH:-}
+      PROMPTGUARD_VERIFIER_RUNTIME_ENABLED: ${PROMPTGUARD_VERIFIER_RUNTIME_ENABLED:-false}
+      PROMPTGUARD_VERIFIER_MANIFEST_PATH: ${PROMPTGUARD_VERIFIER_MANIFEST_PATH:-}
     ports:
       - "8000:8000"
     depends_on:
@@ -29,6 +33,7 @@ services:
         condition: service_healthy
     volumes:
       - ./apps/api:/app
+      - ./models:/opt/promptguard/models:ro
     command: /bin/sh /app/scripts/start_api.sh
 
   postgres:
