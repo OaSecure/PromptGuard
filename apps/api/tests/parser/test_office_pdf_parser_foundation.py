@@ -178,11 +178,13 @@ def test_pdf_foundation_recognizes_pdf_container_as_partial():
         ("slide", "slide_parse"),
     ],
 )
-def test_office_foundation_routes_docx_xlsx_pptx_contracts(file_kind, step_kind):
+def test_office_native_adapter_rejects_invalid_docx_xlsx_pptx_containers(file_kind, step_kind):
     result = OfficeParserFoundationAdapter(FakeResolvedFileContentSource(b"PK\x03\x04container")).execute_step(
         _step(step_kind), _payload(file_kind), _resolved_file(file_kind)
     )
-    _assert_partial_foundation(result, file_kind)
+    assert result.status == "failed"
+    assert result.failure is not None
+    assert result.failure.code == "PARSER_WORKER_FAILED"
 
 
 @pytest.mark.parametrize(
@@ -208,7 +210,7 @@ def test_empty_container_follows_existing_parsed_empty_contract(adapter, step_ki
     [
         (PdfParserFoundationAdapter(FakeResolvedFileContentSource(b"not-pdf")), "pdf_native_text_extract", "pdf"),
         (OfficeParserFoundationAdapter(FakeResolvedFileContentSource(b"not-office")), "office_parse", "office_document"),
-        (OfficeParserFoundationAdapter(FakeResolvedFileContentSource(b"not-office")), "spreadsheet_parse", "spreadsheet"),
+        (OfficeParserFoundationAdapter(FakeResolvedFileContentSource(b"PK malformed")), "spreadsheet_parse", "spreadsheet"),
         (OfficeParserFoundationAdapter(FakeResolvedFileContentSource(b"not-office")), "slide_parse", "slide"),
     ],
 )
@@ -282,9 +284,14 @@ def test_runner_executor_registry_foundation_smoke(
         ParserPlanExecutor(registry),
     )
     result = runner.run(_payload(file_kind))
-    assert result.parser_status == "partial"
-    assert result.failure is not None
-    assert result.failure.code == "PARSER_NOT_IMPLEMENTED"
+    if file_kind == "pdf":
+        assert result.parser_status == "partial"
+        assert result.failure is not None
+        assert result.failure.code == "PARSER_NOT_IMPLEMENTED"
+    else:
+        assert result.parser_status == "failed"
+        assert result.failure is not None
+        assert result.failure.code == "PARSER_WORKER_FAILED"
 
 
 def test_office_pdf_adapters_do_not_import_forbidden_pipeline_or_parser_dependencies():
