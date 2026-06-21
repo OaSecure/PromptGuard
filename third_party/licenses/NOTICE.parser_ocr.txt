@@ -1,6 +1,10 @@
-pypdf 6.13.3
+Parser/OCR Third-Party Notices
+
+Component: pypdf
+Version: 6.13.3
 License: BSD-3-Clause
 Source: https://pypi.org/project/pypdf/6.13.3/
+Required attribution: Preserve the following copyright and license notice.
 
 Copyright (c) 2006-2008, Mathieu Fenniak
 Some contributions copyright (c) 2007, Ashish Kulkarni <kulkarni.ashish@gmail.com>

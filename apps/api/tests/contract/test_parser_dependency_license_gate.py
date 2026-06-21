@@ -36,11 +36,13 @@ def test_pypdf_license_is_allowed_by_parser_policy():
     decision = report["decisions"][0]
     assert decision == {
         "decision": "allow",
+        "denial_reason": None,
         "license_id": "BSD-3-Clause",
         "name": "pypdf",
         "notice_license_preservation_required": True,
         "reason": "permissive_license",
         "source_disclosure_required": False,
+        "source_disclosure_risk": False,
         "version": PYPDF_VERSION,
     }
 
@@ -62,6 +64,8 @@ def test_license_artifacts_have_only_required_deterministic_fields():
         "transitive_dependencies", "transitive_dependency_status", "version",
     ]
     assert list(report) == ["decisions", "ocr_model_weights", "schema_version", "scope"]
+    assert sbom["schema_version"] == "2"
+    assert report["schema_version"] == "2"
     assert report["ocr_model_weights"] == {
         "reason": "no_ocr_model_dependency_in_scope",
         "status": "not_applicable",
@@ -70,7 +74,8 @@ def test_license_artifacts_have_only_required_deterministic_fields():
 
 def test_notice_contains_pinned_component_and_required_attribution():
     notice = NOTICE.read_text(encoding="utf-8")
-    assert f"pypdf {PYPDF_VERSION}" in notice
+    assert "Component: pypdf" in notice
+    assert f"Version: {PYPDF_VERSION}" in notice
     assert "BSD-3-Clause" in notice
     assert "Copyright (c) 2006-2008, Mathieu Fenniak" in notice
 
