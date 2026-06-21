@@ -63,7 +63,7 @@ def project_rows(session):
     inputs = sorted((item for item in session.added if isinstance(item, EventInput)), key=lambda item: item.input_index)
     detections = sorted((item for item in session.added if isinstance(item, EventDetection)), key=lambda item: (item.input_index, item.type))
     event_keys = ["login_id", "client_request_id", "action", "risk_score", "risk_level", "filter_config_revision", "service", "service_domain", "platform"]
-    input_keys = ["input_id", "input_index", "kind", "source", "size_bytes", "content_included", "content_scanned", "decision_basis", "content_unavailable_reason", "limit_exceeded"]
+    input_keys = ["input_id", "input_index", "kind", "source", "size_bucket", "content_included", "content_scanned", "decision_basis", "content_unavailable_reason", "limit_exceeded"]
     detection_keys = ["input_id", "input_index", "kind", "input_source", "action", "placeholder", "category", "type", "source", "severity", "confidence", "count", "reason_code", "match_count", "safe_evidence", "matched_keywords", "evidence_counts"]
     return {"event": {key: getattr(event, key) for key in event_keys},
             "inputs": [{key: getattr(row, key) for key in input_keys} for row in inputs],
