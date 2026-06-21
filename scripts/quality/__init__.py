@@ -1,0 +1,1 @@
+"""Static quality ratchet helpers."""

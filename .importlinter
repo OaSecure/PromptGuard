@@ -1,0 +1,48 @@
+[importlinter]
+root_package = app
+
+[importlinter:contract:domain_ports]
+name = Domain and ports do not depend on delivery or infrastructure
+type = forbidden
+source_modules =
+    app.domain
+    app.ports
+forbidden_modules =
+    app.routes
+    app.db
+    app.models
+    app.infrastructure
+    app.runtime
+    app.services
+
+[importlinter:contract:policy]
+name = Policy domain stays independent
+type = forbidden
+source_modules =
+    app.domain.policy
+forbidden_modules =
+    app.routes
+    app.db
+    app.models
+    app.parser
+    app.scanner
+    app.ml
+
+[importlinter:contract:response]
+name = Response adapter does not depend on persistence
+type = forbidden
+source_modules =
+    app.interfaces.http.response_adapter
+forbidden_modules =
+    app.db
+    app.models
+    app.events
+
+[importlinter:contract:ml_http]
+name = ML and workers do not depend on HTTP routes
+type = forbidden
+source_modules =
+    app.ml
+    app.runtime
+forbidden_modules =
+    app.routes
