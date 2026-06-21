@@ -74,6 +74,7 @@ def test_parser_ocr_requirements_are_exactly_pinned_and_match_artifacts():
     artifact_versions = {
         component["name"].lower(): component["version"]
         for component in _json("parser_ocr_sbom.json")["components"]
+        if component["dependency_type"] == "direct"
     }
     parser_requirements = PARSER_OCR_PACKAGES & set(requirements)
     assert parser_requirements

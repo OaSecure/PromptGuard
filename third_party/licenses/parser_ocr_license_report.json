@@ -10,6 +10,28 @@
       "source_disclosure_required": false,
       "source_disclosure_risk": false,
       "version": "6.13.3"
+    },
+    {
+      "decision": "allow",
+      "denial_reason": null,
+      "license_id": "BSD-3-Clause OR Apache-2.0",
+      "name": "pypdfium2",
+      "notice_license_preservation_required": true,
+      "reason": "permissive_license",
+      "source_disclosure_required": false,
+      "source_disclosure_risk": false,
+      "version": "5.10.1"
+    },
+    {
+      "decision": "allow",
+      "denial_reason": null,
+      "license_id": "BSD-3-Clause",
+      "name": "PDFium",
+      "notice_license_preservation_required": true,
+      "reason": "permissive_bundled_native_runtime",
+      "source_disclosure_required": false,
+      "source_disclosure_risk": false,
+      "version": "151.0.7891.0"
     }
   ],
   "ocr_model_weights": {

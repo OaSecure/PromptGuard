@@ -34,3 +34,18 @@ INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
 CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 POSSIBILITY OF SUCH DAMAGE.
+
+Component: pypdfium2
+Version: 5.10.1
+License: BSD-3-Clause OR Apache-2.0
+Source: https://pypi.org/project/pypdfium2/5.10.1/
+Required attribution: Preserve the pypdfium2 and bundled dependency license notices.
+
+Component: PDFium
+Version: 151.0.7891.0
+License: BSD-3-Clause
+Source: https://pdfium.googlesource.com/pdfium/
+Required attribution: Preserve the PDFium copyright and BSD-style license notice shipped in the pypdfium2 wheel.
+Bundled license inventory: abseil, agg23, fast_float, freetype, ICU, lcms,
+libjpeg-turbo, libopenjpeg, libpng, libtiff, zlib. The authoritative license
+texts are distributed inside the pinned pypdfium2 wheel.
