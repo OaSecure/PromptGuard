@@ -130,7 +130,7 @@ class FakeOcrEngine:
     def recognize(self, image: OcrImageInput, options: OcrOptions) -> OcrResult:
         page = image.page
         if page is None:
-            raise ValueError("OCR_PAGE_REQUIRED")
+            raise ValueError("OCR_FAILED")
         self.calls.append(page)
         if self.exception_message is not None:
             raise RuntimeError(self.exception_message)
@@ -139,9 +139,9 @@ class FakeOcrEngine:
                 status="failed",
                 engine_id=self.engine_id,
                 failure=PipelineFailure(
-                    code="OCR_ENGINE_FAILED",
-                    message="OCR_ENGINE_FAILED",
-                    metadata={"failure_code": "OCR_ENGINE_FAILED"},
+                    code="OCR_FAILED",
+                    message="OCR_FAILED",
+                    metadata={"failure_code": "OCR_FAILED"},
                 ),
             )
         text = self.text_by_page.get(page, "")

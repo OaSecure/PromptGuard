@@ -80,7 +80,7 @@ def test_page_failure_preserves_native_and_successful_ocr_blocks():
         (1, "ocr success"), (2, "native page two")
     ]
     assert result.parser_status == "partial"
-    assert result.failure.code == "PDF_PAGE_RENDER_FAILED"
+    assert result.failure.code == "PDF_RENDER_FAILED"
 
 
 def test_ocr_failure_is_sanitized_and_preserves_available_blocks(caplog):
@@ -93,7 +93,7 @@ def test_ocr_failure_is_sanitized_and_preserves_available_blocks(caplog):
     )
     exposed = result.failure.message + repr(result.failure.metadata) + repr(result.document.metadata) + caplog.text
     assert result.parser_status == "partial"
-    assert result.failure.code == "OCR_ENGINE_FAILED"
+    assert result.failure.code == "OCR_FAILED"
     for forbidden in ("PRIVATE_RAW_EXCEPTION", "secret.pdf", "PRIVATE_RUNTIME_REF", "file_ref", "base64"):
         assert forbidden not in exposed
 

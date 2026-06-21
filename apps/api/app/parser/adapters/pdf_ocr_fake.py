@@ -35,20 +35,20 @@ class PdfSelectedPageOcrIntegrator:
             try:
                 image = self._renderer.render_page(runtime_ref, page_index)
             except Exception:
-                logger.error("PDF page rendering failed", extra={"failure_code": "PDF_PAGE_RENDER_FAILED"})
-                failure_code = failure_code or "PDF_PAGE_RENDER_FAILED"
+                logger.error("PDF page rendering failed", extra={"failure_code": "PDF_RENDER_FAILED"})
+                failure_code = failure_code or "PDF_RENDER_FAILED"
                 statuses.append("failed")
                 continue
             try:
                 ocr_result = self._ocr_engine.recognize(image, options)
             except Exception:
-                logger.error("OCR recognition failed", extra={"failure_code": "OCR_ENGINE_FAILED"})
-                failure_code = failure_code or "OCR_ENGINE_FAILED"
+                logger.error("OCR recognition failed", extra={"failure_code": "OCR_FAILED"})
+                failure_code = failure_code or "OCR_FAILED"
                 statuses.append("failed")
                 continue
             statuses.append(ocr_result.status)
             if ocr_result.status == "failed":
-                failure_code = failure_code or "OCR_ENGINE_FAILED"
+                failure_code = failure_code or "OCR_FAILED"
                 continue
             for ordinal, block in enumerate(ocr_result.blocks, start=1):
                 if not block.text:
