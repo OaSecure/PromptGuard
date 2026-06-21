@@ -1,0 +1,12 @@
+{
+  "asset_types_in_scope": [
+    "language_pack",
+    "native_library_binding",
+    "ocr_model_weight",
+    "pdf_renderer_binary"
+  ],
+  "assets": [],
+  "schema_version": "1",
+  "scope": "parser_ocr_runtime_assets",
+  "status": "no_real_ocr_runtime_assets_in_scope"
+}
