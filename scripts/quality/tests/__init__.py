@@ -1,0 +1,1 @@
+"""Quality runner self-tests."""
