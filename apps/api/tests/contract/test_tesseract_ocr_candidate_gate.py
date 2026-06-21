@@ -2,7 +2,6 @@ import ast
 import json
 from pathlib import Path
 
-
 ROOT = Path(__file__).parents[4]
 API = ROOT / "apps" / "api"
 REPORT = ROOT / "third_party" / "licenses" / "tesseract_ocr_candidate_report.json"
@@ -76,8 +75,7 @@ def test_offline_policy_forbids_runtime_download_and_network():
 
 def test_blocked_candidate_is_absent_from_requirements_active_artifacts_and_app_imports():
     requirement_text = "\n".join(
-        path.read_text(encoding="utf-8").lower()
-        for path in (API / "requirements.txt", API / "requirements-ocr.lock")
+        path.read_text(encoding="utf-8").lower() for path in (API / "requirements.txt", API / "requirements-ocr.lock")
     )
     assert "pytesseract" not in requirement_text
     active = "\n".join(
@@ -94,15 +92,10 @@ def test_blocked_candidate_is_absent_from_requirements_active_artifacts_and_app_
     for path in (API / "app").rglob("*.py"):
         tree = ast.parse(path.read_text(encoding="utf-8"))
         imports = {
-            alias.name.split(".")[0]
-            for node in ast.walk(tree)
-            if isinstance(node, ast.Import)
-            for alias in node.names
+            alias.name.split(".")[0] for node in ast.walk(tree) if isinstance(node, ast.Import) for alias in node.names
         }
         imports.update(
-            node.module.split(".")[0]
-            for node in ast.walk(tree)
-            if isinstance(node, ast.ImportFrom) and node.module
+            node.module.split(".")[0] for node in ast.walk(tree) if isinstance(node, ast.ImportFrom) and node.module
         )
         if imports & {"pytesseract", "tesserocr"}:
             offenders.append(str(path.relative_to(API)))
