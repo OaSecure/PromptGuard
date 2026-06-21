@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from app.domain.types.common import SizeBucket
 
 ONE_MIB = 1_048_576

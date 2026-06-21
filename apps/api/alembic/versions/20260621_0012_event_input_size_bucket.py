@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """Replace exact event input size with a coarse privacy bucket.
 
 Revision ID: 20260621_0012
