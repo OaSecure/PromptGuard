@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import json
 import re
 import uuid
@@ -9,7 +10,6 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
-from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,6 +17,7 @@ from app.application.analyze.policy_adapter import build_policy_request, get_pol
 from app.core.config import Settings, get_settings
 from app.core.tokens import utc_now
 from app.interfaces.http.analyze_request import LegacyAnalyzeRequest, adapt_legacy_analyze_request
+from app.interfaces.http.response_adapter import AnalyzeInputResult, AnalyzeResponse, build_analyze_response
 from app.masking.placeholder import apply_placeholders
 from app.ml.classifier.factory import ClassifierRuntimeProviderResult, build_classifier_service_from_settings
 from app.ml.embedding import create_qwen3_backend
@@ -25,8 +26,9 @@ from app.ml.gpu_capacity import GpuWorkerCapacityPolicy, TorchCudaGpuCapacityPro
 from app.ml.verifier import VerifierServiceBuildError, build_verifier_service_from_manifest
 from app.runtime.ml_inference_queue import MlInferenceQueue
 from app.models.auth import User
-from app.models.events import AnalysisEvent, EventDetection, EventInput, IdempotencyKey
 from app.models.filters import FilterRule
+from app.events.writer import SqlAlchemyEventWriter, load_idempotency_event_id as load_idempotency_key
+from app.privacy import serialize_event_write
 from app.ports.policy import PolicyOrchestratorPort
 from app.routes.auth import get_db_session, require_active_user
 from app.services.analyze_classifier import AnalyzeClassifierOutcome, AnalyzeVerifierConfig, evaluate_analyze_classifier
@@ -54,16 +56,8 @@ SECRET_LIKE_ID_RE = re.compile(
     re.IGNORECASE,
 )
 
-ACTION_ALLOW = "ALLOW"
-ACTION_WARN = "WARN"
 ACTION_MASK = "MASK"
 ACTION_BLOCK = "BLOCK"
-PUBLIC_ACTIONS = {
-    ACTION_ALLOW: "Allow",
-    ACTION_WARN: "Warn",
-    ACTION_MASK: "Mask",
-    ACTION_BLOCK: "Block",
-}
 
 TEXT_SOURCES = ("composer", "converted_paste")
 CONTENT_UNAVAILABLE_REASONS = ("oversized", "unsupported", "metadata_only", "unavailable")
@@ -229,75 +223,6 @@ def unsafe_metadata_keys(value: Any) -> list[str]:
     return []
 
 
-class AnalyzeDetection(BaseModel):
-    input_id: str
-    input_index: int
-    kind: str
-    category: str
-    type: str
-    source: str
-    rule_id: str | None = None
-    detector_id: str | None = None
-    severity: Literal["low", "medium", "high", "critical"]
-    action: Literal["Allow", "Warn", "Mask", "Block"]
-    placeholder: str | None = None
-    confidence: int
-    reason_code: str
-    match_count: int
-
-
-class AnalyzeInputResult(BaseModel):
-    input_id: str
-    input_index: int
-    kind: Literal["text", "file_reference", "attachment_metadata", "unsupported_attachment"]
-    source: Literal["composer", "converted_paste", "attached_file", "pasted_file", "pasted_image", "screenshot_image", "attachment_chip"]
-    content_included: bool
-    content_scanned: bool
-    decision_basis: Literal["no_detection", "detection", "content_unavailable", "metadata_only"]
-    content_unavailable_reason: str | None = None
-    limit_exceeded: str | None = None
-
-
-class ContentUnavailableInput(BaseModel):
-    input_id: str
-    input_index: int
-    kind: Literal["text", "file_reference", "attachment_metadata", "unsupported_attachment"]
-    source: Literal["composer", "converted_paste", "attached_file", "pasted_file", "pasted_image", "screenshot_image", "attachment_chip"]
-    reason: str
-    limit_exceeded: str | None = None
-
-
-class BusinessContextMatch(BaseModel):
-    input_id: str
-    input_index: int
-    kind: str
-    source: str
-    category: str
-    reason_code: str
-    match_count: int
-    matched_keywords: list[str]
-    evidence_counts: dict[str, int]
-
-
-class AnalyzeResponse(BaseModel):
-    event_id: uuid.UUID
-    request_id: str
-    action: Literal["Allow", "Warn", "Mask", "Block"]
-    checked_at: datetime
-    risk_score: int
-    risk_level: Literal["low", "medium", "high", "critical"]
-    user_message: str
-    allow_original_send: bool
-    requires_user_confirmation: bool
-    detections: list[AnalyzeDetection]
-    input_results: list[AnalyzeInputResult]
-    content_unavailable_inputs: list[ContentUnavailableInput]
-    business_context_matches: list[BusinessContextMatch]
-    client_request_id: str
-    filter_config_revision: str
-    masked_prompt: str | None = None
-
-
 def risk_level_for_score(score: int) -> Literal["low", "medium", "high", "critical"]:
     if score >= 90:
         return "critical"
@@ -306,160 +231,6 @@ def risk_level_for_score(score: int) -> Literal["low", "medium", "high", "critic
     if score >= 40:
         return "medium"
     return "low"
-
-
-def response_detections(matched_inputs: list[tuple[int, AnalyzeInput, list[RuleMatch]]]) -> list[AnalyzeDetection]:
-    detections: list[AnalyzeDetection] = []
-    for input_index, input_item, matches in matched_inputs:
-        for match in matches:
-            detections.append(
-                AnalyzeDetection(
-                    input_id=input_item.input_id,
-                    input_index=input_index,
-                    kind=input_item.kind,
-                    category=match.category,
-                    type=match.type,
-                    source=input_item.source,
-                    rule_id=match.rule_id,
-                    detector_id=match.detector_id,
-                    severity=match.severity,
-                    action=public_action(match.action),
-                    placeholder=match.type,
-                    confidence=match.confidence,
-                    reason_code=match.reason_code,
-                    match_count=match.match_count,
-                )
-            )
-    return detections
-
-
-def business_context_matches(matched_inputs: list[tuple[int, AnalyzeInput, list[RuleMatch]]]) -> list[BusinessContextMatch]:
-    context_matches: list[BusinessContextMatch] = []
-    for input_index, input_item, matches in matched_inputs:
-        for match in matches:
-            if match.source != "custom_context_rule":
-                continue
-            matched_keywords = match.safe_evidence.get(
-                "matched_pattern_ids", match.safe_evidence.get("matched_keywords", [])
-            )
-            if not isinstance(matched_keywords, list):
-                matched_keywords = []
-            context_matches.append(
-                BusinessContextMatch(
-                    input_id=input_item.input_id,
-                    input_index=input_index,
-                    kind=input_item.kind,
-                    source=input_item.source,
-                    category=match.category,
-                    reason_code=match.reason_code,
-                    match_count=match.match_count,
-                    matched_keywords=[item for item in matched_keywords if isinstance(item, str)],
-                    evidence_counts={"matched_condition_count": match.match_count},
-                )
-            )
-    return context_matches
-
-
-def event_input_rows(event_id: uuid.UUID, input_results: list[AnalyzeInputResult], payload: AnalyzeRequest) -> list[EventInput]:
-    inputs_by_index = {index: item for index, item in enumerate(payload.inputs)}
-    rows: list[EventInput] = []
-    for result in input_results:
-        if result.kind == "file_reference":
-            continue
-        input_item = inputs_by_index[result.input_index]
-        rows.append(
-            EventInput(
-                id=uuid.uuid4(),
-                event_id=event_id,
-                input_id=result.input_id,
-                input_index=result.input_index,
-                kind=result.kind,
-                source=result.source,
-                size_bytes=input_item.size_bytes,
-                content_included=result.content_included,
-                content_scanned=result.content_scanned,
-                decision_basis=result.decision_basis,
-                content_unavailable_reason=result.content_unavailable_reason,
-                limit_exceeded=result.limit_exceeded,
-            )
-        )
-    return rows
-
-
-def matched_keywords_for_evidence(safe_evidence: dict[str, Any]) -> list[str]:
-    matched_keywords = safe_evidence.get(
-        "matched_pattern_ids", safe_evidence.get("matched_keywords", [])
-    )
-    if not isinstance(matched_keywords, list):
-        return []
-    return [item for item in matched_keywords if isinstance(item, str)]
-
-
-def evidence_counts_for_match(match: RuleMatch) -> dict[str, Any]:
-    counts: dict[str, Any] = {"match_count": match.match_count}
-    if match.source == "custom_context_rule":
-        counts["matched_condition_count"] = match.match_count
-    return counts
-
-
-def event_detection_rows(event_id: uuid.UUID, matched_inputs: list[tuple[int, AnalyzeInput, list[RuleMatch]]]) -> list[EventDetection]:
-    rows: list[EventDetection] = []
-    for input_index, input_item, matches in matched_inputs:
-        for match in matches:
-            rows.append(
-                EventDetection(
-                    id=uuid.uuid4(),
-                    event_id=event_id,
-                    input_id=input_item.input_id,
-                    input_index=input_index,
-                    kind=input_item.kind,
-                    input_source=input_item.source,
-                    filter_rule_id=match.rule_id,
-                    detector_id=match.detector_id,
-                    action=match.action,
-                    placeholder=match.type,
-                    category=match.category,
-                    type=match.type,
-                    source=match.source,
-                    severity=match.severity,
-                    confidence=match.confidence,
-                    count=match.count,
-                    reason_code=match.reason_code,
-                    match_count=match.match_count,
-                    safe_evidence=match.safe_evidence,
-                    matched_keywords=matched_keywords_for_evidence(match.safe_evidence),
-                    evidence_counts=evidence_counts_for_match(match),
-                )
-            )
-    return rows
-
-
-def user_message_for_action(action: str, has_unavailable_input: bool) -> str:
-    if action == ACTION_BLOCK and has_unavailable_input:
-        return "One or more inputs could not be scanned safely, so the send attempt was blocked."
-    if action == ACTION_MASK:
-        return "Sensitive data was detected and replaced with placeholders."
-    if action == ACTION_WARN:
-        return "Sensitive or governed content was detected. Review before sending."
-    if action == ACTION_BLOCK:
-        return "Sensitive or governed content was detected and should not be sent."
-    return "No sensitive data was detected."
-
-
-def public_action(action: str) -> Literal["Allow", "Warn", "Mask", "Block"]:
-    return PUBLIC_ACTIONS.get(action, "Block")  # type: ignore[return-value]
-
-
-def allow_original_send(action: str) -> bool:
-    return action in {ACTION_ALLOW, ACTION_WARN}
-
-
-def requires_user_confirmation(action: str, matches: list[RuleMatch]) -> bool:
-    if action == ACTION_BLOCK:
-        return False
-    if action == ACTION_WARN:
-        return True
-    return action == ACTION_MASK and any(match.action == ACTION_WARN for match in matches)
 
 
 def included_text_inputs(payload: AnalyzeRequest) -> list[tuple[int, AnalyzeInput]]:
@@ -487,27 +258,6 @@ def first_composer_input(text_inputs: list[tuple[int, AnalyzeInput]]) -> tuple[i
 
 def unavailable_inputs(payload: AnalyzeRequest) -> list[tuple[int, AnalyzeInput]]:
     return [(index, item) for index, item in enumerate(payload.inputs) if not item.content_included]
-
-
-def content_unavailable_summaries(payload: AnalyzeRequest) -> list[ContentUnavailableInput]:
-    summaries: list[ContentUnavailableInput] = []
-    for index, item in unavailable_inputs(payload):
-        reason = item.content_unavailable_reason
-        if reason is None and item.kind == "attachment_metadata":
-            reason = "metadata_only"
-        if reason is None:
-            reason = "unavailable"
-        summaries.append(
-            ContentUnavailableInput(
-                input_id=item.input_id,
-                input_index=index,
-                kind=item.kind,
-                source=item.source,
-                reason=reason,
-                limit_exceeded=item.limit_exceeded,
-            )
-        )
-    return summaries
 
 
 def input_results_for_payload(payload: AnalyzeRequest, detection_input_indexes: set[int]) -> list[AnalyzeInputResult]:
@@ -546,20 +296,6 @@ def score_for_final_action(score: int, action: str) -> int:
     if action == ACTION_BLOCK:
         return max(score, 95)
     return score
-
-
-async def load_idempotency_key(
-    session: AsyncSession,
-    login_id: str,
-    client_request_id: str,
-) -> IdempotencyKey | None:
-    result = await session.execute(
-        select(IdempotencyKey).where(
-            IdempotencyKey.login_id == login_id,
-            IdempotencyKey.client_request_id == client_request_id,
-        )
-    )
-    return result.scalars().first()
 
 
 def duplicate_request_error() -> HTTPException:
@@ -698,7 +434,6 @@ async def analyze_prompt(
     matches = [match for _index, _item, item_matches in matched_inputs for match in item_matches]
     detection_target = first_composer_input([(index, item) for index, item, item_matches in matched_inputs if item_matches])
     risk_score = score_for_matches(matches)
-    has_unavailable_input = bool(unavailable_inputs(payload))
     classifier_outcome = (
         AnalyzeClassifierOutcome(enabled=False)
         if classifier_provider.failure is not None and classifier_provider.failure.code == "CLASSIFIER_RUNTIME_DISABLED"
@@ -727,57 +462,24 @@ async def analyze_prompt(
     detection_input_indexes = {index for index, _item, item_matches in matched_inputs if item_matches}
     input_results = input_results_for_payload(payload, detection_input_indexes)
 
-    event = AnalysisEvent(
-        id=event_id,
-        user_id=current_user.id,
-        login_id=current_user.login_id,
-        client_request_id=payload.client_request_id,
-        action=action,
-        risk_score=risk_score,
-        risk_level=risk_level,
-        filter_config_revision=payload.filter_config_revision,
-        service=payload.context.ai_service,
-        service_domain=payload.context.ai_service_domain,
-        platform=payload.context.browser,
+    event_projection = serialize_event_write(
+        event_id=event_id, user_id=current_user.id, login_id=current_user.login_id,
+        payload=payload, action=action, risk_score=risk_score, risk_level=risk_level,
+        input_results=input_results, matched_inputs=matched_inputs,
+        idempotency_expires_at=checked_at + IDEMPOTENCY_TTL,
     )
-    session.add(event)
-    for row in event_input_rows(event_id, input_results, payload):
-        session.add(row)
-    for row in event_detection_rows(event_id, matched_inputs):
-        session.add(row)
-    session.add(
-        IdempotencyKey(
-            login_id=current_user.login_id,
-            client_request_id=payload.client_request_id,
-            event_id=event_id,
-            expires_at=checked_at + IDEMPOTENCY_TTL,
-        )
-    )
-
     current_user.last_event_at = checked_at
     try:
-        await session.commit()
+        await SqlAlchemyEventWriter(session).write(event_projection)
     except IntegrityError as exc:
-        await session.rollback()
         if is_idempotency_conflict(exc):
             raise duplicate_request_error() from exc
         raise
 
-    return AnalyzeResponse(
-        event_id=event_id,
-        request_id=request_id,
-        action=public_action(action),
-        checked_at=checked_at,
-        risk_score=risk_score,
-        risk_level=risk_level,
-        user_message=user_message_for_action(action, has_unavailable_input),
-        allow_original_send=allow_original_send(action),
-        requires_user_confirmation=requires_user_confirmation(action, matches),
-        detections=response_detections(matched_inputs),
-        input_results=input_results,
-        content_unavailable_inputs=content_unavailable_summaries(payload),
-        business_context_matches=business_context_matches(matched_inputs),
-        client_request_id=payload.client_request_id,
-        filter_config_revision=payload.filter_config_revision,
+    return build_analyze_response(
+        event_id=event_id, request_id=request_id, checked_at=checked_at, action=action,
+        risk_score=risk_score, risk_level=risk_level, payload=payload,
+        matched_inputs=matched_inputs, input_results=input_results,
         masked_prompt=masked.text if masked is not None else None,
+        masked_source=detection_target[1].source if detection_target is not None else None,
     )

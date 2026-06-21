@@ -155,7 +155,7 @@ def _input(
         input_index=input_index,
         kind=kind,
         source=source,
-        size_bytes=64,
+        size_bucket="small",
         content_included=content_included,
         content_scanned=content_scanned,
         decision_basis=decision_basis,

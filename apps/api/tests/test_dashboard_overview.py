@@ -123,7 +123,7 @@ def _event_input(
         input_index=input_index,
         kind="text",
         source="composer",
-        size_bytes=0,
+        size_bucket="empty",
         content_included=content_included,
         content_scanned=content_included,
         decision_basis=decision_basis,

@@ -103,7 +103,7 @@ class EventInput(Base):
     input_index: Mapped[int] = mapped_column(Integer, nullable=False)
     kind: Mapped[str] = mapped_column(String(40), nullable=False)
     source: Mapped[str] = mapped_column(String(40), nullable=False)
-    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    size_bucket: Mapped[str] = mapped_column(String(20), nullable=False)
     content_included: Mapped[bool] = mapped_column(Boolean, nullable=False)
     content_scanned: Mapped[bool] = mapped_column(Boolean, nullable=False)
     decision_basis: Mapped[str] = mapped_column(String(40), nullable=False)
@@ -115,9 +115,9 @@ class EventInput(Base):
 
     __table_args__ = (
         CheckConstraint("input_index >= 0", name="ck_event_inputs_input_index_non_negative"),
-        CheckConstraint("size_bytes >= 0", name="ck_event_inputs_size_bytes_non_negative"),
+        CheckConstraint("size_bucket in ('empty', 'small', 'medium', 'large')", name="ck_event_inputs_size_bucket"),
         CheckConstraint(
-            "kind in ('text', 'attachment_metadata', 'unsupported_attachment')",
+            "kind in ('text', 'file_reference', 'attachment_metadata', 'unsupported_attachment')",
             name="ck_event_inputs_kind",
         ),
         CheckConstraint(

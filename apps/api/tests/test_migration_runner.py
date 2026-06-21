@@ -65,7 +65,7 @@ def test_wbs48_required_metadata_tables_exist() -> None:
     assert "event_inputs" in table_names
     assert "idempotency_keys" in table_names
     assert "audit_logs" in table_names
-    assert get_migration_head() == "20260620_0011"
+    assert get_migration_head() == "20260621_0012"
 
 
 def test_audit_logs_schema_is_metadata_only_with_required_indexes() -> None:
