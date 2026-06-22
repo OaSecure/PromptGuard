@@ -17,7 +17,7 @@ def test_candidate_stays_blocked_until_artifacts_and_native_dependencies_are_rev
     report = _report()
     assert report["schema_version"] == "1"
     assert report["scope"] == "development_contract_pr10_b3_a"
-    assert report["validation_phase"] == "pr10_b3_e_isolated_validation_evidence_capture"
+    assert report["validation_phase"] == "pr10_b3_f_linux_artifact_pin_gate"
     assert report["status"] == "additional-validation-required"
     assert report["approved_for_dependency_addition"] is False
     assert report["approved_for_default_distribution"] is False
@@ -31,6 +31,9 @@ def test_engine_and_optional_wrapper_are_exact_and_permissively_licensed():
     assert engine["version"] == "5.5.2"
     assert engine["license_id"] == "Apache-2.0"
     assert engine["official_release_url"].startswith("https://github.com/tesseract-ocr/")
+    assert engine["candidate_role"] == "source-and-license-review-only"
+    assert engine["verified_binary_artifact"] is False
+    assert engine["source_archive_sha256_status"] == "artifact-inspection-required"
     wrapper = report["python_wrapper_candidate"]
     assert wrapper["name"] == "pytesseract"
     assert wrapper["version"] == "0.3.13"
@@ -75,7 +78,7 @@ def test_native_dependency_and_platform_provenance_remain_blockers():
     assert native["status"] == "ubuntu-ci-inventory-captured-other-platforms-blocked"
     platforms = report["platform_delivery"]
     assert platforms["linux"]["status"] == "ubuntu-ci-evidence-captured-production-pin-required"
-    assert platforms["windows"]["status"] == "official-project-binary-unavailable"
+    assert platforms["windows"]["status"] == "blocked/unverified"
     assert platforms["linux"]["candidates"] == ["distribution package", "pinned internally built source package"]
 
 
@@ -219,6 +222,45 @@ def test_isolated_ci_evidence_records_hashes_runtime_and_remaining_mismatch():
     assert evidence["runtime_tests"]["runtime_network_deny"]["conclusion"] == "success"
     assert evidence["windows_provenance"]["third_party_or_internal_binary_verified"] is False
     assert evidence["unverified_or_blocked"]
+
+
+def test_verified_linux_artifact_is_separate_from_552_source_candidate():
+    report = _report()
+    candidate = report["verified_linux_candidate"]
+    evidence = json.loads(EVIDENCE.read_text(encoding="utf-8"))
+    linux = evidence["linux_runtime"]
+    assert report["engine_candidate"]["version"] == "5.5.2"
+    assert candidate["package"] == "tesseract-ocr 5.3.4-1build5 amd64"
+    assert candidate["binary_path"] == "/usr/bin/tesseract"
+    assert candidate["binary_sha256"] == linux["binary_sha256"]
+    assert candidate["leptonica_package"] == "liblept5 1.82.0-3build4 amd64"
+    assert candidate["native_dependency_inventory_verified"] is True
+    assert candidate["offline_ocr_smoke_verified"] is True
+    assert candidate["runtime_network_deny_verified"] is True
+    separation = evidence["artifact_separation_gate"]
+    assert separation["same_artifact"] is False
+    assert separation["source_license_candidate_is_verified_binary"] is False
+    assert separation["production_approval"] is False
+
+
+def test_platform_evidence_cannot_implicitly_approve_production():
+    report = _report()
+    gate = report["production_approval_gate"]
+    assert report["verified_linux_candidate"]["production_artifact_pin"] is False
+    assert report["verified_linux_candidate"]["production_approval"] is False
+    assert gate["production_approval"] is False
+    assert gate["linux_and_windows_approval_must_not_be_combined"] is True
+    assert set(gate["required_before_approval"]) == {
+        "exact-production-linux-package-pin",
+        "exact-production-native-dependency-pins",
+        "runtime-integration-validation",
+        "ocr-recognition-accuracy-validation",
+    }
+    windows = report["platform_delivery"]["windows"]
+    assert windows["status"] == "blocked/unverified"
+    assert windows["binary_provenance_verified"] is False
+    assert windows["artifact_sha256_recorded"] is False
+    assert windows["runtime_smoke_verified"] is False
 
 
 def test_blocked_candidate_is_absent_from_requirements_active_artifacts_and_app_imports():
