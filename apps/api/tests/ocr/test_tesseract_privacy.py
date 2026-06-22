@@ -76,6 +76,8 @@ def test_ocr_infrastructure_has_no_subprocess_download_install_or_cache_implemen
     assert "pip install" not in source
     assert "download(" not in source
     assert "cache" not in source
+    assert "subprocess.run" not in source
+    assert "subprocess.popen" not in source
 
 
 def test_parser_and_production_runtime_do_not_register_concrete_tesseract_adapter():
