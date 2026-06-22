@@ -5,6 +5,16 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
+    inputs:
+      parser_ocr_performance_profile:
+        description: Parser/OCR performance profile
+        required: true
+        default: disabled
+        type: choice
+        options:
+          - disabled
+          - synthetic
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -159,6 +169,13 @@ jobs:
             exit 1
           fi
           python -m pytest
+
+      - name: Run Parser/OCR synthetic performance gate
+        if: github.event_name == 'workflow_dispatch' && inputs.parser_ocr_performance_profile == 'synthetic'
+        working-directory: ${{ github.workspace }}
+        env:
+          PARSER_OCR_PERFORMANCE_PROFILE: ${{ inputs.parser_ocr_performance_profile }}
+        run: python scripts/ci/parser_ocr_performance_gate.py
 
       - name: Validate backend migrations
         if: steps.backend.outputs.exists == 'true'
