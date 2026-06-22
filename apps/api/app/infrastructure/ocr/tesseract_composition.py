@@ -44,7 +44,13 @@ def compose_tesseract_engine(
     backend: OcrProcessBackendPort | None,
     process_policy: ProcessExecutionPolicy | None,
 ) -> TesseractOcrEngine | DisabledTesseractOcrEngine:
-    if not config.enabled or any(port is None for port in (verifier, temporary_files, backend, process_policy)):
+    if (
+        not config.enabled
+        or verifier is None
+        or temporary_files is None
+        or backend is None
+        or process_policy is None
+    ):
         return DisabledTesseractOcrEngine()
 
     process_runner = PolicyBoundOcrProcessRunner(backend, process_policy)
