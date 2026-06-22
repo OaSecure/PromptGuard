@@ -1,0 +1,119 @@
+{
+  "schema_version": "1",
+  "scope": "development_contract_pr10_b3_a",
+  "reviewed_at": "2026-06-21",
+  "status": "blocked",
+  "approved_for_dependency_addition": false,
+  "approved_for_default_distribution": false,
+  "engine_candidate": {
+    "name": "tesseract",
+    "version": "5.5.2",
+    "license_id": "Apache-2.0",
+    "official_release_url": "https://github.com/tesseract-ocr/tesseract/releases/tag/5.5.2",
+    "official_license_url": "https://github.com/tesseract-ocr/tesseract/blob/5.5.2/LICENSE",
+    "tag_object_sha": "9c516f4c6dc5b3a962dc7a2a39b5c3e21ce27466",
+    "release_assets": [],
+    "source_archive_sha256_status": "artifact-inspection-required",
+    "commercial_use_verified": true,
+    "redistribution_verified": true,
+    "notice_obligations": "include Apache-2.0 license and preserve applicable notices"
+  },
+  "python_wrapper_candidate": {
+    "name": "pytesseract",
+    "version": "0.3.13",
+    "license_id": "Apache-2.0",
+    "package_source": "https://pypi.org/project/pytesseract/0.3.13/",
+    "wheel_sha256": "7a99c6c2ac598360693d83a416e36e0b33a67638bb9d77fdcac094a3589d4b34",
+    "direct_dependencies": ["packaging>=21.3", "Pillow>=8.0.0"],
+    "relationship": "optional-subprocess-wrapper",
+    "includes_tesseract_binary": false
+  },
+  "traineddata_repository": {
+    "name": "tesseract-ocr/tessdata",
+    "repository_commit": "ced78752cc61322fb554c280d13360b35b8684e4",
+    "license_id": "Apache-2.0",
+    "license_scope_evidence": "The official README states that all data in the repository are licensed under Apache-2.0.",
+    "license_url": "https://github.com/tesseract-ocr/tessdata/blob/main/LICENSE",
+    "readme_url": "https://github.com/tesseract-ocr/tessdata/blob/main/README.md"
+  },
+  "traineddata_candidates": [
+    {
+      "language": "kor",
+      "filename": "kor.traineddata",
+      "language_scope": ["korean", "english", "numeric"],
+      "repository": "tesseract-ocr/tessdata",
+      "repository_commit": "ced78752cc61322fb554c280d13360b35b8684e4",
+      "source_url": "https://github.com/tesseract-ocr/tessdata/blob/ced78752cc61322fb554c280d13360b35b8684e4/kor.traineddata",
+      "license_id": "Apache-2.0",
+      "commercial_use_verified": true,
+      "redistribution_verified": true,
+      "sha256": null,
+      "sha256_status": "artifact-inspection-required",
+      "default_distribution": false
+    },
+    {
+      "language": "eng",
+      "filename": "eng.traineddata",
+      "language_scope": ["english", "numeric"],
+      "repository": "tesseract-ocr/tessdata",
+      "repository_commit": "ced78752cc61322fb554c280d13360b35b8684e4",
+      "source_url": "https://github.com/tesseract-ocr/tessdata/blob/ced78752cc61322fb554c280d13360b35b8684e4/eng.traineddata",
+      "license_id": "Apache-2.0",
+      "commercial_use_verified": true,
+      "redistribution_verified": true,
+      "sha256": null,
+      "sha256_status": "artifact-inspection-required",
+      "default_distribution": false
+    }
+  ],
+  "native_dependency_review": {
+    "required": ["Leptonica"],
+    "optional_or_build_selected": ["zlib", "libpng", "libjpeg", "libtiff", "giflib", "openjpeg", "webp", "libarchive", "libcurl"],
+    "leptonica_license": "BSD-style permissive license; exact packaged version and bundled codec inventory remain platform-specific",
+    "status": "blocked-platform-artifact-inventory-required",
+    "evidence": [
+      "https://tesseract-ocr.github.io/tessdoc/Compiling.html",
+      "https://github.com/DanBloomberg/leptonica/blob/1.85.0/leptonica-license.txt"
+    ]
+  },
+  "platform_delivery": {
+    "linux": {
+      "candidate": "distribution package or pinned internally built package",
+      "status": "distribution-package-pin-required",
+      "blocker": "OS release, exact binary version, package checksums, Leptonica and codec dependency licenses are not fixed"
+    },
+    "windows": {
+      "candidate": "third-party build or controlled internal build",
+      "status": "official-project-binary-unavailable",
+      "blocker": "Tesseract GitHub release 5.5.2 publishes no binary assets; third-party provenance and bundled licenses require separate approval"
+    }
+  },
+  "offline_runtime_policy": {
+    "binary_path": "explicit-local-path-only",
+    "tessdata_path": "explicit-local-path-only",
+    "automatic_download": "forbidden",
+    "runtime_network": "forbidden",
+    "missing_artifact": "fail-closed",
+    "checksum_mismatch": "fail-before-execution"
+  },
+  "dependency_burden_comparison": {
+    "relative_to_paddleocr": "lower-python-dependency-closure-but-higher-native-platform-provisioning-variance",
+    "tesseract_runtime_shape": "external native executable plus Leptonica/codecs and two traineddata files",
+    "pytesseract_runtime_shape": "small optional Python subprocess wrapper depending on packaging and Pillow",
+    "conclusion": "Tesseract avoids the PaddleOCR 73-distribution ML stack but still requires platform-specific native binary provenance and license inventory."
+  },
+  "blockers": [
+    "Tesseract 5.5.2 release has no official binary assets or published source archive SHA-256 in the release metadata.",
+    "kor.traineddata and eng.traineddata are covered by the repository-wide Apache-2.0 statement, but immutable artifact SHA-256 values have not been collected because model download was forbidden.",
+    "Linux package provenance and Windows binary provenance are not fixed.",
+    "Leptonica and codec dependency versions, checksums, and licenses depend on the selected platform artifact and remain unreviewed."
+  ],
+  "next_validation": {
+    "artifact_inspection_required": [
+      "calculate SHA-256 for engine source or selected platform packages",
+      "calculate SHA-256 for kor.traineddata and eng.traineddata",
+      "inventory licenses in the selected Linux and Windows native distributions"
+    ],
+    "heavy_work_not_performed": ["installation", "OCR execution", "model download", "Docker build", "native build"]
+  }
+}
