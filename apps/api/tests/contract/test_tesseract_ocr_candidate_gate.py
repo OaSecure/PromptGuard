@@ -15,7 +15,8 @@ def test_candidate_stays_blocked_until_artifacts_and_native_dependencies_are_rev
     report = _report()
     assert report["schema_version"] == "1"
     assert report["scope"] == "development_contract_pr10_b3_a"
-    assert report["status"] == "blocked"
+    assert report["validation_phase"] == "pr10_b3_b_artifact_provenance_gate"
+    assert report["status"] in {"blocked", "additional-validation-required"}
     assert report["approved_for_dependency_addition"] is False
     assert report["approved_for_default_distribution"] is False
     assert report["blockers"]
@@ -49,16 +50,30 @@ def test_korean_and_english_traineddata_have_separate_license_evidence():
         assert model["default_distribution"] is False
 
 
+def test_traineddata_artifact_gate_requires_pinned_commit_and_checksums():
+    report = _report()
+    gate = report["traineddata_artifact_gate"]
+    assert gate["pinned_repository_commit"] == report["traineddata_repository"]["repository_commit"]
+    assert gate["required_artifacts"] == ["kor.traineddata", "eng.traineddata"]
+    assert set(gate["required_artifact_reason"]) == set(gate["required_artifacts"])
+    assert gate["individual_sha256_recorded"] is False
+    assert gate["status"] == "artifact-inspection-required"
+
+
 def test_native_dependency_and_platform_provenance_remain_blockers():
     report = _report()
     native = report["native_dependency_review"]
     assert native["required"] == ["Leptonica"]
     assert "libpng" in native["optional_or_build_selected"]
     assert "libjpeg" in native["optional_or_build_selected"]
+    assert native["classification"]["Leptonica"] == "required-engine-dependency"
+    assert set(native["classification"]) == {"Leptonica", *native["optional_or_build_selected"]}
+    assert native["exact_platform_versions_recorded"] is False
     assert native["status"] == "blocked-platform-artifact-inventory-required"
     platforms = report["platform_delivery"]
     assert platforms["linux"]["status"] == "distribution-package-pin-required"
     assert platforms["windows"]["status"] == "official-project-binary-unavailable"
+    assert platforms["linux"]["candidates"] == ["distribution package", "pinned internally built source package"]
 
 
 def test_offline_policy_forbids_runtime_download_and_network():
@@ -71,6 +86,23 @@ def test_offline_policy_forbids_runtime_download_and_network():
         "missing_artifact": "fail-closed",
         "checksum_mismatch": "fail-before-execution",
     }
+    gate = _report()["offline_fail_closed_gate"]
+    assert gate["status"] == "contract-defined-runtime-not-implemented"
+    assert set(gate["required_controls"]) == {
+        "explicit-binary-path",
+        "explicit-tessdata-path",
+        "no-automatic-download",
+        "no-runtime-network",
+        "missing-binary-fail-closed",
+        "missing-tessdata-fail-closed",
+        "checksum-mismatch-fail-before-execution",
+    }
+    assert gate["production_approval"] is False
+
+
+def test_paddleocr_b2_remains_deferred():
+    decision = _report()["paddleocr_b2_decision"]
+    assert decision == {"status": "deferred", "changed_by_this_gate": False}
 
 
 def test_blocked_candidate_is_absent_from_requirements_active_artifacts_and_app_imports():
