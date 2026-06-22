@@ -1,7 +1,7 @@
 {
   "schema_version": "1",
   "scope": "development_contract_pr10_b3_a",
-  "validation_phase": "pr10_b3_c_isolated_validation_gate",
+  "validation_phase": "pr10_b3_d_isolated_ci_validation_workflow",
   "reviewed_at": "2026-06-21",
   "status": "additional-validation-required",
   "approved_for_dependency_addition": false,
@@ -165,9 +165,11 @@
       "runtime-network-is-forbidden"
     ],
     "evidence_required": "machine-readable results from an ephemeral CI runner or dedicated remote isolated environment",
-    "github_actions_workflow_added_in_this_pr": false,
-    "workflow_implementation": "deferred-to-separate-infra-ci-pr",
-    "artifact_installation_and_validation": "deferred-to-follow-up-pr",
+    "github_actions_workflow_added_in_this_pr": true,
+    "workflow_trigger": "workflow_dispatch-only",
+    "workflow_path": ".github/workflows/tesseract-isolated-validation.yml",
+    "workflow_implementation": "manual-ci-validation-workflow-defined-not-yet-evidenced",
+    "artifact_installation_and_validation": "ci-runner-only-on-manual-dispatch",
     "production_approval": false
   },
   "dependency_burden_comparison": {
@@ -196,9 +198,9 @@
     "heavy_work_not_performed": ["installation", "OCR execution", "model download", "Docker build", "native build"],
     "required_location": "ci-runner-or-dedicated-remote-isolated-environment",
     "follow_up_pr_boundary": [
-      "GitHub Actions workflow or other Infra/CI changes",
-      "artifact download and installation",
-      "isolated execution and evidence collection"
+      "manual workflow dispatch and isolated evidence collection",
+      "review of artifact hashes and native dependency inventory",
+      "separate approval decision after validation evidence is reviewed"
     ]
   }
 }

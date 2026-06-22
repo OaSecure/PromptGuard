@@ -1,0 +1,123 @@
+name: Tesseract Isolated Validation
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate Tesseract artifacts in isolation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    env:
+      TESSDATA_COMMIT: ced78752cc61322fb554c280d13360b35b8684e4
+      TESSERACT_VERSION: 5.5.2
+      VALIDATION_DIR: tesseract-validation-results
+    steps:
+      - name: Prepare evidence directory
+        run: |
+          set -euo pipefail
+          mkdir -p "${VALIDATION_DIR}/tessdata"
+          printf 'runner_os=%s\nrunner_arch=%s\nimage_os=%s\nimage_version=%s\n' \
+            "${RUNNER_OS}" "${RUNNER_ARCH}" "${ImageOS:-unknown}" "${ImageVersion:-unknown}" \
+            > "${VALIDATION_DIR}/runner.txt"
+
+      - name: Install isolated Linux validation packages
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            tesseract-ocr tesseract-ocr-eng curl util-linux
+
+      - name: Record Linux package and binary provenance
+        run: |
+          set -euo pipefail
+          {
+            command -v tesseract
+            tesseract --version
+            dpkg-query --show --showformat='${Package}\t${Version}\t${Architecture}\n' \
+              tesseract-ocr tesseract-ocr-eng libtesseract5 liblept5
+            apt-cache policy tesseract-ocr tesseract-ocr-eng libtesseract5 liblept5
+            sha256sum "$(command -v tesseract)"
+          } 2>&1 | tee "${VALIDATION_DIR}/linux-provenance.txt"
+          apt-get download tesseract-ocr tesseract-ocr-eng
+          mv ./*.deb "${VALIDATION_DIR}/"
+          sha256sum "${VALIDATION_DIR}"/*.deb > "${VALIDATION_DIR}/linux-package-sha256.txt"
+
+      - name: Record Leptonica and codec dependency inventory
+        run: |
+          set -euo pipefail
+          {
+            ldd "$(command -v tesseract)"
+            dpkg-query --show --showformat='${Package}\t${Version}\t${Architecture}\n' \
+              | grep -E '^(liblept|libtesseract|zlib|libpng|libjpeg|libtiff|libgif|libopenjp|libwebp|libarchive|libcurl)'
+          } 2>&1 | tee "${VALIDATION_DIR}/native-dependency-inventory.txt"
+
+      - name: Download pinned traineddata and calculate SHA-256
+        run: |
+          set -euo pipefail
+          for language in kor eng; do
+            curl --fail --location --retry 3 --proto '=https' \
+              "https://raw.githubusercontent.com/tesseract-ocr/tessdata/${TESSDATA_COMMIT}/${language}.traineddata" \
+              --output "${VALIDATION_DIR}/tessdata/${language}.traineddata"
+          done
+          sha256sum "${VALIDATION_DIR}/tessdata/kor.traineddata" \
+            "${VALIDATION_DIR}/tessdata/eng.traineddata" \
+            | tee "${VALIDATION_DIR}/traineddata-sha256.txt"
+
+      - name: Record Windows binary provenance availability
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --proto '=https' \
+            -H 'Accept: application/vnd.github+json' \
+            "https://api.github.com/repos/tesseract-ocr/tesseract/releases/tags/${TESSERACT_VERSION}" \
+            --output "${VALIDATION_DIR}/upstream-release.json"
+          python - <<'PY' | tee "${VALIDATION_DIR}/windows-binary-provenance.txt"
+          import json
+          from pathlib import Path
+
+          release = json.loads(Path("tesseract-validation-results/upstream-release.json").read_text())
+          assets = release.get("assets", [])
+          windows = [asset for asset in assets if asset.get("name", "").lower().endswith((".exe", ".msi", ".zip"))]
+          print(f"release_tag={release.get('tag_name')}")
+          print(f"release_assets={len(assets)}")
+          print(f"windows_binary_candidates={len(windows)}")
+          for asset in windows:
+              print(f"candidate={asset['name']} url={asset['browser_download_url']}")
+          PY
+
+      - name: Run offline OCR smoke test
+        run: |
+          set -euo pipefail
+          {
+            printf 'P2\n120 40\n255\n'
+            awk 'BEGIN { for (i = 0; i < 4800; i++) printf "255 " }'
+            printf '\n'
+          } > "${VALIDATION_DIR}/smoke.pgm"
+          TESSDATA_PREFIX="${GITHUB_WORKSPACE}/${VALIDATION_DIR}/tessdata" \
+            tesseract "${VALIDATION_DIR}/smoke.pgm" "${VALIDATION_DIR}/smoke" \
+            --tessdata-dir "${GITHUB_WORKSPACE}/${VALIDATION_DIR}/tessdata" -l eng 2>&1 \
+            | tee "${VALIDATION_DIR}/offline-smoke.txt"
+
+      - name: Run OCR with runtime network denied
+        run: |
+          set -euo pipefail
+          sudo --preserve-env=GITHUB_WORKSPACE unshare --net -- \
+            env TESSDATA_PREFIX="${GITHUB_WORKSPACE}/${VALIDATION_DIR}/tessdata" \
+            tesseract "${VALIDATION_DIR}/smoke.pgm" "${VALIDATION_DIR}/network-denied" \
+            --tessdata-dir "${GITHUB_WORKSPACE}/${VALIDATION_DIR}/tessdata" -l eng 2>&1 \
+            | tee "${VALIDATION_DIR}/runtime-network-deny.txt"
+
+      - name: Upload validation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tesseract-isolated-validation-${{ github.run_id }}
+          path: tesseract-validation-results/
+          if-no-files-found: error
+          retention-days: 14

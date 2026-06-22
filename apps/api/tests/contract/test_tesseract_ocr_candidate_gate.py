@@ -5,6 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).parents[4]
 API = ROOT / "apps" / "api"
 REPORT = ROOT / "third_party" / "licenses" / "tesseract_ocr_candidate_report.json"
+WORKFLOW = ROOT / ".github" / "workflows" / "tesseract-isolated-validation.yml"
 
 
 def _report() -> dict:
@@ -15,7 +16,7 @@ def test_candidate_stays_blocked_until_artifacts_and_native_dependencies_are_rev
     report = _report()
     assert report["schema_version"] == "1"
     assert report["scope"] == "development_contract_pr10_b3_a"
-    assert report["validation_phase"] == "pr10_b3_c_isolated_validation_gate"
+    assert report["validation_phase"] == "pr10_b3_d_isolated_ci_validation_workflow"
     assert report["status"] == "additional-validation-required"
     assert report["approved_for_dependency_addition"] is False
     assert report["approved_for_default_distribution"] is False
@@ -147,13 +148,43 @@ def test_isolated_gate_keeps_fail_closed_controls_and_follow_up_boundary():
         "automatic-download-is-forbidden",
         "runtime-network-is-forbidden",
     }
-    assert gate["github_actions_workflow_added_in_this_pr"] is False
-    assert gate["workflow_implementation"] == "deferred-to-separate-infra-ci-pr"
-    assert gate["artifact_installation_and_validation"] == "deferred-to-follow-up-pr"
+    assert gate["github_actions_workflow_added_in_this_pr"] is True
+    assert gate["workflow_trigger"] == "workflow_dispatch-only"
+    assert gate["workflow_path"] == ".github/workflows/tesseract-isolated-validation.yml"
+    assert gate["workflow_implementation"] == "manual-ci-validation-workflow-defined-not-yet-evidenced"
+    assert gate["artifact_installation_and_validation"] == "ci-runner-only-on-manual-dispatch"
     assert gate["production_approval"] is False
     follow_up = _report()["next_validation"]
     assert follow_up["required_location"] == "ci-runner-or-dedicated-remote-isolated-environment"
-    assert "GitHub Actions workflow or other Infra/CI changes" in follow_up["follow_up_pr_boundary"]
+    assert "manual workflow dispatch and isolated evidence collection" in follow_up["follow_up_pr_boundary"]
+    assert "separate approval decision after validation evidence is reviewed" in follow_up["follow_up_pr_boundary"]
+
+
+def test_isolated_validation_workflow_is_manual_only_and_preserves_evidence():
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    trigger_section = workflow.split("permissions:", 1)[0]
+    assert "workflow_dispatch:" in trigger_section
+    assert "pull_request:" not in trigger_section
+    assert "push:" not in trigger_section
+    assert "runs-on: ubuntu-24.04" in workflow
+    assert "actions/upload-artifact@v4" in workflow
+    assert "if: always()" in workflow
+
+
+def test_isolated_validation_workflow_covers_required_gate_operations():
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    required_fragments = {
+        "kor.traineddata",
+        "eng.traineddata",
+        "sha256sum",
+        "tesseract --version",
+        "dpkg-query",
+        "liblept5",
+        "windows-binary-provenance.txt",
+        "Run offline OCR smoke test",
+        "unshare --net",
+    }
+    assert all(fragment in workflow for fragment in required_fragments)
 
 
 def test_blocked_candidate_is_absent_from_requirements_active_artifacts_and_app_imports():
