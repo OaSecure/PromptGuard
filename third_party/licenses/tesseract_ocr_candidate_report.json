@@ -1,8 +1,9 @@
 {
   "schema_version": "1",
   "scope": "development_contract_pr10_b3_a",
+  "validation_phase": "pr10_b3_b_artifact_provenance_gate",
   "reviewed_at": "2026-06-21",
-  "status": "blocked",
+  "status": "additional-validation-required",
   "approved_for_dependency_addition": false,
   "approved_for_default_distribution": false,
   "engine_candidate": {
@@ -35,6 +36,17 @@
     "license_scope_evidence": "The official README states that all data in the repository are licensed under Apache-2.0.",
     "license_url": "https://github.com/tesseract-ocr/tessdata/blob/main/LICENSE",
     "readme_url": "https://github.com/tesseract-ocr/tessdata/blob/main/README.md"
+  },
+  "traineddata_artifact_gate": {
+    "pinned_repository_commit": "ced78752cc61322fb554c280d13360b35b8684e4",
+    "required_artifacts": ["kor.traineddata", "eng.traineddata"],
+    "required_artifact_reason": {
+      "kor.traineddata": "Korean OCR recognition data",
+      "eng.traineddata": "English and numeric OCR recognition data"
+    },
+    "individual_sha256_recorded": false,
+    "status": "artifact-inspection-required",
+    "approval_condition": "record SHA-256 from reviewed immutable artifacts before distribution or execution"
   },
   "traineddata_candidates": [
     {
@@ -69,6 +81,19 @@
   "native_dependency_review": {
     "required": ["Leptonica"],
     "optional_or_build_selected": ["zlib", "libpng", "libjpeg", "libtiff", "giflib", "openjpeg", "webp", "libarchive", "libcurl"],
+    "classification": {
+      "Leptonica": "required-engine-dependency",
+      "zlib": "build-dependent-codec-or-compression-candidate",
+      "libpng": "build-dependent-image-codec-candidate",
+      "libjpeg": "build-dependent-image-codec-candidate",
+      "libtiff": "build-dependent-image-codec-candidate",
+      "giflib": "build-dependent-image-codec-candidate",
+      "openjpeg": "build-dependent-image-codec-candidate",
+      "webp": "build-dependent-image-codec-candidate",
+      "libarchive": "build-dependent-archive-candidate",
+      "libcurl": "build-dependent-network-candidate"
+    },
+    "exact_platform_versions_recorded": false,
     "leptonica_license": "BSD-style permissive license; exact packaged version and bundled codec inventory remain platform-specific",
     "status": "blocked-platform-artifact-inventory-required",
     "evidence": [
@@ -78,7 +103,7 @@
   },
   "platform_delivery": {
     "linux": {
-      "candidate": "distribution package or pinned internally built package",
+      "candidates": ["distribution package", "pinned internally built source package"],
       "status": "distribution-package-pin-required",
       "blocker": "OS release, exact binary version, package checksums, Leptonica and codec dependency licenses are not fixed"
     },
@@ -96,11 +121,28 @@
     "missing_artifact": "fail-closed",
     "checksum_mismatch": "fail-before-execution"
   },
+  "offline_fail_closed_gate": {
+    "status": "contract-defined-runtime-not-implemented",
+    "required_controls": [
+      "explicit-binary-path",
+      "explicit-tessdata-path",
+      "no-automatic-download",
+      "no-runtime-network",
+      "missing-binary-fail-closed",
+      "missing-tessdata-fail-closed",
+      "checksum-mismatch-fail-before-execution"
+    ],
+    "production_approval": false
+  },
   "dependency_burden_comparison": {
     "relative_to_paddleocr": "lower-python-dependency-closure-but-higher-native-platform-provisioning-variance",
     "tesseract_runtime_shape": "external native executable plus Leptonica/codecs and two traineddata files",
     "pytesseract_runtime_shape": "small optional Python subprocess wrapper depending on packaging and Pillow",
     "conclusion": "Tesseract avoids the PaddleOCR 73-distribution ML stack but still requires platform-specific native binary provenance and license inventory."
+  },
+  "paddleocr_b2_decision": {
+    "status": "deferred",
+    "changed_by_this_gate": false
   },
   "blockers": [
     "Tesseract 5.5.2 release has no official binary assets or published source archive SHA-256 in the release metadata.",
