@@ -1,7 +1,7 @@
 {
   "schema_version": "1",
   "scope": "development_contract_pr10_b3_a",
-  "validation_phase": "pr10_b3_d_isolated_ci_validation_workflow",
+  "validation_phase": "pr10_b3_e_isolated_validation_evidence_capture",
   "reviewed_at": "2026-06-21",
   "status": "additional-validation-required",
   "approved_for_dependency_addition": false,
@@ -44,8 +44,8 @@
       "kor.traineddata": "Korean OCR recognition data",
       "eng.traineddata": "English and numeric OCR recognition data"
     },
-    "individual_sha256_recorded": false,
-    "status": "artifact-inspection-required",
+    "individual_sha256_recorded": true,
+    "status": "ci-evidence-captured-additional-validation-required",
     "approval_condition": "record SHA-256 from reviewed immutable artifacts before distribution or execution"
   },
   "traineddata_candidates": [
@@ -59,8 +59,8 @@
       "license_id": "Apache-2.0",
       "commercial_use_verified": true,
       "redistribution_verified": true,
-      "sha256": null,
-      "sha256_status": "artifact-inspection-required",
+      "sha256": "9520bfe9e3cfc38d4a808e036b0287c88a1d37fb80b9a0a23928ddccdd20595b",
+      "sha256_status": "verified-in-isolated-ci-run-27927632968",
       "default_distribution": false
     },
     {
@@ -73,8 +73,8 @@
       "license_id": "Apache-2.0",
       "commercial_use_verified": true,
       "redistribution_verified": true,
-      "sha256": null,
-      "sha256_status": "artifact-inspection-required",
+      "sha256": "daa0c97d651c19fba3b25e81317cd697e9908c8208090c94c3905381c23fc047",
+      "sha256_status": "verified-in-isolated-ci-run-27927632968",
       "default_distribution": false
     }
   ],
@@ -93,9 +93,9 @@
       "libarchive": "build-dependent-archive-candidate",
       "libcurl": "build-dependent-network-candidate"
     },
-    "exact_platform_versions_recorded": false,
+    "exact_platform_versions_recorded": true,
     "leptonica_license": "BSD-style permissive license; exact packaged version and bundled codec inventory remain platform-specific",
-    "status": "blocked-platform-artifact-inventory-required",
+    "status": "ubuntu-ci-inventory-captured-other-platforms-blocked",
     "evidence": [
       "https://tesseract-ocr.github.io/tessdoc/Compiling.html",
       "https://github.com/DanBloomberg/leptonica/blob/1.85.0/leptonica-license.txt"
@@ -104,8 +104,10 @@
   "platform_delivery": {
     "linux": {
       "candidates": ["distribution package", "pinned internally built source package"],
-      "status": "distribution-package-pin-required",
-      "blocker": "OS release, exact binary version, package checksums, Leptonica and codec dependency licenses are not fixed"
+      "status": "ubuntu-ci-evidence-captured-production-pin-required",
+      "validated_ci_package": "tesseract-ocr 5.3.4-1build5 amd64 on ubuntu-24.04",
+      "validated_binary": "/usr/bin/tesseract",
+      "blocker": "The Ubuntu runner package is Tesseract 5.3.4 rather than candidate 5.5.2 and is not a pinned production artifact"
     },
     "windows": {
       "candidate": "third-party build or controlled internal build",
@@ -165,11 +167,13 @@
       "runtime-network-is-forbidden"
     ],
     "evidence_required": "machine-readable results from an ephemeral CI runner or dedicated remote isolated environment",
-    "github_actions_workflow_added_in_this_pr": true,
+    "github_actions_workflow_added_in_this_pr": false,
     "workflow_trigger": "workflow_dispatch-only",
     "workflow_path": ".github/workflows/tesseract-isolated-validation.yml",
-    "workflow_implementation": "manual-ci-validation-workflow-defined-not-yet-evidenced",
-    "artifact_installation_and_validation": "ci-runner-only-on-manual-dispatch",
+    "workflow_implementation": "manual-ci-validation-workflow-evidenced-in-run-27927632968",
+    "artifact_installation_and_validation": "successful-in-manual-ci-run-27927632968",
+    "evidence_file": "third_party/licenses/tesseract_isolated_validation_evidence.json",
+    "evidence_run_url": "https://github.com/OaSecure/PromptGuard/actions/runs/27927632968",
     "production_approval": false
   },
   "dependency_burden_comparison": {
@@ -185,20 +189,21 @@
   },
   "blockers": [
     "Tesseract 5.5.2 release has no official binary assets or published source archive SHA-256 in the release metadata.",
-    "kor.traineddata and eng.traineddata are covered by the repository-wide Apache-2.0 statement, but immutable artifact SHA-256 values have not been collected because model download was forbidden.",
-    "Linux package provenance and Windows binary provenance are not fixed.",
-    "Leptonica and codec dependency versions, checksums, and licenses depend on the selected platform artifact and remain unreviewed."
+    "The isolated Ubuntu runner validated Tesseract 5.3.4-1build5, not the engine candidate version 5.5.2.",
+    "Windows binary provenance remains unfixed because the official 5.5.2 release has no assets and no third-party or internal build was validated.",
+    "The captured Leptonica and codec inventory is scoped to one ephemeral Ubuntu runner and is not a pinned production artifact inventory.",
+    "The offline smoke test validated process execution, not OCR recognition accuracy or production runtime integration."
   ],
   "next_validation": {
     "artifact_inspection_required": [
-      "calculate SHA-256 for engine source or selected platform packages",
-      "calculate SHA-256 for kor.traineddata and eng.traineddata",
-      "inventory licenses in the selected Linux and Windows native distributions"
+      "select and pin a production Linux artifact matching the approved engine version",
+      "validate provenance for a selected Windows binary or explicitly exclude Windows distribution",
+      "review licenses and checksums for the selected production native dependency inventory",
+      "run recognition-accuracy and production-integration validation in an isolated environment"
     ],
-    "heavy_work_not_performed": ["installation", "OCR execution", "model download", "Docker build", "native build"],
+    "local_heavy_work_not_performed": ["installation", "OCR execution", "model download", "Docker build", "native build"],
     "required_location": "ci-runner-or-dedicated-remote-isolated-environment",
     "follow_up_pr_boundary": [
-      "manual workflow dispatch and isolated evidence collection",
       "review of artifact hashes and native dependency inventory",
       "separate approval decision after validation evidence is reviewed"
     ]
