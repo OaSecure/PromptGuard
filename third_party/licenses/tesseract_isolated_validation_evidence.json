@@ -89,6 +89,17 @@
     "tesseract_5_5_2_artifact_inspection_is_independent": true,
     "production_approval": false
   },
+  "runtime_integration_preflight_scope": {
+    "status": "requirements-not-satisfied",
+    "existing_linux_evidence_preserved": true,
+    "runtime_integration_validated": false,
+    "ocr_recognition_accuracy_validated": false,
+    "preflight_contract_implemented_in_runtime": false,
+    "preflight_success_would_prove_ocr_success": false,
+    "preflight_success_would_prove_accuracy": false,
+    "preflight_success_would_approve_production": false,
+    "production_approval": false
+  },
   "runtime_tests": {
     "offline_ocr_smoke": {
       "conclusion": "success",
