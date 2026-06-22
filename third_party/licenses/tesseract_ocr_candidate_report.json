@@ -1,7 +1,7 @@
 {
   "schema_version": "1",
   "scope": "development_contract_pr10_b3_a",
-  "validation_phase": "pr10_b3_f_linux_artifact_pin_gate",
+  "validation_phase": "pr10_b3_g_production_pin_policy_gate",
   "reviewed_at": "2026-06-22",
   "status": "additional-validation-required",
   "approved_for_dependency_addition": false,
@@ -215,14 +215,20 @@
     "The offline smoke test validated process execution, not OCR recognition accuracy or production runtime integration."
   ],
   "production_approval_gate": {
+    "status": "blocked-policy-requirements-not-satisfied",
     "production_approval": false,
+    "linux_verified_candidate_is_production_approved": false,
     "linux_and_windows_approval_must_not_be_combined": true,
-    "required_before_approval": [
-      "exact-production-linux-package-pin",
-      "exact-production-native-dependency-pins",
-      "runtime-integration-validation",
-      "ocr-recognition-accuracy-validation"
-    ]
+    "required_before_approval": {
+      "exact_linux_package_pin": "required-not-satisfied",
+      "native_dependency_version_pins": "required-not-satisfied",
+      "runtime_integration_validation": "required-not-satisfied",
+      "ocr_recognition_accuracy_validation": "required-not-satisfied"
+    },
+    "independent_blockers": {
+      "windows_binary_provenance_hash_runtime_smoke": "blocked/unverified",
+      "tesseract_5_5_2_binary_or_source_archive_sha256": "artifact-inspection-required"
+    }
   },
   "next_validation": {
     "artifact_inspection_required": [

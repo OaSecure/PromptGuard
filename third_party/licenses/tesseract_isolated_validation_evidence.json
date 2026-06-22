@@ -77,6 +77,18 @@
     "source_license_candidate_is_verified_binary": false,
     "production_approval": false
   },
+  "production_pin_policy": {
+    "status": "requirements-not-satisfied",
+    "linux_candidate_verified": true,
+    "linux_candidate_production_approved": false,
+    "exact_linux_package_pin_satisfied": false,
+    "native_dependency_version_pins_satisfied": false,
+    "runtime_integration_validation_satisfied": false,
+    "ocr_recognition_accuracy_validation_satisfied": false,
+    "windows_blocker_is_independent": true,
+    "tesseract_5_5_2_artifact_inspection_is_independent": true,
+    "production_approval": false
+  },
   "runtime_tests": {
     "offline_ocr_smoke": {
       "conclusion": "success",

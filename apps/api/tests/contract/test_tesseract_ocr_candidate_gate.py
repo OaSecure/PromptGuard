@@ -17,7 +17,7 @@ def test_candidate_stays_blocked_until_artifacts_and_native_dependencies_are_rev
     report = _report()
     assert report["schema_version"] == "1"
     assert report["scope"] == "development_contract_pr10_b3_a"
-    assert report["validation_phase"] == "pr10_b3_f_linux_artifact_pin_gate"
+    assert report["validation_phase"] == "pr10_b3_g_production_pin_policy_gate"
     assert report["status"] == "additional-validation-required"
     assert report["approved_for_dependency_addition"] is False
     assert report["approved_for_default_distribution"] is False
@@ -248,19 +248,43 @@ def test_platform_evidence_cannot_implicitly_approve_production():
     gate = report["production_approval_gate"]
     assert report["verified_linux_candidate"]["production_artifact_pin"] is False
     assert report["verified_linux_candidate"]["production_approval"] is False
+    assert gate["status"] == "blocked-policy-requirements-not-satisfied"
     assert gate["production_approval"] is False
+    assert gate["linux_verified_candidate_is_production_approved"] is False
     assert gate["linux_and_windows_approval_must_not_be_combined"] is True
-    assert set(gate["required_before_approval"]) == {
-        "exact-production-linux-package-pin",
-        "exact-production-native-dependency-pins",
-        "runtime-integration-validation",
-        "ocr-recognition-accuracy-validation",
+    assert gate["required_before_approval"] == {
+        "exact_linux_package_pin": "required-not-satisfied",
+        "native_dependency_version_pins": "required-not-satisfied",
+        "runtime_integration_validation": "required-not-satisfied",
+        "ocr_recognition_accuracy_validation": "required-not-satisfied",
+    }
+    assert gate["independent_blockers"] == {
+        "windows_binary_provenance_hash_runtime_smoke": "blocked/unverified",
+        "tesseract_5_5_2_binary_or_source_archive_sha256": "artifact-inspection-required",
     }
     windows = report["platform_delivery"]["windows"]
     assert windows["status"] == "blocked/unverified"
     assert windows["binary_provenance_verified"] is False
     assert windows["artifact_sha256_recorded"] is False
     assert windows["runtime_smoke_verified"] is False
+
+
+def test_evidence_cannot_satisfy_production_pin_policy_by_itself():
+    evidence = json.loads(EVIDENCE.read_text(encoding="utf-8"))
+    policy = evidence["production_pin_policy"]
+    assert policy["status"] == "requirements-not-satisfied"
+    assert policy["linux_candidate_verified"] is True
+    assert policy["linux_candidate_production_approved"] is False
+    for requirement in (
+        "exact_linux_package_pin_satisfied",
+        "native_dependency_version_pins_satisfied",
+        "runtime_integration_validation_satisfied",
+        "ocr_recognition_accuracy_validation_satisfied",
+    ):
+        assert policy[requirement] is False
+    assert policy["windows_blocker_is_independent"] is True
+    assert policy["tesseract_5_5_2_artifact_inspection_is_independent"] is True
+    assert policy["production_approval"] is False
 
 
 def test_blocked_candidate_is_absent_from_requirements_active_artifacts_and_app_imports():
