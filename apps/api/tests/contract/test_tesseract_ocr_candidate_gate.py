@@ -17,7 +17,7 @@ def test_candidate_stays_blocked_until_artifacts_and_native_dependencies_are_rev
     report = _report()
     assert report["schema_version"] == "1"
     assert report["scope"] == "development_contract_pr10_b3_a"
-    assert report["validation_phase"] == "pr10_b3_g_production_pin_policy_gate"
+    assert report["validation_phase"] == "pr10_b3_h_runtime_integration_preflight_gate"
     assert report["status"] == "additional-validation-required"
     assert report["approved_for_dependency_addition"] is False
     assert report["approved_for_default_distribution"] is False
@@ -162,7 +162,6 @@ def test_isolated_gate_keeps_fail_closed_controls_and_follow_up_boundary():
     assert gate["production_approval"] is False
     follow_up = _report()["next_validation"]
     assert follow_up["required_location"] == "ci-runner-or-dedicated-remote-isolated-environment"
-    assert "separate approval decision after validation evidence is reviewed" in follow_up["follow_up_pr_boundary"]
 
 
 def test_isolated_validation_workflow_is_manual_only_and_preserves_evidence():
@@ -285,6 +284,99 @@ def test_evidence_cannot_satisfy_production_pin_policy_by_itself():
     assert policy["windows_blocker_is_independent"] is True
     assert policy["tesseract_5_5_2_artifact_inspection_is_independent"] is True
     assert policy["production_approval"] is False
+
+
+def test_runtime_integration_preflight_requires_bounded_fail_closed_controls():
+    gate = _report()["runtime_integration_preflight_gate"]
+    assert gate["status"] == "contract-defined-runtime-not-implemented"
+    assert set(gate["required_controls"]) == {
+        "explicit-binary-path",
+        "explicit-tessdata-directory",
+        "allowed-language-allowlist",
+        "required-traineddata-exists",
+        "binary-checksum-verified",
+        "traineddata-checksum-verified",
+        "production-package-pin-verified",
+        "native-dependency-pins-verified",
+        "bounded-timeout-required",
+        "bounded-input-size-required",
+        "bounded-output-size-required",
+        "no-runtime-network",
+        "no-automatic-download",
+        "argv-invocation-only-no-shell-string",
+        "temporary-file-policy-and-cleanup-required",
+        "all-failures-fail-closed",
+    }
+    assert gate["bounded_values_defined_in_this_gate"] is False
+    assert gate["platform_evaluation"] == "linux-and-windows-independent"
+    assert set(gate["preflight_success_means"].values()) == {False}
+    assert gate["production_approval"] is False
+
+
+def test_runtime_preflight_defines_required_failure_cases():
+    failures = set(_report()["runtime_integration_preflight_gate"]["failure_cases"])
+    assert failures == {
+        "binary-missing",
+        "traineddata-missing",
+        "timeout",
+        "unsupported-language",
+        "ocr-failed",
+        "network-access-attempted",
+        "binary-checksum-mismatch",
+        "traineddata-checksum-mismatch",
+        "invalid-or-untrusted-path",
+        "native-dependency-pin-mismatch",
+        "malformed-ocr-output",
+        "output-size-limit-exceeded",
+        "temporary-file-create-or-delete-failure",
+        "process-spawn-failure",
+        "unexpected-exit-code",
+        "unverified-windows-binary-selected",
+    }
+
+
+def test_runtime_preflight_protects_ocr_content_and_paths():
+    controls = set(_report()["runtime_integration_preflight_gate"]["security_and_privacy_controls"])
+    assert controls == {
+        "no-ocr-source-text-logging",
+        "no-original-filename-logging",
+        "no-full-extracted-text-in-error-response",
+        "no-full-extracted-text-persistent-storage",
+        "no-raw-subprocess-stdout-or-stderr-logging",
+        "no-unnecessary-temporary-or-user-path-exposure",
+        "limited-error-codes-and-deidentified-metadata-only",
+        "no-shell-string-composition",
+        "no-ocr-input-to-external-service-or-network",
+        "no-partial-failure-result-in-log-response-or-storage",
+    }
+
+
+def test_existing_evidence_does_not_claim_runtime_or_accuracy_validation():
+    evidence = json.loads(EVIDENCE.read_text(encoding="utf-8"))
+    scope = evidence["runtime_integration_preflight_scope"]
+    assert scope["status"] == "requirements-not-satisfied"
+    assert scope["existing_linux_evidence_preserved"] is True
+    for claim in (
+        "runtime_integration_validated",
+        "ocr_recognition_accuracy_validated",
+        "preflight_contract_implemented_in_runtime",
+        "preflight_success_would_prove_ocr_success",
+        "preflight_success_would_prove_accuracy",
+        "preflight_success_would_approve_production",
+        "production_approval",
+    ):
+        assert scope[claim] is False
+
+
+def test_follow_up_work_stays_outside_the_preflight_contract_pr():
+    follow_up = _report()["next_validation"]["follow_up_pr_boundary"]
+    assert follow_up == [
+        "B3-I: isolated runtime adapter implementation",
+        "B3-J: fail-closed and process-boundary tests",
+        "B3-K: OCR accuracy corpus/acceptance policy",
+        "B3-L: production artifact/native dependency pin decision",
+        "separate: Windows artifact validation or Windows support exclusion decision",
+    ]
 
 
 def test_blocked_candidate_is_absent_from_requirements_active_artifacts_and_app_imports():

@@ -1,7 +1,7 @@
 {
   "schema_version": "1",
   "scope": "development_contract_pr10_b3_a",
-  "validation_phase": "pr10_b3_g_production_pin_policy_gate",
+  "validation_phase": "pr10_b3_h_runtime_integration_preflight_gate",
   "reviewed_at": "2026-06-22",
   "status": "additional-validation-required",
   "approved_for_dependency_addition": false,
@@ -156,6 +156,66 @@
     ],
     "production_approval": false
   },
+  "runtime_integration_preflight_gate": {
+    "status": "contract-defined-runtime-not-implemented",
+    "required_controls": [
+      "explicit-binary-path",
+      "explicit-tessdata-directory",
+      "allowed-language-allowlist",
+      "required-traineddata-exists",
+      "binary-checksum-verified",
+      "traineddata-checksum-verified",
+      "production-package-pin-verified",
+      "native-dependency-pins-verified",
+      "bounded-timeout-required",
+      "bounded-input-size-required",
+      "bounded-output-size-required",
+      "no-runtime-network",
+      "no-automatic-download",
+      "argv-invocation-only-no-shell-string",
+      "temporary-file-policy-and-cleanup-required",
+      "all-failures-fail-closed"
+    ],
+    "bounded_values_defined_in_this_gate": false,
+    "preflight_success_means": {
+      "runtime_integration_complete": false,
+      "ocr_execution_success": false,
+      "ocr_recognition_accuracy_validated": false,
+      "production_approval": false
+    },
+    "platform_evaluation": "linux-and-windows-independent",
+    "failure_cases": [
+      "binary-missing",
+      "traineddata-missing",
+      "timeout",
+      "unsupported-language",
+      "ocr-failed",
+      "network-access-attempted",
+      "binary-checksum-mismatch",
+      "traineddata-checksum-mismatch",
+      "invalid-or-untrusted-path",
+      "native-dependency-pin-mismatch",
+      "malformed-ocr-output",
+      "output-size-limit-exceeded",
+      "temporary-file-create-or-delete-failure",
+      "process-spawn-failure",
+      "unexpected-exit-code",
+      "unverified-windows-binary-selected"
+    ],
+    "security_and_privacy_controls": [
+      "no-ocr-source-text-logging",
+      "no-original-filename-logging",
+      "no-full-extracted-text-in-error-response",
+      "no-full-extracted-text-persistent-storage",
+      "no-raw-subprocess-stdout-or-stderr-logging",
+      "no-unnecessary-temporary-or-user-path-exposure",
+      "limited-error-codes-and-deidentified-metadata-only",
+      "no-shell-string-composition",
+      "no-ocr-input-to-external-service-or-network",
+      "no-partial-failure-result-in-log-response-or-storage"
+    ],
+    "production_approval": false
+  },
   "isolated_validation_gate": {
     "status": "additional-validation-required",
     "execution_environment": ["ci-runner", "dedicated-remote-isolated-environment"],
@@ -240,8 +300,11 @@
     "local_heavy_work_not_performed": ["installation", "OCR execution", "model download", "Docker build", "native build"],
     "required_location": "ci-runner-or-dedicated-remote-isolated-environment",
     "follow_up_pr_boundary": [
-      "review of artifact hashes and native dependency inventory",
-      "separate approval decision after validation evidence is reviewed"
+      "B3-I: isolated runtime adapter implementation",
+      "B3-J: fail-closed and process-boundary tests",
+      "B3-K: OCR accuracy corpus/acceptance policy",
+      "B3-L: production artifact/native dependency pin decision",
+      "separate: Windows artifact validation or Windows support exclusion decision"
     ]
   }
 }
