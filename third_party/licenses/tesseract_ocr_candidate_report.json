@@ -1,7 +1,7 @@
 {
   "schema_version": "1",
   "scope": "development_contract_pr10_b3_a",
-  "validation_phase": "pr10_b3_b_artifact_provenance_gate",
+  "validation_phase": "pr10_b3_c_isolated_validation_gate",
   "reviewed_at": "2026-06-21",
   "status": "additional-validation-required",
   "approved_for_dependency_addition": false,
@@ -134,6 +134,42 @@
     ],
     "production_approval": false
   },
+  "isolated_validation_gate": {
+    "status": "additional-validation-required",
+    "execution_environment": ["ci-runner", "dedicated-remote-isolated-environment"],
+    "local_developer_machine_execution": "forbidden",
+    "required_validations": [
+      "kor-traineddata-sha256",
+      "eng-traineddata-sha256",
+      "linux-package-version-and-sha256",
+      "windows-binary-provenance",
+      "leptonica-and-codec-dependency-inventory",
+      "offline-ocr-smoke-test",
+      "runtime-network-deny-test"
+    ],
+    "local_prohibited_operations": [
+      "apt-install",
+      "chocolatey-install",
+      "pip-install",
+      "tessdata-download",
+      "ocr-execution",
+      "docker-build",
+      "heavy-validation"
+    ],
+    "fail_closed_acceptance_criteria": [
+      "missing-explicit-binary-path-fails",
+      "missing-explicit-tessdata-path-fails",
+      "missing-checksum-blocks-production-approval",
+      "checksum-mismatch-fails-before-execution",
+      "automatic-download-is-forbidden",
+      "runtime-network-is-forbidden"
+    ],
+    "evidence_required": "machine-readable results from an ephemeral CI runner or dedicated remote isolated environment",
+    "github_actions_workflow_added_in_this_pr": false,
+    "workflow_implementation": "deferred-to-separate-infra-ci-pr",
+    "artifact_installation_and_validation": "deferred-to-follow-up-pr",
+    "production_approval": false
+  },
   "dependency_burden_comparison": {
     "relative_to_paddleocr": "lower-python-dependency-closure-but-higher-native-platform-provisioning-variance",
     "tesseract_runtime_shape": "external native executable plus Leptonica/codecs and two traineddata files",
@@ -141,8 +177,9 @@
     "conclusion": "Tesseract avoids the PaddleOCR 73-distribution ML stack but still requires platform-specific native binary provenance and license inventory."
   },
   "paddleocr_b2_decision": {
-    "status": "deferred",
-    "changed_by_this_gate": false
+    "status": "deferred/blocked",
+    "changed_by_this_gate": false,
+    "gate_separation": "must-not-share-tesseract-isolated-validation-gate"
   },
   "blockers": [
     "Tesseract 5.5.2 release has no official binary assets or published source archive SHA-256 in the release metadata.",
@@ -156,6 +193,12 @@
       "calculate SHA-256 for kor.traineddata and eng.traineddata",
       "inventory licenses in the selected Linux and Windows native distributions"
     ],
-    "heavy_work_not_performed": ["installation", "OCR execution", "model download", "Docker build", "native build"]
+    "heavy_work_not_performed": ["installation", "OCR execution", "model download", "Docker build", "native build"],
+    "required_location": "ci-runner-or-dedicated-remote-isolated-environment",
+    "follow_up_pr_boundary": [
+      "GitHub Actions workflow or other Infra/CI changes",
+      "artifact download and installation",
+      "isolated execution and evidence collection"
+    ]
   }
 }

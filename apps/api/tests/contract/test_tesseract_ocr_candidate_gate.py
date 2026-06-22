@@ -15,8 +15,8 @@ def test_candidate_stays_blocked_until_artifacts_and_native_dependencies_are_rev
     report = _report()
     assert report["schema_version"] == "1"
     assert report["scope"] == "development_contract_pr10_b3_a"
-    assert report["validation_phase"] == "pr10_b3_b_artifact_provenance_gate"
-    assert report["status"] in {"blocked", "additional-validation-required"}
+    assert report["validation_phase"] == "pr10_b3_c_isolated_validation_gate"
+    assert report["status"] == "additional-validation-required"
     assert report["approved_for_dependency_addition"] is False
     assert report["approved_for_default_distribution"] is False
     assert report["blockers"]
@@ -102,7 +102,58 @@ def test_offline_policy_forbids_runtime_download_and_network():
 
 def test_paddleocr_b2_remains_deferred():
     decision = _report()["paddleocr_b2_decision"]
-    assert decision == {"status": "deferred", "changed_by_this_gate": False}
+    assert decision == {
+        "status": "deferred/blocked",
+        "changed_by_this_gate": False,
+        "gate_separation": "must-not-share-tesseract-isolated-validation-gate",
+    }
+
+
+def test_heavy_validation_is_required_only_in_an_isolated_environment():
+    gate = _report()["isolated_validation_gate"]
+    assert gate["status"] == "additional-validation-required"
+    assert set(gate["execution_environment"]) == {
+        "ci-runner",
+        "dedicated-remote-isolated-environment",
+    }
+    assert gate["local_developer_machine_execution"] == "forbidden"
+    assert set(gate["required_validations"]) == {
+        "kor-traineddata-sha256",
+        "eng-traineddata-sha256",
+        "linux-package-version-and-sha256",
+        "windows-binary-provenance",
+        "leptonica-and-codec-dependency-inventory",
+        "offline-ocr-smoke-test",
+        "runtime-network-deny-test",
+    }
+    assert set(gate["local_prohibited_operations"]) == {
+        "apt-install",
+        "chocolatey-install",
+        "pip-install",
+        "tessdata-download",
+        "ocr-execution",
+        "docker-build",
+        "heavy-validation",
+    }
+
+
+def test_isolated_gate_keeps_fail_closed_controls_and_follow_up_boundary():
+    gate = _report()["isolated_validation_gate"]
+    assert set(gate["fail_closed_acceptance_criteria"]) == {
+        "missing-explicit-binary-path-fails",
+        "missing-explicit-tessdata-path-fails",
+        "missing-checksum-blocks-production-approval",
+        "checksum-mismatch-fails-before-execution",
+        "automatic-download-is-forbidden",
+        "runtime-network-is-forbidden",
+    }
+    assert gate["github_actions_workflow_added_in_this_pr"] is False
+    assert gate["workflow_implementation"] == "deferred-to-separate-infra-ci-pr"
+    assert gate["artifact_installation_and_validation"] == "deferred-to-follow-up-pr"
+    assert gate["production_approval"] is False
+    follow_up = _report()["next_validation"]
+    assert follow_up["required_location"] == "ci-runner-or-dedicated-remote-isolated-environment"
+    assert "GitHub Actions workflow or other Infra/CI changes" in follow_up["follow_up_pr_boundary"]
 
 
 def test_blocked_candidate_is_absent_from_requirements_active_artifacts_and_app_imports():
