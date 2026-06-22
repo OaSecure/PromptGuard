@@ -5,6 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).parents[4]
 API = ROOT / "apps" / "api"
 REPORT = ROOT / "third_party" / "licenses" / "tesseract_ocr_candidate_report.json"
+EVIDENCE = ROOT / "third_party" / "licenses" / "tesseract_isolated_validation_evidence.json"
 WORKFLOW = ROOT / ".github" / "workflows" / "tesseract-isolated-validation.yml"
 
 
@@ -16,7 +17,7 @@ def test_candidate_stays_blocked_until_artifacts_and_native_dependencies_are_rev
     report = _report()
     assert report["schema_version"] == "1"
     assert report["scope"] == "development_contract_pr10_b3_a"
-    assert report["validation_phase"] == "pr10_b3_d_isolated_ci_validation_workflow"
+    assert report["validation_phase"] == "pr10_b3_e_isolated_validation_evidence_capture"
     assert report["status"] == "additional-validation-required"
     assert report["approved_for_dependency_addition"] is False
     assert report["approved_for_default_distribution"] is False
@@ -47,7 +48,8 @@ def test_korean_and_english_traineddata_have_separate_license_evidence():
         assert model["license_id"] == "Apache-2.0"
         assert model["commercial_use_verified"] is True
         assert model["redistribution_verified"] is True
-        assert model["sha256_status"] == "artifact-inspection-required"
+        assert model["sha256_status"].startswith("verified-in-isolated-ci-run-")
+        assert len(model["sha256"]) == 64
         assert model["default_distribution"] is False
 
 
@@ -57,8 +59,8 @@ def test_traineddata_artifact_gate_requires_pinned_commit_and_checksums():
     assert gate["pinned_repository_commit"] == report["traineddata_repository"]["repository_commit"]
     assert gate["required_artifacts"] == ["kor.traineddata", "eng.traineddata"]
     assert set(gate["required_artifact_reason"]) == set(gate["required_artifacts"])
-    assert gate["individual_sha256_recorded"] is False
-    assert gate["status"] == "artifact-inspection-required"
+    assert gate["individual_sha256_recorded"] is True
+    assert gate["status"] == "ci-evidence-captured-additional-validation-required"
 
 
 def test_native_dependency_and_platform_provenance_remain_blockers():
@@ -69,10 +71,10 @@ def test_native_dependency_and_platform_provenance_remain_blockers():
     assert "libjpeg" in native["optional_or_build_selected"]
     assert native["classification"]["Leptonica"] == "required-engine-dependency"
     assert set(native["classification"]) == {"Leptonica", *native["optional_or_build_selected"]}
-    assert native["exact_platform_versions_recorded"] is False
-    assert native["status"] == "blocked-platform-artifact-inventory-required"
+    assert native["exact_platform_versions_recorded"] is True
+    assert native["status"] == "ubuntu-ci-inventory-captured-other-platforms-blocked"
     platforms = report["platform_delivery"]
-    assert platforms["linux"]["status"] == "distribution-package-pin-required"
+    assert platforms["linux"]["status"] == "ubuntu-ci-evidence-captured-production-pin-required"
     assert platforms["windows"]["status"] == "official-project-binary-unavailable"
     assert platforms["linux"]["candidates"] == ["distribution package", "pinned internally built source package"]
 
@@ -148,15 +150,15 @@ def test_isolated_gate_keeps_fail_closed_controls_and_follow_up_boundary():
         "automatic-download-is-forbidden",
         "runtime-network-is-forbidden",
     }
-    assert gate["github_actions_workflow_added_in_this_pr"] is True
+    assert gate["github_actions_workflow_added_in_this_pr"] is False
     assert gate["workflow_trigger"] == "workflow_dispatch-only"
     assert gate["workflow_path"] == ".github/workflows/tesseract-isolated-validation.yml"
-    assert gate["workflow_implementation"] == "manual-ci-validation-workflow-defined-not-yet-evidenced"
-    assert gate["artifact_installation_and_validation"] == "ci-runner-only-on-manual-dispatch"
+    assert gate["workflow_implementation"] == "manual-ci-validation-workflow-evidenced-in-run-27927632968"
+    assert gate["artifact_installation_and_validation"] == "successful-in-manual-ci-run-27927632968"
+    assert gate["evidence_file"] == "third_party/licenses/tesseract_isolated_validation_evidence.json"
     assert gate["production_approval"] is False
     follow_up = _report()["next_validation"]
     assert follow_up["required_location"] == "ci-runner-or-dedicated-remote-isolated-environment"
-    assert "manual workflow dispatch and isolated evidence collection" in follow_up["follow_up_pr_boundary"]
     assert "separate approval decision after validation evidence is reviewed" in follow_up["follow_up_pr_boundary"]
 
 
@@ -185,6 +187,38 @@ def test_isolated_validation_workflow_covers_required_gate_operations():
         "unshare --net",
     }
     assert all(fragment in workflow for fragment in required_fragments)
+
+
+def test_isolated_ci_evidence_is_scoped_and_does_not_approve_production():
+    evidence = json.loads(EVIDENCE.read_text(encoding="utf-8"))
+    assert evidence["status"] == "additional-validation-required"
+    assert evidence["production_approval"] is False
+    run = evidence["workflow_run"]
+    assert run["id"] == 27927632968
+    assert run["event"] == "workflow_dispatch"
+    assert run["conclusion"] == "success"
+    assert run["runner_label"] == "ubuntu-24.04"
+    assert evidence["artifact"]["created"] is True
+    assert evidence["artifact"]["downloaded_to_local_developer_machine"] is False
+
+
+def test_isolated_ci_evidence_records_hashes_runtime_and_remaining_mismatch():
+    evidence = json.loads(EVIDENCE.read_text(encoding="utf-8"))
+    artifacts = evidence["traineddata"]["artifacts"]
+    models = {item["filename"]: item for item in _report()["traineddata_candidates"]}
+    assert set(artifacts) == {"kor.traineddata", "eng.traineddata"}
+    for filename, artifact in artifacts.items():
+        assert artifact["verified"] is True
+        assert len(artifact["sha256"]) == 64
+        assert models[filename]["sha256"] == artifact["sha256"]
+    linux = evidence["linux_runtime"]
+    assert linux["binary_path"] == "/usr/bin/tesseract"
+    assert linux["tesseract_version"] == "5.3.4"
+    assert linux["candidate_version_match"] is False
+    assert evidence["runtime_tests"]["offline_ocr_smoke"]["conclusion"] == "success"
+    assert evidence["runtime_tests"]["runtime_network_deny"]["conclusion"] == "success"
+    assert evidence["windows_provenance"]["third_party_or_internal_binary_verified"] is False
+    assert evidence["unverified_or_blocked"]
 
 
 def test_blocked_candidate_is_absent_from_requirements_active_artifacts_and_app_imports():
