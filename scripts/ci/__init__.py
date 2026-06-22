@@ -1,0 +1,1 @@
+"""Lightweight CI entry points."""
