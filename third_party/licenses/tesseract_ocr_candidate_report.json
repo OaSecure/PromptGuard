@@ -1,8 +1,8 @@
 {
   "schema_version": "1",
   "scope": "development_contract_pr10_b3_a",
-  "validation_phase": "pr10_b3_e_isolated_validation_evidence_capture",
-  "reviewed_at": "2026-06-21",
+  "validation_phase": "pr10_b3_f_linux_artifact_pin_gate",
+  "reviewed_at": "2026-06-22",
   "status": "additional-validation-required",
   "approved_for_dependency_addition": false,
   "approved_for_default_distribution": false,
@@ -14,10 +14,27 @@
     "official_license_url": "https://github.com/tesseract-ocr/tesseract/blob/5.5.2/LICENSE",
     "tag_object_sha": "9c516f4c6dc5b3a962dc7a2a39b5c3e21ce27466",
     "release_assets": [],
+    "candidate_role": "source-and-license-review-only",
+    "verified_binary_artifact": false,
     "source_archive_sha256_status": "artifact-inspection-required",
     "commercial_use_verified": true,
     "redistribution_verified": true,
     "notice_obligations": "include Apache-2.0 license and preserve applicable notices"
+  },
+  "verified_linux_candidate": {
+    "candidate_role": "ci-verified-ubuntu-package-artifact",
+    "distribution": "ubuntu-24.04-runner",
+    "package": "tesseract-ocr 5.3.4-1build5 amd64",
+    "libtesseract_package": "libtesseract5 5.3.4-1build5 amd64",
+    "binary_path": "/usr/bin/tesseract",
+    "binary_sha256": "9f831cab7525c3dab04af41bda35182af7ea1df9dceeaaa2f3bf207ac45c06a5",
+    "leptonica_package": "liblept5 1.82.0-3build4 amd64",
+    "native_dependency_inventory_verified": true,
+    "offline_ocr_smoke_verified": true,
+    "runtime_network_deny_verified": true,
+    "evidence_run_id": 27927632968,
+    "production_artifact_pin": false,
+    "production_approval": false
   },
   "python_wrapper_candidate": {
     "name": "pytesseract",
@@ -111,7 +128,10 @@
     },
     "windows": {
       "candidate": "third-party build or controlled internal build",
-      "status": "official-project-binary-unavailable",
+      "status": "blocked/unverified",
+      "binary_provenance_verified": false,
+      "artifact_sha256_recorded": false,
+      "runtime_smoke_verified": false,
       "blocker": "Tesseract GitHub release 5.5.2 publishes no binary assets; third-party provenance and bundled licenses require separate approval"
     }
   },
@@ -194,6 +214,16 @@
     "The captured Leptonica and codec inventory is scoped to one ephemeral Ubuntu runner and is not a pinned production artifact inventory.",
     "The offline smoke test validated process execution, not OCR recognition accuracy or production runtime integration."
   ],
+  "production_approval_gate": {
+    "production_approval": false,
+    "linux_and_windows_approval_must_not_be_combined": true,
+    "required_before_approval": [
+      "exact-production-linux-package-pin",
+      "exact-production-native-dependency-pins",
+      "runtime-integration-validation",
+      "ocr-recognition-accuracy-validation"
+    ]
+  },
   "next_validation": {
     "artifact_inspection_required": [
       "select and pin a production Linux artifact matching the approved engine version",

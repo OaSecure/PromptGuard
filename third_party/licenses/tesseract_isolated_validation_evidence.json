@@ -38,6 +38,7 @@
     }
   },
   "linux_runtime": {
+    "evidence_role": "verified-linux-candidate-not-production-approved",
     "distribution": "ubuntu-24.04-runner",
     "binary_path": "/usr/bin/tesseract",
     "binary_sha256": "9f831cab7525c3dab04af41bda35182af7ea1df9dceeaaa2f3bf207ac45c06a5",
@@ -61,10 +62,20 @@
     "verified_for_this_runner": true
   },
   "windows_provenance": {
+    "status": "blocked/unverified",
     "official_release_tag": "5.5.2",
     "official_release_assets": 0,
     "windows_binary_candidates": 0,
-    "third_party_or_internal_binary_verified": false
+    "third_party_or_internal_binary_verified": false,
+    "artifact_sha256_recorded": false,
+    "runtime_smoke_verified": false
+  },
+  "artifact_separation_gate": {
+    "source_license_candidate_version": "5.5.2",
+    "verified_linux_package_version": "5.3.4-1build5",
+    "same_artifact": false,
+    "source_license_candidate_is_verified_binary": false,
+    "production_approval": false
   },
   "runtime_tests": {
     "offline_ocr_smoke": {
