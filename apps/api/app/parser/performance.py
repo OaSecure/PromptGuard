@@ -1,7 +1,7 @@
 """Deterministic, privacy-safe performance contract for synthetic parser/OCR samples."""
 
 from dataclasses import dataclass
-from typing import Callable, Literal
+from typing import Callable, ClassVar, Literal, Mapping
 
 PerformanceComponent = Literal["parser", "ocr"]
 SampleOutcome = Literal["success", "timeout", "failed", "partial"]
@@ -34,6 +34,65 @@ class SyntheticPerformanceResult:
     latency_bucket: LatencyBucket
     sample_size_bucket: SampleSizeBucket
     failure_code: str | None = None
+
+
+@dataclass(frozen=True)
+class _PerformanceReportSchema:
+    component: PerformanceComponent
+    status: ProfileStatus
+    latency_bucket: LatencyBucket
+    sample_size_bucket: SampleSizeBucket
+    failure_code: str | None
+
+    _ALLOWED_VALUES: ClassVar[dict[str, frozenset[str | None]]] = {
+        "component": frozenset({"parser", "ocr"}),
+        "status": frozenset({"passed", "budget_exceeded", "failed"}),
+        "latency_bucket": frozenset({"within_budget", "over_budget", "unknown"}),
+        "sample_size_bucket": frozenset({"within_budget", "over_budget", "empty", "unknown"}),
+        "failure_code": frozenset(
+            {
+                None,
+                "PERFORMANCE_DEPENDENCY_UNAVAILABLE",
+                "PERFORMANCE_EMPTY_SAMPLE",
+                "PERFORMANCE_FAILED",
+                "PERFORMANCE_MALFORMED_SAMPLE",
+                "PERFORMANCE_PARTIAL",
+                "PERFORMANCE_TIMEOUT",
+            }
+        ),
+    }
+
+    @classmethod
+    def from_mapping(cls, fields: Mapping[str, object]) -> "_PerformanceReportSchema":
+        if set(fields) != set(cls._ALLOWED_VALUES):
+            raise ValueError("report fields are not allowed")
+        if any(not isinstance(value, str) and value is not None for value in fields.values()):
+            raise ValueError("report values must be allowlisted scalar values")
+        if any(value not in cls._ALLOWED_VALUES[key] for key, value in fields.items()):
+            raise ValueError("report values must be allowlisted scalar values")
+        return cls(**fields)  # type: ignore[arg-type]
+
+    def to_dict(self) -> dict[str, str | None]:
+        return {
+            "component": self.component,
+            "status": self.status,
+            "latency_bucket": self.latency_bucket,
+            "sample_size_bucket": self.sample_size_bucket,
+            "failure_code": self.failure_code,
+        }
+
+
+def serialize_performance_report(result: SyntheticPerformanceResult) -> dict[str, str | None]:
+    report = _PerformanceReportSchema.from_mapping(
+        {
+            "component": result.component,
+            "status": result.status,
+            "latency_bucket": result.latency_bucket,
+            "sample_size_bucket": result.sample_size_bucket,
+            "failure_code": result.failure_code,
+        }
+    )
+    return report.to_dict()
 
 
 def profile_synthetic_operation(
