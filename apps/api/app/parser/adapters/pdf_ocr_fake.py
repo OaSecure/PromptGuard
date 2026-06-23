@@ -8,6 +8,8 @@ from app.ports.ocr import OcrEnginePort, PdfRendererPort
 
 logger = logging.getLogger(__name__)
 
+_MERGED_DOCUMENT_METADATA_KEYS = frozenset({"page_coverage_inputs", "failed_page_indices"})
+
 
 class PdfSelectedPageOcrIntegrator:
     """Consume PR8 page selections and integrate OCR results without re-evaluating coverage."""
@@ -77,6 +79,7 @@ class PdfSelectedPageOcrIntegrator:
             "parser_id": "pdf-native-plus-fake-ocr",
             "parser_status": "partial" if failure_code else "parsed",
             "ocr_status": ocr_status,
+            "metadata": _safe_merge_metadata(native_document),
         })
         return FileParserResult(
             input_id=native_document.input_id,
@@ -93,6 +96,14 @@ def _page(block: ParsedBlock) -> int:
         if isinstance(page, int):
             return page
     return 2**31 - 1
+
+
+def _safe_merge_metadata(document: ParsedDocument) -> dict:
+    return {
+        key: value
+        for key, value in document.metadata.items()
+        if key in _MERGED_DOCUMENT_METADATA_KEYS
+    }
 
 
 def _selected_candidate_pages(coverage: PdfCoverageResult) -> tuple[int, ...]:
