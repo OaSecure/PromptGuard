@@ -93,6 +93,7 @@ python -m venv .venv
 .venv\Scripts\python -m pip install --upgrade pip setuptools wheel
 .venv\Scripts\python -m pip install -r apps/api/requirements.txt -r apps/api/requirements-ml.txt
 .venv\Scripts\python -m pip install --force-reinstall -r apps/api/requirements-ml-cu128.txt
+.venv\Scripts\python -m pip install -r apps/api/requirements-ocr-gpu.txt
 ```
 
 현재 Python 런타임이 CUDA를 쓰는지 확인한다.
@@ -101,6 +102,15 @@ python -m venv .venv
 cd apps/api
 ..\..\.venv\Scripts\python scripts/runtime_readiness.py
 ```
+
+OCR 런타임까지 함께 확인하려면 다음 명령을 사용한다. 이 출력은 설치 여부, CUDA 사용 가능 여부, blocker 코드만 포함하고 OCR 원문이나 파일명을 출력하지 않는다.
+
+```bash
+cd apps/api
+..\..\.venv\Scripts\python scripts/runtime_readiness.py --include-ocr
+```
+
+Windows에서 Tesseract가 PATH에 없으면 `PROMPTGUARD_TESSERACT_BINARY_PATH`에 `tesseract.exe` 절대경로를 지정한다. 한국어 OCR은 `tesseract --list-langs` 결과에 `kor`가 있어야 준비 완료로 판단한다.
 
 ## English
 
@@ -186,6 +196,7 @@ python -m venv .venv
 .venv\Scripts\python -m pip install --upgrade pip setuptools wheel
 .venv\Scripts\python -m pip install -r apps/api/requirements.txt -r apps/api/requirements-ml.txt
 .venv\Scripts\python -m pip install --force-reinstall -r apps/api/requirements-ml-cu128.txt
+.venv\Scripts\python -m pip install -r apps/api/requirements-ocr-gpu.txt
 ```
 
 Check whether the active Python runtime can use CUDA.
@@ -194,3 +205,12 @@ Check whether the active Python runtime can use CUDA.
 cd apps/api
 ..\..\.venv\Scripts\python scripts/runtime_readiness.py
 ```
+
+Use this command to include OCR runtime checks. The output contains dependency state, CUDA availability, and blocker codes only; it does not print OCR text or filenames.
+
+```bash
+cd apps/api
+..\..\.venv\Scripts\python scripts/runtime_readiness.py --include-ocr
+```
+
+On Windows, set `PROMPTGUARD_TESSERACT_BINARY_PATH` to the absolute `tesseract.exe` path when Tesseract is not on PATH. Korean OCR is considered ready only when `tesseract --list-langs` includes `kor`.
