@@ -1,4 +1,5 @@
 from collections.abc import Mapping
+from typing import cast
 
 from app.parser.models import (
     ParserAdapterCapability,
@@ -10,12 +11,14 @@ from app.parser.models import (
     ParserPlanResolution,
     ParserPlanStep,
     PlanKind,
+    StepKind,
     sanitized_failure,
 )
 
 PLAN_STEPS: dict[str, tuple[tuple[str, str, str], ...]] = {
     "wrap_text": (("wrap-text", "wrap_text", "always"),),
     "native_text": (("native-text", "native_text_extract", "always"),),
+    "pdf_native_ocr": (("pdf-native-ocr", "pdf_native_ocr", "always"),),
     "pdf_native_then_page_ocr": (
         ("pdf-native", "pdf_native_text_extract", "always"),
         ("pdf-coverage", "pdf_coverage_evaluate", "always"),
@@ -97,7 +100,7 @@ class ParserPlanResolver:
             ParserPlanStep(
                 step_id=step_id,
                 ordinal=ordinal,
-                step_kind=step_kind,
+                step_kind=cast(StepKind, step_kind),
                 capability_id=capability_by_kind[step_kind].capability_id,
                 execution_mode=mode,
             )
@@ -123,6 +126,8 @@ class ParserPlanResolver:
         plan_kind: PlanKind,
         capability_by_kind: Mapping[str, ParserAdapterCapability],
     ) -> PlanKind:
+        if plan_kind == "pdf_native_then_page_ocr" and "pdf_native_ocr" in capability_by_kind:
+            return "pdf_native_ocr"
         if plan_kind == "pdf_native_then_page_ocr" and ParserPlanResolver._should_use_pdf_native_only(
             request, capability_by_kind
         ):

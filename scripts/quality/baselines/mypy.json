@@ -83,10 +83,6 @@
       "count": 1
     },
     {
-      "fingerprint": "mypy|apps/api/app/parser/planning.py|arg-type|Argument \"step_kind\" to \"ParserPlanStep\" has incompatible type \"str\"; expected \"Literal['wrap_text', 'native_text_extract', 'pdf_native_text_extract', 'pdf_coverage_evaluate', 'render_ocr_candidate_pages', 'ocr_primary', 'ocr_fallback', 'merge_blocks', 'image_ocr', 'office_parse', 'spreadsheet_parse', 'slide_parse', 'code_parse']\"|",
-      "count": 1
-    },
-    {
       "fingerprint": "mypy|apps/api/app/parser/planning.py|arg-type|Argument \"trigger\" to \"ParserFallbackRule\" has incompatible type \"str\"; expected \"Literal['adapter_unavailable', 'adapter_initialization_failed', 'step_failed', 'no_text_detected']\"|",
       "count": 1
     },
