@@ -70,6 +70,40 @@ def test_classifier_manifest_loader_reads_selected_lr_artifact_ref(tmp_path):
     assert loaded.artifact.embedding_model_version == "Qwen/Qwen3-Embedding-0.6B"
 
 
+def test_classifier_manifest_loader_reads_v287_lr_candidate_policy_bundle_layout(tmp_path):
+    models_dir = tmp_path / "models"
+    models_dir.mkdir()
+    (tmp_path / "context_target_labels.json").write_text(
+        json.dumps({"target_labels": ["SECRET_CREDENTIAL_CONTEXT", "PERSONAL_DATA_CONTEXT"]}),
+        encoding="utf-8",
+    )
+    manifest_path = models_dir / "context_lr_roberta_active_best_f1_manifest.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "manifest_version": "context_lr_roberta_active_best_f1_2026_06_23",
+                "selected": {
+                    "lr_model": "models/context_with_patch_v287_lr_c4_dev_classifier.joblib",
+                    "target_labels_json": "context_target_labels.json",
+                    "lr_candidate_policy": {
+                        "mode": "global_high_recall_threshold",
+                        "candidate_threshold": 0.02,
+                        "lr_threshold_policy_json": None,
+                        "lr_top_k": 0,
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    loaded = load_classifier_manifest(manifest_path)
+
+    assert loaded.artifact.candidate_threshold == 0.02
+    assert loaded.artifact.target_labels == ["SECRET_CREDENTIAL_CONTEXT", "PERSONAL_DATA_CONTEXT"]
+    assert loaded.lr_model_path == Path("models/context_with_patch_v287_lr_c4_dev_classifier.joblib")
+
+
 def test_classifier_manifest_loader_accepts_target_label_list_payload(tmp_path):
     manifest_path = write_manifest_bundle(
         tmp_path,
@@ -123,6 +157,14 @@ def test_classifier_manifest_loader_rejects_unsafe_relative_paths_without_sensit
                 "lr_model": "models/classifier.joblib",
                 "target_labels_json": "context_target_labels.json",
                 "candidate_threshold": 1.001,
+            },
+            "CLASSIFIER_MANIFEST_INVALID_PAYLOAD",
+        ),
+        (
+            {
+                "lr_model": "models/classifier.joblib",
+                "target_labels_json": "context_target_labels.json",
+                "lr_candidate_policy": {"mode": "labelwise", "candidate_threshold": 0.02},
             },
             "CLASSIFIER_MANIFEST_INVALID_PAYLOAD",
         ),

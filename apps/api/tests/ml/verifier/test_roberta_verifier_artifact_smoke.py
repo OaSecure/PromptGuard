@@ -13,7 +13,7 @@ def test_optional_real_roberta_artifact_smoke_loads_when_configured():
         pytest.skip("PROMPTGUARD_TEST_VERIFIER_ARTIFACT_DIR is not configured")
 
     artifact_root = Path(artifact_dir)
-    manifest_path = artifact_root / "models" / "context_lr_roberta_best_v205_manifest.json"
+    manifest_path = artifact_root / "models" / "context_lr_roberta_active_best_f1_manifest.json"
 
     bundle = build_verifier_service_from_manifest(manifest_path, artifact_root=artifact_root)
     result = bundle.service.verify(
