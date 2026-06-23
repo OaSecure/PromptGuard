@@ -3,7 +3,6 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-
 VERY_LOW_MEANINGFUL_CHARS_PER_PAGE = 30
 LOW_MEANINGFUL_CHARS_PER_PAGE = 120
 LOW_NATIVE_TEXT_PAGE_RATIO_THRESHOLD = 0.80

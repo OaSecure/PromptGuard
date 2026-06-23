@@ -171,10 +171,6 @@
       "count": 1
     },
     {
-      "fingerprint": "ruff|apps/api/app/parser/pdf_coverage.py|I001|Import block is un-sorted or un-formatted|import unicodedata",
-      "count": 1
-    },
-    {
       "fingerprint": "ruff|apps/api/app/parser/planning.py|I001|Import block is un-sorted or un-formatted|from app.parser.models import (",
       "count": 1
     },
@@ -464,10 +460,6 @@
     },
     {
       "fingerprint": "ruff|apps/api/tests/parser/test_parser_worker_contract.py|I001|Import block is un-sorted or un-formatted|import ast",
-      "count": 1
-    },
-    {
-      "fingerprint": "ruff|apps/api/tests/parser/test_pdf_coverage.py|I001|Import block is un-sorted or un-formatted|import pytest",
       "count": 1
     },
     {

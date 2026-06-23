@@ -1,11 +1,12 @@
 import pytest
-from pydantic import ValidationError
-
 from app.parser.pdf_coverage import (
+    LOW_MEANINGFUL_CHARS_PER_PAGE,
+    VERY_LOW_MEANINGFUL_CHARS_PER_PAGE,
     PdfCoverageEvaluator,
     PdfPageCoverageInput,
     count_meaningful_characters,
 )
+from pydantic import ValidationError
 
 
 def _page(
@@ -33,6 +34,76 @@ def test_page_below_very_low_meaningful_chars_becomes_ocr_candidate():
     assert result.pages[0].is_ocr_candidate is True
     assert result.pages[0].count_bucket == "very_low"
     assert result.pages[0].candidate_reason == "very_low_native_text"
+
+
+def test_pdf_coverage_threshold_edges_do_not_expand_ocr_candidates():
+    cases = [
+        (
+            VERY_LOW_MEANINGFUL_CHARS_PER_PAGE - 1,
+            "absent",
+            True,
+            "very_low",
+            "very_low_native_text",
+        ),
+        (
+            VERY_LOW_MEANINGFUL_CHARS_PER_PAGE,
+            "absent",
+            False,
+            "low",
+            "low_native_text_image_absent",
+        ),
+        (
+            VERY_LOW_MEANINGFUL_CHARS_PER_PAGE,
+            "unknown",
+            True,
+            "low",
+            "low_native_text_image_unknown",
+        ),
+        (
+            LOW_MEANINGFUL_CHARS_PER_PAGE - 1,
+            "present",
+            True,
+            "low",
+            "low_native_text_image_present",
+        ),
+        (
+            LOW_MEANINGFUL_CHARS_PER_PAGE - 1,
+            "absent",
+            False,
+            "low",
+            "low_native_text_image_absent",
+        ),
+        (
+            LOW_MEANINGFUL_CHARS_PER_PAGE,
+            "present",
+            False,
+            "sufficient",
+            "sufficient_native_text",
+        ),
+        (
+            LOW_MEANINGFUL_CHARS_PER_PAGE,
+            "unknown",
+            False,
+            "sufficient",
+            "sufficient_native_text",
+        ),
+    ]
+
+    pages = [
+        _page(index, count, image_evidence)
+        for index, (count, image_evidence, *_expected) in enumerate(cases, start=1)
+    ]
+
+    result = PdfCoverageEvaluator().evaluate(pages, max_ocr_pages=len(pages))
+
+    for page, (_count, _image_evidence, expected_candidate, expected_bucket, expected_reason) in zip(
+        result.pages,
+        cases,
+    ):
+        assert page.is_ocr_candidate is expected_candidate
+        assert page.count_bucket == expected_bucket
+        assert page.candidate_reason == expected_reason
+    assert result.aggregate.selected_candidate_pages == (1, 3, 4)
 
 
 @pytest.mark.parametrize(
@@ -126,5 +197,5 @@ def test_duplicate_page_index_and_negative_budget_are_rejected():
 
 
 def test_meaningful_character_count_uses_nfkc_letters_and_numbers_only():
-    assert count_meaningful_characters("ＡＢＣ 123 한글\n\t!@#\u200b") == 8
+    assert count_meaningful_characters("\uff21\uff22\uff23 123 \ud55c\uae00\n\t!@#\u200b") == 8
     assert count_meaningful_characters(" \n\t!@#\u200b") == 0
