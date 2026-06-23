@@ -101,7 +101,7 @@ export function startFileUploadPreflightController(options: FileUploadPreflightC
         const fileKind = kindFor(snapshot.file.type, decision.extension);
         const uploaded = await options.uploadFile({ file: snapshot.file, requestId, fileKind, extension: decision.extension, mime: snapshot.file.type });
         if (!("file_ref" in uploaded)) throw new Error("upload failed");
-        inputs.push(createFileReferenceInput({ fileRef: uploaded.file_ref, fileKind: uploaded.file_kind, extension: uploaded.extension_hint ?? decision.extension, mimeType: uploaded.mime_hint ?? snapshot.file.type, sizeBytes: snapshot.file.size, sizeBucket: uploaded.size_bucket }));
+        inputs.push(createFileReferenceInput({ fileRef: uploaded.file_ref, tempScopeId: uploaded.temp_scope_id, fileKind: uploaded.file_kind, extension: uploaded.extension_hint ?? decision.extension, mimeType: uploaded.mime_hint ?? snapshot.file.type, sizeBytes: snapshot.file.size, sizeBucket: uploaded.size_bucket }));
       }
       if (inputs.length === 0) {
         showFailClosed("Selected files could not be inspected safely. Files were not attached.", () => void handleAttempt(attempt));

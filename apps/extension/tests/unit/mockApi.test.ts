@@ -35,7 +35,7 @@ describe("mock API", () => {
 
   it("warns for unsupported attachments and does not inspect file-reference content in mock mode", async () => {
     const warnRequest = createAnalyzeRequest(context, DEFAULT_POLICY_VERSION, [createUnsupportedAttachmentInput({ extension: ".pdf", mimeType: "application/pdf", sizeBytes: 12, attachmentIndex: 0 })], "frq_warn");
-    const fileRefRequest = createAnalyzeRequest(context, DEFAULT_POLICY_VERSION, [createFileReferenceInput({ fileRef: "fref_opaque_123", fileKind: "plain_text", extension: ".env", mimeType: "text/plain", sizeBytes: 42 })], "frq_file_ref");
+    const fileRefRequest = createAnalyzeRequest(context, DEFAULT_POLICY_VERSION, [createFileReferenceInput({ fileRef: "fref_opaque_123", tempScopeId: "tscope_abcdefghijklmnopqrstuvwxyz123456", fileKind: "plain_text", extension: ".env", mimeType: "text/plain", sizeBytes: 42 })], "frq_file_ref");
 
     const warnResponse = await mockFilesAnalyze(warnRequest);
     const fileRefResponse = await mockFilesAnalyze(fileRefRequest);

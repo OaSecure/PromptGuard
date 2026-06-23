@@ -30,6 +30,7 @@ export interface ConvertedPasteInputOptions {
 /** Options for a file-reference input item created after upload/temp. */
 export interface FileReferenceInputOptions {
   fileRef: string;
+  tempScopeId: string;
   fileKind: AnalyzeFileKind;
   extension: string;
   mimeType: string;
@@ -85,6 +86,7 @@ export function createFileReferenceInput(options: FileReferenceInputOptions): An
     size_bytes: options.sizeBytes,
     content_included: false,
     file_ref: options.fileRef,
+    temp_scope_id: options.tempScopeId,
     file_kind: options.fileKind,
     mime: options.mimeType,
     extension: trimLeadingDot(options.extension),

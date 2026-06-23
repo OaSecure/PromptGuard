@@ -495,7 +495,7 @@ function filesAnalyzeRequest(): AnalyzeRequest {
       locale: "ko-KR"
     },
     DEFAULT_CONFIG.policy_version,
-    [createFileReferenceInput({ fileRef: "fref_opaque_123", fileKind: "plain_text", extension: ".txt", mimeType: "text/plain", sizeBytes: 11 })]
+    [createFileReferenceInput({ fileRef: "fref_opaque_123", tempScopeId: "tscope_abcdefghijklmnopqrstuvwxyz123456", fileKind: "plain_text", extension: ".txt", mimeType: "text/plain", sizeBytes: 11 })]
   );
 }
 
