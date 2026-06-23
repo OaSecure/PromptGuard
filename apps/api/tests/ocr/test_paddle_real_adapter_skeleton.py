@@ -5,13 +5,13 @@ from pathlib import Path
 
 import pytest
 from app.domain.types.parser import OcrImageInput, OcrOptions
-from app.infrastructure.ocr.paddle_candidate import (
-    PaddleOcrCandidateConfig,
-    compose_paddle_ocr_candidate,
-)
 from app.infrastructure.ocr.paddle_real_adapter import (
     PaddleOcrLazyRuntimeConfig,
     PaddleOcrLazyRuntimeSkeleton,
+)
+from app.infrastructure.ocr.paddle_runtime import (
+    PaddleOcrRuntimeConfig,
+    compose_paddle_ocr_engine,
 )
 
 API = Path(__file__).parents[2]
@@ -40,17 +40,12 @@ class ImportHook:
         return object()
 
 
-def _approved_config() -> PaddleOcrCandidateConfig:
-    return PaddleOcrCandidateConfig(
-        enabled=True,
-        dependency_review_approved=True,
-        model_license_review_approved=True,
-        runtime_policy_approved=True,
-    )
+def _approved_config() -> PaddleOcrRuntimeConfig:
+    return PaddleOcrRuntimeConfig(enabled=True)
 
 
 def _request_result(runtime):
-    return compose_paddle_ocr_candidate(_approved_config(), runtime=runtime).recognize(
+    return compose_paddle_ocr_engine(_approved_config(), runtime=runtime).recognize(
         OcrImageInput(image_handle="PRIVATE_IMAGE_HANDLE/private-file.png", page=1),
         OcrOptions(languages=["kor"], timeout_ms=500),
     )
@@ -80,7 +75,7 @@ def test_module_has_no_concrete_paddle_imports():
 def test_lazy_import_is_only_attempted_inside_runtime_recognize():
     hook = ImportHook()
     runtime = PaddleOcrLazyRuntimeSkeleton(
-        PaddleOcrLazyRuntimeConfig(manual_opt_in=True),
+        PaddleOcrLazyRuntimeConfig(enabled=True),
         import_module=hook,
         image_resolver=lambda handle: "IMAGE_BYTES_OR_PATH",
     )
@@ -90,12 +85,12 @@ def test_lazy_import_is_only_attempted_inside_runtime_recognize():
     assert hook.calls == ["paddleocr"]
 
 
-def test_opt_in_guard_disabled_returns_sanitized_unavailable_without_import(caplog):
+def test_disabled_runtime_returns_sanitized_unavailable_without_import(caplog):
     caplog.set_level(logging.ERROR)
     hook = ImportHook()
     runtime = PaddleOcrLazyRuntimeSkeleton(
         PaddleOcrLazyRuntimeConfig(
-            manual_opt_in=False,
+            enabled=False,
             model_directory="/PRIVATE_MODEL_PATH",
         ),
         import_module=hook,
@@ -115,7 +110,7 @@ def test_dependency_import_failure_returns_sanitized_unavailable(caplog):
     caplog.set_level(logging.ERROR)
     runtime = PaddleOcrLazyRuntimeSkeleton(
         PaddleOcrLazyRuntimeConfig(
-            manual_opt_in=True,
+            enabled=True,
             model_directory="/PRIVATE_MODEL_PATH",
         ),
         import_module=ImportHook(ModuleNotFoundError("PRIVATE_RAW_EXCEPTION /PRIVATE_MODEL_PATH")),
@@ -133,7 +128,7 @@ def test_dependency_import_failure_returns_sanitized_unavailable(caplog):
 def test_constructor_or_runtime_exception_returns_sanitized_failure(caplog):
     caplog.set_level(logging.ERROR)
     runtime = PaddleOcrLazyRuntimeSkeleton(
-        PaddleOcrLazyRuntimeConfig(manual_opt_in=True),
+        PaddleOcrLazyRuntimeConfig(enabled=True),
         import_module=ImportHook(RuntimeError("PRIVATE_RAW_EXCEPTION C:\\private\\model")),
         image_resolver=lambda handle: "IMAGE_BYTES_OR_PATH",
     )
@@ -149,13 +144,13 @@ def test_constructor_or_runtime_exception_returns_sanitized_failure(caplog):
 
 def test_local_only_config_shape_has_no_remote_fetch_fields():
     config = PaddleOcrLazyRuntimeConfig(
-        manual_opt_in=True,
+        enabled=True,
         model_directory="/PRIVATE_MODEL_PATH",
         allow_remote_fetch=True,
         allow_automatic_download=True,
     )
 
-    assert config.manual_opt_in is True
+    assert config.enabled is True
     assert config.model_directory == "/PRIVATE_MODEL_PATH"
     assert config.allow_remote_fetch is False
     assert config.allow_automatic_download is False
@@ -164,7 +159,7 @@ def test_local_only_config_shape_has_no_remote_fetch_fields():
     )
 
 
-def test_opt_in_runtime_maps_paddle_ocr_output_to_safe_blocks(caplog):
+def test_enabled_runtime_maps_paddle_ocr_output_to_safe_blocks(caplog):
     caplog.set_level(logging.ERROR)
 
     class FakePaddleOcr:
@@ -173,7 +168,7 @@ def test_opt_in_runtime_maps_paddle_ocr_output_to_safe_blocks(caplog):
             return [[[[0, 0], [1, 0], [1, 1], [0, 1]], ("synthetic safe text", 0.93)]]
 
     runtime = PaddleOcrLazyRuntimeSkeleton(
-        PaddleOcrLazyRuntimeConfig(manual_opt_in=True),
+        PaddleOcrLazyRuntimeConfig(enabled=True),
         ocr_factory=lambda **kwargs: FakePaddleOcr(),
         image_resolver=lambda handle: "IMAGE_BYTES_OR_PATH",
     )
@@ -188,7 +183,7 @@ def test_opt_in_runtime_maps_paddle_ocr_output_to_safe_blocks(caplog):
     assert all(secret not in _serialized(result, caplog) for secret in SENSITIVE)
 
 
-def test_opt_in_runtime_maps_paddle_ocr_v3_dict_output_to_safe_blocks(caplog):
+def test_enabled_runtime_maps_paddle_ocr_v3_dict_output_to_safe_blocks(caplog):
     caplog.set_level(logging.ERROR)
 
     class FakePaddleOcr:
@@ -197,7 +192,7 @@ def test_opt_in_runtime_maps_paddle_ocr_v3_dict_output_to_safe_blocks(caplog):
             return [{"rec_texts": ["synthetic safe text"], "rec_scores": [0.73]}]
 
     runtime = PaddleOcrLazyRuntimeSkeleton(
-        PaddleOcrLazyRuntimeConfig(manual_opt_in=True),
+        PaddleOcrLazyRuntimeConfig(enabled=True),
         ocr_factory=lambda **kwargs: FakePaddleOcr(),
         image_resolver=lambda handle: "IMAGE_BYTES_OR_PATH",
     )
@@ -212,13 +207,13 @@ def test_opt_in_runtime_maps_paddle_ocr_v3_dict_output_to_safe_blocks(caplog):
     assert all(secret not in _serialized(result, caplog) for secret in SENSITIVE)
 
 
-def test_opt_in_runtime_returns_no_text_for_empty_paddle_output():
+def test_enabled_runtime_returns_no_text_for_empty_paddle_output():
     class FakePaddleOcr:
         def predict(self, image):
             return [{"rec_texts": [], "rec_scores": []}]
 
     runtime = PaddleOcrLazyRuntimeSkeleton(
-        PaddleOcrLazyRuntimeConfig(manual_opt_in=True),
+        PaddleOcrLazyRuntimeConfig(enabled=True),
         ocr_factory=lambda **kwargs: FakePaddleOcr(),
         image_resolver=lambda handle: "IMAGE_BYTES_OR_PATH",
     )
@@ -230,11 +225,11 @@ def test_opt_in_runtime_returns_no_text_for_empty_paddle_output():
     assert result.failure is None
 
 
-def test_opt_in_runtime_without_image_resolver_remains_unavailable(caplog):
+def test_enabled_runtime_without_image_resolver_remains_unavailable(caplog):
     caplog.set_level(logging.ERROR)
 
     runtime = PaddleOcrLazyRuntimeSkeleton(
-        PaddleOcrLazyRuntimeConfig(manual_opt_in=True),
+        PaddleOcrLazyRuntimeConfig(enabled=True),
         ocr_factory=lambda **kwargs: object(),
     )
 
@@ -257,14 +252,16 @@ def test_real_paddle_ocr_runtime_smoke_on_generated_image(tmp_path):
     image.save(image_path)
 
     runtime = PaddleOcrLazyRuntimeSkeleton(
-        PaddleOcrLazyRuntimeConfig(manual_opt_in=True),
+        PaddleOcrLazyRuntimeConfig(enabled=True),
         image_resolver=lambda handle: handle,
     )
 
-    result = compose_paddle_ocr_candidate(_approved_config(), runtime=runtime).recognize(
+    result = compose_paddle_ocr_engine(_approved_config(), runtime=runtime).recognize(
         OcrImageInput(image_handle=str(image_path), page=1),
         OcrOptions(languages=["eng"], timeout_ms=60_000),
     )
 
     assert result.failure is None
     assert result.status in {"text_found", "no_text_detected"}
+
+

@@ -1,10 +1,10 @@
-"""Lazy, production-disabled Paddle OCR runtime boundary."""
+"""Lazy PaddleOCR runtime boundary for local OCR execution."""
 
 from dataclasses import dataclass
 from importlib import import_module as default_import_module
 from typing import Callable
 
-from .paddle_candidate import PaddleOcrCandidateRequest, PaddleOcrCandidateRuntimeResult
+from .paddle_runtime import PaddleOcrRuntimeRequest, PaddleOcrRuntimeResult
 
 PaddleOcrFactory = Callable[..., object]
 ImageResolver = Callable[[str], object]
@@ -12,7 +12,7 @@ ImageResolver = Callable[[str], object]
 
 @dataclass(frozen=True)
 class PaddleOcrLazyRuntimeConfig:
-    manual_opt_in: bool = False
+    enabled: bool = True
     model_directory: str | None = None
     allow_remote_fetch: bool = False
     allow_automatic_download: bool = False
@@ -39,23 +39,23 @@ class PaddleOcrLazyRuntimeSkeleton:
         self._image_resolver = image_resolver
         self._ocr: object | None = None
 
-    def recognize(self, request: PaddleOcrCandidateRequest) -> PaddleOcrCandidateRuntimeResult:
-        if not self._config.manual_opt_in:
-            return PaddleOcrCandidateRuntimeResult(status="unavailable")
+    def recognize(self, request: PaddleOcrRuntimeRequest) -> PaddleOcrRuntimeResult:
+        if not self._config.enabled:
+            return PaddleOcrRuntimeResult(status="unavailable")
         image = self._resolve_image(request.image_handle)
         if image is None:
-            return PaddleOcrCandidateRuntimeResult(status="unavailable")
+            return PaddleOcrRuntimeResult(status="unavailable")
         try:
             ocr = self._get_ocr(request.languages)
         except ModuleNotFoundError:
-            return PaddleOcrCandidateRuntimeResult(status="unavailable")
+            return PaddleOcrRuntimeResult(status="unavailable")
         except Exception:
-            return PaddleOcrCandidateRuntimeResult(status="failed")
+            return PaddleOcrRuntimeResult(status="failed")
         try:
             raw_result = _run_ocr(ocr, image)
         except Exception:
-            return PaddleOcrCandidateRuntimeResult(status="failed")
-        return PaddleOcrCandidateRuntimeResult(status="success", blocks=_extract_blocks(raw_result, request.page))
+            return PaddleOcrRuntimeResult(status="failed")
+        return PaddleOcrRuntimeResult(status="success", blocks=_extract_blocks(raw_result, request.page))
 
     def _resolve_image(self, image_handle: str) -> object | None:
         if self._image_resolver is None:
@@ -122,9 +122,9 @@ def _collect_blocks(value: object, page: int | None, blocks: list[dict[str, obje
 def _legacy_text_and_score(value: object) -> tuple[object | None, object | None]:
     if not isinstance(value, (list, tuple)) or len(value) < 2:
         return None, None
-    candidate = value[1]
-    if isinstance(candidate, (list, tuple)) and len(candidate) >= 2:
-        return candidate[0], candidate[1]
+    runtime = value[1]
+    if isinstance(runtime, (list, tuple)) and len(runtime) >= 2:
+        return runtime[0], runtime[1]
     return None, None
 
 
@@ -135,3 +135,4 @@ def _append_block(blocks: list[dict[str, object]], text: object, confidence: obj
     if page is not None:
         block["page"] = page
     blocks.append(block)
+

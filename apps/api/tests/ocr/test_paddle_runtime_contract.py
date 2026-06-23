@@ -1,10 +1,10 @@
 import logging
 
 from app.domain.types.parser import OcrImageInput, OcrOptions
-from app.infrastructure.ocr.paddle_candidate import (
-    PaddleOcrCandidateConfig,
-    PaddleOcrCandidateRuntimeResult,
-    compose_paddle_ocr_candidate,
+from app.infrastructure.ocr.paddle_runtime import (
+    PaddleOcrRuntimeConfig,
+    PaddleOcrRuntimeResult,
+    compose_paddle_ocr_engine,
 )
 
 SENSITIVE = (
@@ -28,7 +28,7 @@ class FakeRuntime:
         self.requests.append(request)
         if self.error is not None:
             raise self.error
-        return self.result or PaddleOcrCandidateRuntimeResult(
+        return self.result or PaddleOcrRuntimeResult(
             status="success",
             blocks=[
                 {
@@ -45,17 +45,12 @@ class FakeRuntime:
         )
 
 
-def _config() -> PaddleOcrCandidateConfig:
-    return PaddleOcrCandidateConfig(
-        enabled=True,
-        dependency_review_approved=True,
-        model_license_review_approved=True,
-        runtime_policy_approved=True,
-    )
+def _config() -> PaddleOcrRuntimeConfig:
+    return PaddleOcrRuntimeConfig(enabled=True)
 
 
 def _recognize(runtime=None):
-    return compose_paddle_ocr_candidate(_config(), runtime=runtime).recognize(
+    return compose_paddle_ocr_engine(_config(), runtime=runtime).recognize(
         OcrImageInput(image_handle="PRIVATE_IMAGE_HANDLE/private-file.png", page=2),
         OcrOptions(languages=["kor", "eng"], timeout_ms=500),
     )
@@ -65,7 +60,7 @@ def _serialized(result, caplog) -> str:
     return result.model_dump_json() + repr(result) + caplog.text
 
 
-def test_no_runtime_remains_fail_closed_even_when_candidate_flags_are_approved():
+def test_no_runtime_remains_fail_closed():
     result = _recognize()
 
     assert result.status == "failed"
@@ -88,7 +83,7 @@ def test_fake_runtime_request_is_bounded_and_success_maps_to_ocr_result(caplog):
     assert request.image_handle == "PRIVATE_IMAGE_HANDLE/private-file.png"
     assert result.status == "text_found"
     assert result.failure is None
-    assert result.engine_id == "paddleocr-candidate-fake"
+    assert result.engine_id == "paddleocr-runtime"
     assert [(block.text, block.confidence_bucket, block.location.page) for block in result.blocks] == [
         ("synthetic safe text", "high", 2)
     ]
@@ -96,7 +91,7 @@ def test_fake_runtime_request_is_bounded_and_success_maps_to_ocr_result(caplog):
 
 
 def test_fake_empty_success_maps_to_no_text_detected():
-    runtime = FakeRuntime(PaddleOcrCandidateRuntimeResult(status="success", blocks=[]))
+    runtime = FakeRuntime(PaddleOcrRuntimeResult(status="success", blocks=[]))
 
     result = _recognize(runtime)
 
@@ -107,7 +102,7 @@ def test_fake_empty_success_maps_to_no_text_detected():
 
 def test_fake_runtime_failure_is_sanitized(caplog):
     caplog.set_level(logging.ERROR)
-    runtime = FakeRuntime(PaddleOcrCandidateRuntimeResult(
+    runtime = FakeRuntime(PaddleOcrRuntimeResult(
         status="failed",
         blocks=[{"text": "synthetic safe text"}],
         stdout="PRIVATE_STDOUT",
@@ -126,7 +121,7 @@ def test_fake_runtime_failure_is_sanitized(caplog):
 
 def test_fake_runtime_timeout_is_sanitized(caplog):
     caplog.set_level(logging.ERROR)
-    runtime = FakeRuntime(PaddleOcrCandidateRuntimeResult(
+    runtime = FakeRuntime(PaddleOcrRuntimeResult(
         status="timeout",
         stdout="PRIVATE_STDOUT",
         stderr="PRIVATE_STDERR",
@@ -153,3 +148,4 @@ def test_fake_runtime_exception_is_sanitized(caplog):
     assert result.failure is not None
     assert result.failure.code == "OCR_FAILED"
     assert all(secret not in _serialized(result, caplog) for secret in SENSITIVE)
+

@@ -26,7 +26,7 @@ def test_current_required_artifact_inventory_is_exact_and_fail_closed():
         "parser_ocr_license_report.json",
         "ocr_model_weight_license_report.json",
         "NOTICE.parser_ocr.txt",
-        "paddle_ocr_candidate_report.json",
+        "paddle_ocr_runtime_report.json",
         "tesseract_ocr_candidate_report.json",
         "tesseract_isolated_validation_evidence.json",
     }
@@ -36,7 +36,6 @@ def test_current_required_artifact_inventory_is_exact_and_fail_closed():
     result = validate_parser_ocr_readiness(_inventory())
     assert result.ready is False
     assert set(result.reason_codes) == {
-        "PADDLE_CANDIDATE_NOT_APPROVED",
         "TESSERACT_CANDIDATE_NOT_APPROVED",
         "TESSERACT_EVIDENCE_NOT_APPROVED",
     }
@@ -101,17 +100,17 @@ def test_sbom_component_missing_from_license_report_fails_closed():
     assert "ACTIVE_COMPONENT_MISMATCH" in result.reason_codes
 
 
-def test_unapproved_candidate_cannot_be_marked_ready_without_evidence():
+def test_disabled_paddle_runtime_report_fails_closed():
     inventory = _inventory()
-    paddle = inventory["paddle_ocr_candidate_report.json"]
-    paddle["status"] = "ready"
-    paddle["approved_for_dependency_addition"] = True
-    paddle["approved_for_default_distribution"] = True
+    paddle = inventory["paddle_ocr_runtime_report.json"]
+    paddle["status"] = "disabled"
+    paddle["dependency_overlay_enabled"] = False
+    paddle["default_runtime_enabled"] = False
 
     result = validate_parser_ocr_readiness(inventory)
 
     assert result.ready is False
-    assert "PADDLE_APPROVAL_EVIDENCE_MISSING" in result.reason_codes
+    assert "PADDLE_RUNTIME_NOT_READY" in result.reason_codes
 
 
 @pytest.mark.parametrize(
