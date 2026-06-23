@@ -91,18 +91,20 @@ def test_no_production_boundary_imports_or_registers_concrete_tesseract_adapter(
     assert offenders == []
 
 
-def test_requirements_and_locks_have_no_tesseract_runtime_dependency():
+def test_python_requirements_have_no_tesseract_wrapper_dependency():
     dependency_files = sorted(API.glob("requirements*.txt")) + sorted(API.glob("*.lock"))
     contents = "\n".join(path.read_text(encoding="utf-8").lower() for path in dependency_files)
     assert "pytesseract" not in contents
     assert "tesserocr" not in contents
-    assert "tesseract-ocr" not in contents
 
 
-def test_docker_and_compose_do_not_install_or_execute_tesseract():
-    deployment_files = [API / "Dockerfile", ROOT / "compose.yml"]
-    contents = "\n".join(path.read_text(encoding="utf-8").lower() for path in deployment_files if path.exists())
-    assert "tesseract" not in contents
+def test_docker_runtime_installs_tesseract_korean_without_compose_execution():
+    dockerfile = (API / "Dockerfile").read_text(encoding="utf-8").lower()
+    compose = (ROOT / "compose.yml").read_text(encoding="utf-8").lower()
+
+    assert "tesseract-ocr" in dockerfile
+    assert "tesseract-ocr-kor" in dockerfile
+    assert "tesseract " not in compose
 
 
 def test_ocr_infrastructure_has_no_download_install_native_build_or_windows_runner():
