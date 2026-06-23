@@ -60,8 +60,7 @@ def _summary(status: str, stage: str, blocks: int, cleanup: bool) -> dict[str, o
         "ocr_block_count": blocks,
         "cleanup_success": cleanup,
         "reason_code": SAFE_REASON,
-        "readiness": False,
-        "production_activation": False,
+        "readiness": status == "success",
     }
 
 
