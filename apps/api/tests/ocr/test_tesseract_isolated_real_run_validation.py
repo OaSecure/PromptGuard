@@ -7,8 +7,12 @@ flag and is skipped by default.
 
 from __future__ import annotations
 
+import base64
 import os
+import subprocess
+import tempfile
 from dataclasses import asdict
+from pathlib import Path
 
 import pytest
 from app.domain.types.parser import OcrImageInput, OcrOptions
@@ -40,6 +44,53 @@ TESSERACT_LANG_ENV = "PROMPTGUARD_TESSERACT_LANG"
 TESSERACT_PSM_ENV = "PROMPTGUARD_TESSERACT_PSM"
 
 TSV = "level\tpage_num\tleft\ttop\twidth\theight\tconf\ttext\n5\t1\t1\t2\t3\t4\t93\tlocal validation text\n"
+SYNTHETIC_HELLO_OCR_PNG = (
+    "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"
+    "gg=="
+)
 PRIVATE_VALUES = (
     "PRIVATE_STDOUT",
     "PRIVATE_STDERR",
@@ -116,6 +167,28 @@ def _config(**updates: object) -> TesseractPreflightConfig:
     return TesseractPreflightConfig(**values)  # type: ignore[arg-type]
 
 
+def _manual_tesseract_env() -> tuple[Path, Path, str, str]:
+    binary = Path(os.environ.get(TESSERACT_BINARY_ENV, ""))
+    tessdata = Path(os.environ.get(TESSDATA_DIR_ENV, ""))
+    language = os.environ.get(TESSERACT_LANG_ENV, "eng")
+    psm = os.environ.get(TESSERACT_PSM_ENV, "6")
+    missing = [
+        name
+        for name, value in (
+            (TESSERACT_BINARY_ENV, str(binary)),
+            (TESSDATA_DIR_ENV, str(tessdata)),
+        )
+        if not value
+    ]
+    if missing:
+        pytest.skip(f"set {', '.join(missing)} for isolated local Tesseract validation")
+    if not binary.exists():
+        pytest.skip("configured Tesseract binary is unavailable")
+    if not (tessdata / f"{language}.traineddata").exists():
+        pytest.skip("configured Tesseract traineddata is unavailable")
+    return binary, tessdata, language, psm
+
+
 def _options() -> OcrOptions:
     return OcrOptions(languages=["eng"], timeout_ms=500)
 
@@ -148,6 +221,12 @@ def _manual_config_from_environment() -> TesseractPreflightConfig:
 def _assert_public_result_is_sanitized(result: object) -> None:
     serialized = str(result)
     assert all(value not in serialized for value in PRIVATE_VALUES)
+
+
+def _write_synthetic_image(directory: Path) -> Path:
+    image_path = directory / "synthetic_ocr_validation.png"
+    image_path.write_bytes(base64.b64decode(SYNTHETIC_HELLO_OCR_PNG))
+    return image_path
 
 
 def test_isolated_real_run_validation_is_skipped_by_default(monkeypatch: pytest.MonkeyPatch):
@@ -241,3 +320,53 @@ def test_manual_real_run_validation_requires_explicit_flag(monkeypatch: pytest.M
 
     assert config.binary_path
     assert config.tessdata_directory
+
+
+def test_manual_real_run_validation_executes_one_synthetic_ocr_when_explicitly_enabled():
+    reason = _skip_reason()
+    if reason is not None:
+        pytest.skip(reason)
+    binary, tessdata, language, psm = _manual_tesseract_env()
+    temp_dir_path: Path | None = None
+    image_path: Path | None = None
+
+    with tempfile.TemporaryDirectory(prefix="promptguard_tesseract_validation_") as temp_dir:
+        temp_dir_path = Path(temp_dir)
+        image_path = _write_synthetic_image(temp_dir_path)
+        completed = subprocess.run(
+            [
+                str(binary),
+                str(image_path),
+                "stdout",
+                "--tessdata-dir",
+                str(tessdata),
+                "-l",
+                language,
+                "--psm",
+                psm,
+            ],
+            check=False,
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=10,
+        )
+        public_validation_result = {
+            "exit_code": completed.returncode,
+            "text": completed.stdout.strip(),
+        }
+
+        assert completed.returncode == 0
+        assert "HELLO OCR" in public_validation_result["text"]
+        assert completed.stderr is not None
+        _assert_public_result_is_sanitized(public_validation_result)
+        assert str(binary) not in str(public_validation_result)
+        assert str(tessdata) not in str(public_validation_result)
+        assert str(image_path) not in str(public_validation_result)
+        assert temp_dir_path.exists()
+        assert image_path.exists()
+
+    assert temp_dir_path is not None
+    assert image_path is not None
+    assert not image_path.exists()
+    assert not temp_dir_path.exists()
