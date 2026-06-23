@@ -1,10 +1,13 @@
-"""Lazy, production-disabled Paddle OCR runtime skeleton."""
+"""Lazy, production-disabled Paddle OCR runtime boundary."""
 
 from dataclasses import dataclass
 from importlib import import_module as default_import_module
 from typing import Callable
 
 from .paddle_candidate import PaddleOcrCandidateRequest, PaddleOcrCandidateRuntimeResult
+
+PaddleOcrFactory = Callable[..., object]
+ImageResolver = Callable[[str], object]
 
 
 @dataclass(frozen=True)
@@ -27,18 +30,108 @@ class PaddleOcrLazyRuntimeSkeleton:
         config: PaddleOcrLazyRuntimeConfig,
         *,
         import_module: Callable[[str], object] = default_import_module,
+        ocr_factory: PaddleOcrFactory | None = None,
+        image_resolver: ImageResolver | None = None,
     ) -> None:
         self._config = config
         self._import_module = import_module
+        self._ocr_factory = ocr_factory
+        self._image_resolver = image_resolver
+        self._ocr: object | None = None
 
     def recognize(self, request: PaddleOcrCandidateRequest) -> PaddleOcrCandidateRuntimeResult:
-        del request
         if not self._config.manual_opt_in:
             return PaddleOcrCandidateRuntimeResult(status="unavailable")
+        image = self._resolve_image(request.image_handle)
+        if image is None:
+            return PaddleOcrCandidateRuntimeResult(status="unavailable")
         try:
-            self._import_module("paddleocr")
+            ocr = self._get_ocr(request.languages)
         except ModuleNotFoundError:
             return PaddleOcrCandidateRuntimeResult(status="unavailable")
         except Exception:
             return PaddleOcrCandidateRuntimeResult(status="failed")
-        return PaddleOcrCandidateRuntimeResult(status="unavailable")
+        try:
+            raw_result = _run_ocr(ocr, image)
+        except Exception:
+            return PaddleOcrCandidateRuntimeResult(status="failed")
+        return PaddleOcrCandidateRuntimeResult(status="success", blocks=_extract_blocks(raw_result, request.page))
+
+    def _resolve_image(self, image_handle: str) -> object | None:
+        if self._image_resolver is None:
+            return None
+        try:
+            return self._image_resolver(image_handle)
+        except Exception:
+            return None
+
+    def _get_ocr(self, languages: tuple[str, ...]) -> object:
+        if self._ocr is None:
+            factory = self._ocr_factory
+            if factory is None:
+                module = self._import_module("paddleocr")
+                factory = getattr(module, "PaddleOCR")
+            self._ocr = factory(lang=_select_language(languages))
+        return self._ocr
+
+
+def _run_ocr(ocr: object, image: object) -> object:
+    predict = getattr(ocr, "predict", None)
+    if callable(predict):
+        return predict(image)
+    legacy_ocr = getattr(ocr, "ocr", None)
+    if callable(legacy_ocr):
+        return legacy_ocr(image)
+    raise RuntimeError("paddle_ocr_method_unavailable")
+
+
+def _select_language(languages: tuple[str, ...]) -> str:
+    normalized = {language.lower() for language in languages}
+    if normalized & {"kor", "ko", "korean"}:
+        return "korean"
+    if normalized & {"eng", "en", "english"}:
+        return "en"
+    return "korean"
+
+
+def _extract_blocks(raw_result: object, page: int | None) -> list[dict[str, object]]:
+    blocks: list[dict[str, object]] = []
+    _collect_blocks(raw_result, page, blocks)
+    return blocks
+
+
+def _collect_blocks(value: object, page: int | None, blocks: list[dict[str, object]]) -> None:
+    if isinstance(value, dict):
+        texts = value.get("rec_texts")
+        scores = value.get("rec_scores")
+        if isinstance(texts, list):
+            for index, text in enumerate(texts):
+                score = scores[index] if isinstance(scores, list) and index < len(scores) else None
+                _append_block(blocks, text, score, page)
+        return
+
+    if isinstance(value, (list, tuple)):
+        legacy_text, legacy_score = _legacy_text_and_score(value)
+        if legacy_text is not None:
+            _append_block(blocks, legacy_text, legacy_score, page)
+            return
+        for item in value:
+            _collect_blocks(item, page, blocks)
+
+
+def _legacy_text_and_score(value: object) -> tuple[object | None, object | None]:
+    if not isinstance(value, (list, tuple)) or len(value) < 2:
+        return None, None
+    candidate = value[1]
+    if isinstance(candidate, (list, tuple)) and len(candidate) >= 2:
+        return candidate[0], candidate[1]
+    return None, None
+
+
+def _append_block(blocks: list[dict[str, object]], text: object, confidence: object, page: int | None) -> None:
+    if not isinstance(text, str) or not text.strip():
+        return
+    block: dict[str, object] = {"text": text, "confidence": confidence}
+    if page is not None:
+        block["page"] = page
+    blocks.append(block)
