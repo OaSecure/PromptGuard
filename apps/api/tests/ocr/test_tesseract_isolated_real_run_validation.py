@@ -236,6 +236,21 @@ def _write_synthetic_image(directory: Path) -> Path:
     return image_path
 
 
+def _write_synthetic_korean_image(directory: Path) -> Path:
+    Image = pytest.importorskip("PIL.Image")
+    ImageDraw = pytest.importorskip("PIL.ImageDraw")
+    ImageFont = pytest.importorskip("PIL.ImageFont")
+
+    image_path = directory / "synthetic_korean_ocr_validation.png"
+    font_path = Path("C:/Windows/Fonts/malgun.ttf")
+    font = ImageFont.truetype(str(font_path), 120) if font_path.exists() else None
+    image = Image.new("RGB", (900, 260), "white")
+    draw = ImageDraw.Draw(image)
+    draw.text((60, 55), "개인정보", fill="black", font=font)
+    image.save(image_path)
+    return image_path
+
+
 def _ocr_result_from_local_validation(text: str) -> OcrResult:
     return OcrResult(
         status="text_found",
@@ -427,3 +442,42 @@ def test_manual_real_run_validation_executes_one_synthetic_ocr_when_explicitly_e
     assert image_path is not None
     assert not image_path.exists()
     assert not temp_dir_path.exists()
+
+
+def test_manual_real_run_validation_recognizes_korean_fixture_when_kor_is_configured():
+    reason = _skip_reason()
+    if reason is not None:
+        pytest.skip(reason)
+    binary, tessdata, language, psm = _manual_tesseract_env()
+    if language != "kor":
+        pytest.skip(f"set {TESSERACT_LANG_ENV}=kor to run Korean OCR validation")
+
+    with tempfile.TemporaryDirectory(prefix="promptguard_tesseract_kor_validation_") as temp_dir:
+        image_path = _write_synthetic_korean_image(Path(temp_dir))
+        completed = subprocess.run(
+            [
+                str(binary),
+                str(image_path),
+                "stdout",
+                "--tessdata-dir",
+                str(tessdata),
+                "-l",
+                language,
+                "--psm",
+                psm,
+            ],
+            check=False,
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=10,
+        )
+        recognized = "".join(completed.stdout.split())
+        expected = "개인정보"
+        public_status_only = {"exit_code": completed.returncode}
+
+        assert completed.returncode == 0
+        assert expected in recognized, "Tesseract Korean OCR did not recognize the controlled fixture text"
+        assert str(binary) not in str(public_status_only)
+        assert str(tessdata) not in str(public_status_only)
+        assert str(image_path) not in str(public_status_only)
