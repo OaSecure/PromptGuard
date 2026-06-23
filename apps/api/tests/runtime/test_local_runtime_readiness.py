@@ -91,10 +91,40 @@ def test_runtime_readiness_passes_when_torch_cuda_is_available():
     assert report.dependencies["torch"].device == "cuda"
 
 
+def test_runtime_readiness_can_require_ocr_dependencies():
+    class OcrProbe:
+        def check(self, dependency: str) -> RuntimeDependencyStatus:
+            if dependency == "torch":
+                return RuntimeDependencyStatus(
+                    name="torch",
+                    installed=True,
+                    version="2.9.1+cu128",
+                    cuda_available=True,
+                    device="cuda:0",
+                )
+            if dependency == "tesseract-kor":
+                return RuntimeDependencyStatus(name=dependency, installed=False, reason="tesseract_korean_unavailable")
+            if dependency == "paddleocr":
+                return RuntimeDependencyStatus(name=dependency, installed=False, reason="dependency_unavailable")
+            return RuntimeDependencyStatus(name=dependency, installed=False, reason="unsupported_dependency_probe")
+
+    report = LocalRuntimeReadinessProbe(
+        dependency_probe=OcrProbe(),
+        expected_cuda=True,
+        include_ocr=True,
+    ).check()
+
+    assert report.ready is False
+    assert report.blockers == ["tesseract_kor_unavailable", "paddleocr_unavailable"]
+    assert set(report.dependencies) == {"torch", "tesseract-kor", "paddleocr"}
+    assert report.dependencies["tesseract-kor"].reason == "tesseract_korean_unavailable"
+
+
 def test_runtime_readiness_has_no_sensitive_payload_fields():
     report = LocalRuntimeReadinessProbe(
         dependency_probe=_UnavailableDependencyProbe(),
         expected_cuda=True,
+        include_ocr=True,
     ).check()
 
     encoded = str(report.model_dump()).lower()
@@ -107,8 +137,9 @@ def test_runtime_readiness_has_no_sensitive_payload_fields():
 
 def test_runtime_readiness_script_emits_metadata_only_json(monkeypatch, capsys):
     class FakeProbe:
-        def __init__(self, *, expected_cuda: bool) -> None:
+        def __init__(self, *, expected_cuda: bool, include_ocr: bool) -> None:
             assert expected_cuda is True
+            assert include_ocr is False
 
         def check(self) -> LocalRuntimeReadinessReport:
             return LocalRuntimeReadinessReport(
@@ -122,7 +153,7 @@ def test_runtime_readiness_script_emits_metadata_only_json(monkeypatch, capsys):
 
     monkeypatch.setattr(runtime_readiness, "LocalRuntimeReadinessProbe", FakeProbe)
 
-    exit_code = runtime_readiness.main()
+    exit_code = runtime_readiness.main([])
     output = capsys.readouterr().out
 
     assert exit_code == 0
@@ -132,6 +163,34 @@ def test_runtime_readiness_script_emits_metadata_only_json(monkeypatch, capsys):
     assert "original_filename" not in output
 
 
+def test_runtime_readiness_script_can_include_ocr_checks(monkeypatch, capsys):
+    class FakeProbe:
+        def __init__(self, *, expected_cuda: bool, include_ocr: bool) -> None:
+            assert expected_cuda is True
+            assert include_ocr is True
+
+        def check(self) -> LocalRuntimeReadinessReport:
+            return LocalRuntimeReadinessReport(
+                runtime="python",
+                python_version="3.11.0",
+                platform="windows",
+                ready=False,
+                blockers=["paddleocr_unavailable"],
+                dependencies={
+                    "torch": RuntimeDependencyStatus(name="torch", installed=True, cuda_available=True, device="cuda:0"),
+                    "paddleocr": RuntimeDependencyStatus(name="paddleocr", installed=False, reason="dependency_unavailable"),
+                },
+            )
+
+    monkeypatch.setattr(runtime_readiness, "LocalRuntimeReadinessProbe", FakeProbe)
+    exit_code = runtime_readiness.main(["--include-ocr"])
+    output = capsys.readouterr().out
+
+    assert exit_code == 1
+    assert "paddleocr_unavailable" in output
+    assert "raw_prompt" not in output
+
+
 def test_cuda_requirements_pin_pytorch_cuda_index():
     requirements = Path(__file__).parents[2] / "requirements-ml-cu128.txt"
     content = requirements.read_text(encoding="utf-8")
@@ -139,3 +198,12 @@ def test_cuda_requirements_pin_pytorch_cuda_index():
     assert "--index-url https://download.pytorch.org/whl/cu128" in content
     assert "torch==2.9.1" in content
     assert "cpu" not in content.casefold()
+
+
+def test_ocr_gpu_requirements_pin_paddle_runtime_overlay():
+    requirements = Path(__file__).parents[2] / "requirements-ocr-gpu.txt"
+    content = requirements.read_text(encoding="utf-8")
+
+    assert "paddlepaddle-gpu==2.6.2" in content
+    assert "paddleocr==3.7.0" in content
+    assert "paddlepaddle==" not in content

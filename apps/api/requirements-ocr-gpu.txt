@@ -1,0 +1,4 @@
+# Optional local OCR runtime overlay for GPU-capable PaddleOCR smoke tests.
+# Install after requirements.txt inside the project venv.
+paddlepaddle-gpu==2.6.2
+paddleocr==3.7.0
