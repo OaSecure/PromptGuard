@@ -248,3 +248,16 @@ def test_ocr_gpu_requirements_pin_paddle_runtime_overlay():
     assert "numpy==2.3.5" in content
     assert "paddleocr==3.7.0" in content
     assert "paddlepaddle==" not in content
+
+
+def test_local_runtime_blocker_doc_records_tesseract_install_evidence():
+    document = Path(__file__).parents[4] / "docs" / "references" / "promptguard_v3_5_3_local_runtime_readiness_blockers.md"
+    content = document.read_text(encoding="utf-8")
+
+    assert "tesseract_kor_unavailable" in content
+    assert "winget install --id tesseract-ocr.tesseract" in content
+    assert "winget install --id UB-Mannheim.TesseractOCR" in content
+    assert "0x800704c7" in content
+    assert "PROMPTGUARD_TESSERACT_BINARY_PATH" in content
+    assert "torch.cuda_available=true" in content
+    assert "paddleocr.cuda_available=true" in content
