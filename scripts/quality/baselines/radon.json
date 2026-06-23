@@ -71,14 +71,6 @@
       "count": 1
     },
     {
-      "fingerprint": "radon|apps/api/app/parser/models.py|class|ParserExecutionPlan||complexity=14",
-      "count": 1
-    },
-    {
-      "fingerprint": "radon|apps/api/app/parser/models.py|method|validate_plan_graph||complexity=13",
-      "count": 1
-    },
-    {
       "fingerprint": "radon|apps/api/app/parser/planning.py|method|resolve_plan||complexity=14",
       "count": 1
     },
