@@ -204,6 +204,8 @@ def test_ocr_gpu_requirements_pin_paddle_runtime_overlay():
     requirements = Path(__file__).parents[2] / "requirements-ocr-gpu.txt"
     content = requirements.read_text(encoding="utf-8")
 
-    assert "paddlepaddle-gpu==2.6.2" in content
+    assert "--index-url https://www.paddlepaddle.org.cn/packages/stable/cu118/" in content
+    assert "paddlepaddle-gpu==3.2.0" in content
+    assert "numpy==2.3.5" in content
     assert "paddleocr==3.7.0" in content
     assert "paddlepaddle==" not in content
