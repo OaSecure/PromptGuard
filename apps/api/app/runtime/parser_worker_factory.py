@@ -1,9 +1,12 @@
+from app.infrastructure.ocr.paddle_real_adapter import PaddleOcrLazyRuntimeConfig, PaddleOcrLazyRuntimeSkeleton
+from app.infrastructure.ocr.paddle_runtime import PaddleOcrRuntimeConfig, compose_paddle_ocr_engine
 from app.infrastructure.temp_storage import EncryptedTemporaryFileStorage
 from app.infrastructure.temp_storage.parser_adapter import (
     TemporaryStorageContentSource,
     TemporaryStorageParserRepository,
 )
 from app.parser.adapters.code_text import CodeTextParserAdapter
+from app.parser.adapters.image_ocr import ImageOcrAdapter
 from app.parser.adapters.native_text import NativeTextAdapter
 from app.parser.executor import ParserPlanExecutor
 from app.parser.models import ParserAdapterCapability
@@ -31,6 +34,14 @@ def build_parser_worker_pool(
 ) -> ParserWorkerPool:
     clock = clock or SystemClock()
     content_source = TemporaryStorageContentSource(storage, clock)
+    paddle_runtime = PaddleOcrLazyRuntimeSkeleton(
+        PaddleOcrLazyRuntimeConfig(enabled=True),
+        image_resolver=lambda handle: handle,
+    )
+    paddle_engine = compose_paddle_ocr_engine(
+        PaddleOcrRuntimeConfig(enabled=True),
+        runtime=paddle_runtime,
+    )
     registrations = (
         ParserAdapterRegistration(
             capability=ParserAdapterCapability(capability_id="native-text-v1", step_kinds=("native_text_extract",)),
@@ -39,6 +50,10 @@ def build_parser_worker_pool(
         ParserAdapterRegistration(
             capability=ParserAdapterCapability(capability_id="code-text-v1", step_kinds=("code_parse",)),
             adapter=CodeTextParserAdapter(content_source),
+        ),
+        ParserAdapterRegistration(
+            capability=ParserAdapterCapability(capability_id="image-ocr-v1", step_kinds=("image_ocr", "ocr_fallback")),
+            adapter=ImageOcrAdapter(content_source, paddle_engine),
         ),
     )
     runner = FileParserRunner(

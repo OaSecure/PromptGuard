@@ -1,7 +1,9 @@
 import logging
 
+from app.atoms.models import ParsedDocument
 from app.parser.models import (
     FileParserResult,
+    OcrStatus,
     ParserBoundaryError,
     ParserExecutionPlan,
     ParserPlanStep,
@@ -63,6 +65,7 @@ class ParserPlanExecutor:
                 input_id=payload.input_id,
                 document=document,
                 parser_status="partial" if partial else "parsed",
+                ocr_status=_document_ocr_status(document),
                 failure=last_failure if partial else None,
             )
         except ParserBoundaryError as error:
@@ -87,3 +90,21 @@ class ParserPlanExecutor:
     ) -> ParserStepResult:
         adapter = self._registry.resolve_adapter(step.capability_id, step.step_kind)
         return adapter.execute_step(step, payload, resolved_file)
+
+
+def _document_ocr_status(document: ParsedDocument | None) -> OcrStatus:
+    if document is None:
+        return "not_applicable"
+    return _result_ocr_status(document.ocr_status)
+
+
+def _result_ocr_status(value: str | None) -> OcrStatus:
+    if value == "text_found":
+        return "text_found"
+    if value == "no_text_detected":
+        return "no_text_detected"
+    if value == "timeout":
+        return "timeout"
+    if value == "failed":
+        return "failed"
+    return "not_applicable"
