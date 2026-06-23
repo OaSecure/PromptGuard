@@ -46,7 +46,6 @@ def _summary(
         "cleanup_success": cleanup,
         "reason_code": SAFE_REASON,
         "readiness": status == "success",
-        "production_activation": False,
     }
 
 
