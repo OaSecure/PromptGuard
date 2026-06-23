@@ -72,7 +72,7 @@ def _preflight() -> TesseractPreflightConfig:
     )
 
 
-def _compose(*, enabled=True, files=True, backend=True, policy=True, events=None):
+def _compose(*, enabled=True, files=True, backend=True, backend_factory=None, policy=True, events=None):
     events = events if events is not None else []
     process_policy = ProcessExecutionPolicy(frozenset({"LANG"}), {"LANG": "C.UTF-8"}) if policy is True else policy
     return compose_tesseract_engine(
@@ -80,6 +80,7 @@ def _compose(*, enabled=True, files=True, backend=True, policy=True, events=None
         verifier=FakeVerifier() if files is not None else None,
         temporary_files=FakeTempFiles(events) if files is True else files,
         backend=FakeBackend(events) if backend is True else backend,
+        backend_factory=backend_factory,
         process_policy=process_policy,
     )
 
@@ -105,10 +106,18 @@ def test_disabled_composition_is_fail_safe_and_does_not_execute_ports():
     assert result.failure is not None and result.failure.code == "OCR_ENGINE_UNAVAILABLE"
 
 
-def test_missing_required_port_is_fail_safe():
-    for files, backend, policy in ((None, True, True), (True, None, True), (True, True, None)):
+def test_missing_required_non_backend_port_is_fail_safe():
+    for files, backend, policy in ((None, True, True), (True, True, None)):
         result = _recognize(_compose(files=files, backend=backend, policy=policy))
         assert result.failure is not None and result.failure.code == "OCR_ENGINE_UNAVAILABLE"
+
+
+def test_backend_factory_failure_is_fail_safe():
+    def fail_factory():
+        raise RuntimeError("PRIVATE_RAW_EXCEPTION")
+
+    result = _recognize(_compose(backend=None, backend_factory=fail_factory))
+    assert result.failure is not None and result.failure.code == "OCR_ENGINE_UNAVAILABLE"
 
 
 def test_stage_process_release_and_partial_output_failures_are_sanitized():
