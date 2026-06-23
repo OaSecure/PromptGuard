@@ -30,12 +30,14 @@ from app.ml.verifier import VerifierServiceBuildError, build_verifier_service_fr
 from app.parser.models import FileParserResult, TempFileAccessContext
 from app.runtime.ml_inference_queue import MlInferenceQueue
 from app.runtime.parser_worker import ParserWorkerPool
+from app.runtime.parser_worker_factory import build_parser_worker_pool
 from app.models.auth import User
 from app.models.filters import FilterRule
 from app.events.writer import SqlAlchemyEventWriter, load_idempotency_event_id as load_idempotency_key
 from app.privacy import serialize_event_write
 from app.ports.policy import PolicyOrchestratorPort
 from app.routes.auth import get_db_session, require_active_user
+from app.routes.temp_files import get_temp_storage
 from app.services.analyze_classifier import AnalyzeClassifierOutcome, AnalyzeVerifierConfig, evaluate_analyze_classifier
 from app.services.filter_rules import (
     RuleMatch,
@@ -427,8 +429,12 @@ def _resolve_ml_inference_max_workers(settings: Settings) -> int:
     return decision.worker_count
 
 
-def get_parser_worker_pool() -> ParserWorkerPool | None:
-    return None
+def get_parser_worker_pool(settings: Settings = Depends(get_settings), storage=Depends(get_temp_storage)) -> ParserWorkerPool | None:
+    return build_parser_worker_pool(
+        storage,
+        max_workers=settings.ml_inference_queue_max_workers,
+        max_queue_size=settings.ml_inference_queue_max_queue_size,
+    )
 
 
 def parser_results_for_payload(
