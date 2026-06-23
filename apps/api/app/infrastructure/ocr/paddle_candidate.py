@@ -34,7 +34,7 @@ class PaddleOcrCandidateRequest:
 
 @dataclass(frozen=True)
 class PaddleOcrCandidateRuntimeResult:
-    status: Literal["success", "failed", "timeout"]
+    status: Literal["success", "failed", "timeout", "unavailable"]
     blocks: list[dict[str, object]] | None = None
     stdout: str = ""
     stderr: str = ""
@@ -71,6 +71,8 @@ class PaddleOcrCandidateEngine:
             ))
         except Exception:
             return _failure(_fake_engine_id(), "OCR_FAILED")
+        if runtime_result.status == "unavailable":
+            return _failure(_fake_engine_id(), "OCR_ENGINE_UNAVAILABLE")
         if runtime_result.status == "timeout":
             return _failure(_fake_engine_id(), "OCR_TIMEOUT", status="timeout")
         if runtime_result.status == "failed":
