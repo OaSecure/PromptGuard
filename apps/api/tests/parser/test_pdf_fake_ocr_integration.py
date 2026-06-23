@@ -48,6 +48,25 @@ def test_only_pr8_selected_pages_are_rendered_and_ocr_runs_in_page_order():
     assert result.failure.code == "OCR_PAGE_LIMIT_EXCEEDED"
 
 
+def test_inconsistent_coverage_aggregate_cannot_expand_ocr_pages():
+    coverage = PdfCoverageEvaluator().evaluate([_page(1), _page(2, 120)], 1)
+    forged_coverage = coverage.model_copy(update={
+        "aggregate": coverage.aggregate.model_copy(update={"selected_candidate_pages": (1, 2)})
+    })
+    renderer = FakePdfRenderer()
+    engine = FakeOcrEngine(text_by_page={1: "ocr page one", 2: "must not run"})
+
+    result = PdfSelectedPageOcrIntegrator(renderer, engine).integrate(
+        _native_document(), "PRIVATE_RUNTIME_REF", forged_coverage, OcrOptions(timeout_ms=1000)
+    )
+
+    assert renderer.calls == [1]
+    assert engine.calls == [1]
+    assert [(block.location["page"], block.source_type) for block in result.document.blocks] == [
+        (1, "pdf_ocr_page"), (2, "pdf_native_page")
+    ]
+
+
 def test_no_selected_pages_does_not_render_or_run_ocr():
     coverage = PdfCoverageEvaluator().evaluate([_page(1)], 0)
     renderer, engine = FakePdfRenderer(), FakeOcrEngine()

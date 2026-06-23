@@ -163,10 +163,6 @@
       "count": 1
     },
     {
-      "fingerprint": "ruff|apps/api/app/parser/adapters/pdf_ocr_fake.py|I001|Import block is un-sorted or un-formatted|import logging",
-      "count": 1
-    },
-    {
       "fingerprint": "ruff|apps/api/app/parser/fakes.py|I001|Import block is un-sorted or un-formatted|import time",
       "count": 1
     },

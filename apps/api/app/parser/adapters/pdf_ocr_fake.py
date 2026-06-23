@@ -6,7 +6,6 @@ from app.parser.models import FileParserResult, sanitized_failure
 from app.parser.pdf_coverage import PdfCoverageResult
 from app.ports.ocr import OcrEnginePort, PdfRendererPort
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -31,7 +30,7 @@ class PdfSelectedPageOcrIntegrator:
         if coverage.aggregate.skipped_candidate_count:
             failure_code = "OCR_PAGE_LIMIT_EXCEEDED"
 
-        for page_index in coverage.aggregate.selected_candidate_pages:
+        for page_index in _selected_candidate_pages(coverage):
             try:
                 image = self._renderer.render_page(runtime_ref, page_index)
             except Exception:
@@ -94,3 +93,12 @@ def _page(block: ParsedBlock) -> int:
         if isinstance(page, int):
             return page
     return 2**31 - 1
+
+
+def _selected_candidate_pages(coverage: PdfCoverageResult) -> tuple[int, ...]:
+    aggregate_selected = set(coverage.aggregate.selected_candidate_pages)
+    return tuple(
+        page.page_index
+        for page in coverage.pages
+        if page.selected_for_ocr and page.is_ocr_candidate and page.page_index in aggregate_selected
+    )
