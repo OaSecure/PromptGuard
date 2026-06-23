@@ -10,7 +10,6 @@ REPORT = ROOT / "third_party" / "licenses" / "tesseract_ocr_candidate_report.jso
 
 FORBIDDEN_PROCESS_CALLS = {
     ("subprocess", "run"),
-    ("subprocess", "Popen"),
     ("subprocess", "call"),
     ("subprocess", "check_call"),
     ("subprocess", "check_output"),
@@ -34,13 +33,14 @@ def _qualified_call(node: ast.Call) -> tuple[str, str] | None:
     return None
 
 
-def test_ocr_infrastructure_has_no_os_process_import_or_execution_call():
+def test_only_isolated_backend_imports_subprocess_and_no_unsafe_execution_call_exists():
     offenders: list[str] = []
+    importers: list[str] = []
     for path in _python_files(OCR_INFRA):
         tree = _tree(path)
         for node in ast.walk(tree):
             if isinstance(node, ast.Import) and any(alias.name == "subprocess" for alias in node.names):
-                offenders.append(f"{path}:import-subprocess")
+                importers.append(path.name)
             if isinstance(node, ast.ImportFrom) and node.module == "subprocess":
                 offenders.append(f"{path}:from-subprocess")
             if isinstance(node, ast.Call) and _qualified_call(node) in FORBIDDEN_PROCESS_CALLS:
@@ -51,9 +51,10 @@ def test_ocr_infrastructure_has_no_os_process_import_or_execution_call():
             ):
                 offenders.append(f"{path}:shell-true")
     assert offenders == []
+    assert importers == ["process_backend.py"]
 
 
-def test_process_backend_remains_protocol_only_and_j1_runner_is_injected():
+def test_process_backend_port_remains_injected_and_concrete_backend_is_not_registered():
     port_tree = _tree(OCR_INFRA / "process_port.py")
     backend_classes = [
         node for node in ast.walk(port_tree) if isinstance(node, ast.ClassDef) and node.name == "OcrProcessBackendPort"

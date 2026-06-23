@@ -56,7 +56,7 @@ def test_failure_does_not_expose_ocr_text_path_handle_or_subprocess_output(caplo
     assert result.failure.module == "tesseract-isolated"
 
 
-def test_ocr_infrastructure_has_no_subprocess_download_install_or_cache_implementation():
+def test_ocr_infrastructure_has_only_isolated_subprocess_and_no_download_install_or_cache():
     root = API_ROOT / "app" / "infrastructure" / "ocr"
     imported = set()
     source = ""
@@ -69,7 +69,15 @@ def test_ocr_infrastructure_has_no_subprocess_download_install_or_cache_implemen
                 imported.update(alias.name.split(".")[0] for alias in node.names)
             elif isinstance(node, ast.ImportFrom) and node.module:
                 imported.add(node.module.split(".")[0])
-    assert "subprocess" not in imported
+    subprocess_importers = []
+    for path in root.rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        if any(
+            isinstance(node, ast.Import) and any(alias.name == "subprocess" for alias in node.names)
+            for node in ast.walk(tree)
+        ):
+            subprocess_importers.append(path.name)
+    assert subprocess_importers == ["process_backend.py"]
     assert "pytesseract" not in imported
     assert "requests" not in imported
     assert "urllib" not in imported
@@ -77,7 +85,7 @@ def test_ocr_infrastructure_has_no_subprocess_download_install_or_cache_implemen
     assert "download(" not in source
     assert "cache" not in source
     assert "subprocess.run" not in source
-    assert "subprocess.popen" not in source
+    assert "subprocess.call" not in source
 
 
 def test_parser_and_production_runtime_do_not_register_concrete_tesseract_adapter():

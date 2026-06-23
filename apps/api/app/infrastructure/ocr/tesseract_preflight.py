@@ -27,6 +27,8 @@ class TesseractPreflightConfig:
     max_timeout_ms: int
     max_input_bytes: int
     max_output_bytes: int
+    page_segmentation_mode: int = 6
+    allowed_page_segmentation_modes: frozenset[int] = frozenset({3, 6})
 
 
 def validate_preflight(
@@ -50,6 +52,7 @@ def _validate_policy(
         _validate_pins(config),
         _validate_bounds(config, options),
         _validate_languages(config, options.languages),
+        _validate_page_segmentation_mode(config),
     )
     return next((failure for failure in checks if failure is not None), None)
 
@@ -89,6 +92,17 @@ def _validate_languages(
 ) -> TesseractFailureReason | None:
     if not languages or any(language not in config.language_allowlist for language in languages):
         return TesseractFailureReason.UNSUPPORTED_LANGUAGE
+    return None
+
+
+def _validate_page_segmentation_mode(
+    config: TesseractPreflightConfig,
+) -> TesseractFailureReason | None:
+    if (
+        not config.allowed_page_segmentation_modes
+        or config.page_segmentation_mode not in config.allowed_page_segmentation_modes
+    ):
+        return TesseractFailureReason.INVALID_CONFIG
     return None
 
 

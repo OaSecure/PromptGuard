@@ -8,6 +8,15 @@ from app.parser.fakes import FakeOcrEngine, FakePdfRenderer
 from app.parser.pdf_coverage import PdfCoverageEvaluator, PdfPageCoverageInput
 
 
+class TrackingPdfRenderer(FakePdfRenderer):
+    def __init__(self, fail_pages: set[int] | None = None) -> None:
+        super().__init__(fail_pages)
+        self.released: list[int | None] = []
+
+    def release(self, image) -> None:
+        self.released.append(image.page)
+
+
 def _page(page_index: int, count: int = 0) -> PdfPageCoverageInput:
     return PdfPageCoverageInput(
         page_index=page_index,
@@ -106,7 +115,7 @@ def test_page_failure_preserves_native_and_successful_ocr_blocks():
 def test_ocr_failure_is_sanitized_and_preserves_available_blocks(caplog):
     caplog.set_level(logging.ERROR)
     coverage = PdfCoverageEvaluator().evaluate([_page(1)], 1)
-    renderer = FakePdfRenderer()
+    renderer = TrackingPdfRenderer()
     engine = FakeOcrEngine(exception_message="PRIVATE_RAW_EXCEPTION C:\\private\\secret.pdf")
     result = PdfSelectedPageOcrIntegrator(renderer, engine).integrate(
         _native_document(), "PRIVATE_RUNTIME_REF", coverage, OcrOptions(timeout_ms=1000)
@@ -116,6 +125,17 @@ def test_ocr_failure_is_sanitized_and_preserves_available_blocks(caplog):
     assert result.failure.code == "OCR_FAILED"
     for forbidden in ("PRIVATE_RAW_EXCEPTION", "secret.pdf", "PRIVATE_RUNTIME_REF", "file_ref", "base64"):
         assert forbidden not in exposed
+    assert renderer.released == [1]
+
+
+def test_rendered_image_is_released_after_success():
+    coverage = PdfCoverageEvaluator().evaluate([_page(1)], 1)
+    renderer = TrackingPdfRenderer()
+    result = PdfSelectedPageOcrIntegrator(renderer, FakeOcrEngine(text_by_page={1: "safe"})).integrate(
+        _native_document(), "runtime", coverage, OcrOptions(timeout_ms=1000)
+    )
+    assert result.document.ocr_status == "text_found"
+    assert renderer.released == [1]
 
 
 def test_fake_ocr_merge_does_not_propagate_private_runtime_metadata():

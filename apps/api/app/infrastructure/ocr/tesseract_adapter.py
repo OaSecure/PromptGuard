@@ -63,6 +63,8 @@ class TesseractOcrEngine:
             self._config.tessdata_directory,
             "-l",
             "+".join(languages),
+            "--psm",
+            str(self._config.page_segmentation_mode),
             "tsv",
         )
 

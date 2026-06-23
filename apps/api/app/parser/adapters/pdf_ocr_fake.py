@@ -1,7 +1,7 @@
 import logging
 
 from app.atoms.models import ParsedBlock, ParsedDocument
-from app.domain.types.parser import OcrOptions
+from app.domain.types.parser import OcrImageInput, OcrOptions, OcrResult
 from app.parser.models import FileParserResult, sanitized_failure
 from app.parser.pdf_coverage import PdfCoverageResult
 from app.ports.ocr import OcrEnginePort, PdfRendererPort
@@ -40,14 +40,11 @@ class PdfSelectedPageOcrIntegrator:
                 failure_code = failure_code or "PDF_RENDER_FAILED"
                 statuses.append("failed")
                 continue
-            try:
-                ocr_result = self._ocr_engine.recognize(image, options)
-            except Exception:
-                logger.error("OCR recognition failed", extra={"failure_code": "OCR_FAILED"})
-                failure_code = failure_code or "OCR_FAILED"
-                statuses.append("failed")
-                continue
+            ocr_result = _recognize_and_release(self._renderer, self._ocr_engine, image, options)
             statuses.append(ocr_result.status)
+            if ocr_result.status == "timeout":
+                failure_code = failure_code or "OCR_TIMEOUT"
+                continue
             if ocr_result.status == "failed":
                 failure_code = failure_code or "OCR_FAILED"
                 continue
@@ -104,6 +101,26 @@ def _safe_merge_metadata(document: ParsedDocument) -> dict:
         for key, value in document.metadata.items()
         if key in _MERGED_DOCUMENT_METADATA_KEYS
     }
+
+
+def _recognize_and_release(
+    renderer: PdfRendererPort,
+    engine: OcrEnginePort,
+    image: OcrImageInput,
+    options: OcrOptions,
+) -> OcrResult:
+    failed = OcrResult(status="failed", blocks=[], engine_id="ocr-boundary")
+    try:
+        result = engine.recognize(image, options)
+    except Exception:
+        logger.error("OCR recognition failed", extra={"failure_code": "OCR_FAILED"})
+        result = failed
+    try:
+        renderer.release(image)
+    except Exception:
+        logger.error("OCR image release failed", extra={"failure_code": "OCR_FAILED"})
+        result = failed
+    return result
 
 
 def _selected_candidate_pages(coverage: PdfCoverageResult) -> tuple[int, ...]:

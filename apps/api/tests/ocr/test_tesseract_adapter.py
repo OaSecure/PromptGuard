@@ -42,6 +42,8 @@ def _config(**updates: object) -> TesseractPreflightConfig:
         "max_timeout_ms": 1000,
         "max_input_bytes": 1000,
         "max_output_bytes": 1000,
+        "page_segmentation_mode": 6,
+        "allowed_page_segmentation_modes": frozenset({3, 6}),
     }
     values.update(updates)
     return TesseractPreflightConfig(**values)  # type: ignore[arg-type]
@@ -59,7 +61,7 @@ def test_adapter_is_ocr_port_compatible_and_returns_parsed_tsv_blocks():
     assert result.blocks[0].text == "verified text"
     request = runner.requests[0]
     assert isinstance(request.argv, tuple)
-    assert request.argv == ("/opt/tesseract/bin/tesseract", "stdin", "stdout", "--tessdata-dir", "/opt/tesseract/tessdata", "-l", "kor", "tsv")
+    assert request.argv == ("/opt/tesseract/bin/tesseract", "stdin", "stdout", "--tessdata-dir", "/opt/tesseract/tessdata", "-l", "kor", "--psm", "6", "tsv")
     assert request.shell is False
     assert request.allow_network_fallback is False
     assert request.allow_automatic_download is False
@@ -68,6 +70,14 @@ def test_adapter_is_ocr_port_compatible_and_returns_parsed_tsv_blocks():
 def test_preflight_failure_does_not_call_runner():
     runner = FakeRunner()
     result = _recognize(runner, _config(production_package_pin_verified=False))
+    assert result.failure is not None
+    assert result.failure.code == "OCR_ENGINE_UNAVAILABLE"
+    assert runner.requests == []
+
+
+def test_unsafe_page_segmentation_mode_fails_closed_before_process():
+    runner = FakeRunner()
+    result = _recognize(runner, _config(page_segmentation_mode=7))
     assert result.failure is not None
     assert result.failure.code == "OCR_ENGINE_UNAVAILABLE"
     assert runner.requests == []
