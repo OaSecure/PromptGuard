@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -135,7 +136,7 @@ def test_runtime_readiness_has_no_sensitive_payload_fields():
     assert "original_filename" not in encoded
 
 
-def test_runtime_readiness_script_emits_metadata_only_json(monkeypatch, capsys):
+def test_runtime_readiness_script_emits_metadata_only_json(monkeypatch, capfd):
     class FakeProbe:
         def __init__(self, *, expected_cuda: bool, include_ocr: bool) -> None:
             assert expected_cuda is True
@@ -154,7 +155,7 @@ def test_runtime_readiness_script_emits_metadata_only_json(monkeypatch, capsys):
     monkeypatch.setattr(runtime_readiness, "LocalRuntimeReadinessProbe", FakeProbe)
 
     exit_code = runtime_readiness.main([])
-    output = capsys.readouterr().out
+    output = capfd.readouterr().out
 
     assert exit_code == 0
     assert '"ready": true' in output
@@ -163,7 +164,7 @@ def test_runtime_readiness_script_emits_metadata_only_json(monkeypatch, capsys):
     assert "original_filename" not in output
 
 
-def test_runtime_readiness_script_can_include_ocr_checks(monkeypatch, capsys):
+def test_runtime_readiness_script_can_include_ocr_checks(monkeypatch, capfd):
     class FakeProbe:
         def __init__(self, *, expected_cuda: bool, include_ocr: bool) -> None:
             assert expected_cuda is True
@@ -184,11 +185,49 @@ def test_runtime_readiness_script_can_include_ocr_checks(monkeypatch, capsys):
 
     monkeypatch.setattr(runtime_readiness, "LocalRuntimeReadinessProbe", FakeProbe)
     exit_code = runtime_readiness.main(["--include-ocr"])
-    output = capsys.readouterr().out
+    output = capfd.readouterr().out
 
     assert exit_code == 1
     assert "paddleocr_unavailable" in output
     assert "raw_prompt" not in output
+
+
+def test_runtime_readiness_script_keeps_probe_noise_out_of_stdout(monkeypatch, capfd):
+    class NoisyProbe:
+        def __init__(self, *, expected_cuda: bool, include_ocr: bool) -> None:
+            assert expected_cuda is True
+            assert include_ocr is True
+
+        def check(self) -> LocalRuntimeReadinessReport:
+            print("PADDLE_IMPORT_WARNING PRIVATE_RAW_PROMPT")
+            print("TESSERACT_PATH_WARNING ORIGINAL_FILENAME", file=__import__("sys").stderr)
+            return LocalRuntimeReadinessReport(
+                runtime="python",
+                python_version="3.11.0",
+                platform="windows",
+                ready=False,
+                blockers=["tesseract_kor_unavailable"],
+                dependencies={
+                    "torch": RuntimeDependencyStatus(name="torch", installed=True, cuda_available=True, device="cuda:0"),
+                    "paddleocr": RuntimeDependencyStatus(name="paddleocr", installed=True, cuda_available=True, device="gpu"),
+                    "tesseract-kor": RuntimeDependencyStatus(
+                        name="tesseract-kor",
+                        installed=False,
+                        reason="tesseract_binary_unavailable",
+                    ),
+                },
+            )
+
+    monkeypatch.setattr(runtime_readiness, "LocalRuntimeReadinessProbe", NoisyProbe)
+    exit_code = runtime_readiness.main(["--include-ocr"])
+    captured = capfd.readouterr()
+
+    assert exit_code == 1
+    payload = json.loads(captured.out)
+    assert payload["blockers"] == ["tesseract_kor_unavailable"]
+    assert captured.out.count("\n") == 1
+    assert "PADDLE_IMPORT_WARNING" not in captured.out
+    assert "PRIVATE_RAW_PROMPT" not in captured.out
 
 
 def test_cuda_requirements_pin_pytorch_cuda_index():
