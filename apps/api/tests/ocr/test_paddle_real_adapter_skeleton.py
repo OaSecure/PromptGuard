@@ -261,7 +261,9 @@ def test_real_paddle_ocr_runtime_smoke_on_generated_image(tmp_path):
         OcrOptions(languages=["eng"], timeout_ms=60_000),
     )
 
+    extracted = " ".join(block.text for block in result.blocks).casefold()
     assert result.failure is None
-    assert result.status in {"text_found", "no_text_detected"}
-
+    assert result.status == "text_found"
+    assert "promptguard" in extracted
+    assert "ocr" in extracted
 

@@ -69,6 +69,9 @@ def test_public_analyze_image_file_reference_uses_real_paddleocr_without_raw_per
     assert body["input_results"][0]["decision_basis"] == "detection"
     assert body["detections"][0]["kind"] == "file_reference"
     assert body["detections"][0]["action"] == "Warn"
+    assert body["detections"][0]["type"] == "SNAPSHOT_MARKER"
+    assert body["detections"][0]["placeholder"] == "SNAPSHOT_MARKER"
+    assert body["detections"][0]["reason_code"] == "CUSTOM_KEYWORD_SNAPSHOT_MARKER"
     assert "snapshot marker" not in encoded_body.casefold()
     assert "snapshot marker" not in persisted.casefold()
     assert "private-image-bytes" not in encoded_body

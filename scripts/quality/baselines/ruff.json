@@ -167,10 +167,6 @@
       "count": 1
     },
     {
-      "fingerprint": "ruff|apps/api/app/parser/planning.py|I001|Import block is un-sorted or un-formatted|from app.parser.models import (",
-      "count": 1
-    },
-    {
       "fingerprint": "ruff|apps/api/app/parser/ports.py|I001|Import block is un-sorted or un-formatted|from typing import Protocol",
       "count": 1
     },

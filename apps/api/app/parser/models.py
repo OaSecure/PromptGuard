@@ -20,7 +20,7 @@ ExtractionRequirement = Literal[
 ParserStatus = Literal["parsed", "partial", "failed", "unsupported", "timeout", "too_large", "encrypted"]
 OcrStatus = Literal["not_applicable", "text_found", "no_text_detected", "timeout", "failed"]
 PlanKind = Literal[
-    "wrap_text", "native_text", "pdf_native_then_page_ocr", "image_ocr",
+    "wrap_text", "native_text", "pdf_native_then_page_ocr", "pdf_native", "image_ocr",
     "office_parse", "spreadsheet_parse", "slide_parse", "code_parse",
     "metadata_only", "unsupported",
 ]

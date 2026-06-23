@@ -91,14 +91,6 @@
       "count": 1
     },
     {
-      "fingerprint": "mypy|apps/api/app/parser/planning.py|call-overload|No overload variant of \"get\" of \"dict\" matches argument type \"str\"|",
-      "count": 1
-    },
-    {
-      "fingerprint": "mypy|apps/api/app/parser/planning.py|index|Invalid index type \"str\" for \"dict[Literal['wrap_text', 'native_text_extract', 'pdf_native_text_extract', 'pdf_coverage_evaluate', 'render_ocr_candidate_pages', 'ocr_primary', 'ocr_fallback', 'merge_blocks', 'image_ocr', 'office_parse', 'spreadsheet_parse', 'slide_parse', 'code_parse'], ParserAdapterCapability]\"; expected type \"Literal['wrap_text', 'native_text_extract', 'pdf_native_text_extract', 'pdf_coverage_evaluate', 'render_ocr_candidate_pages', 'ocr_primary', 'ocr_fallback', 'merge_blocks', 'image_ocr', 'office_parse', 'spreadsheet_parse', 'slide_parse', 'code_parse']\"|",
-      "count": 1
-    },
-    {
       "fingerprint": "mypy|apps/api/app/parser/temp_file_resolver.py|arg-type|Argument \"file_kind\" to \"ResolvedTemporaryFile\" has incompatible type \"str | Any\"; expected \"Literal['plain_text', 'image', 'pdf', 'office_document', 'spreadsheet', 'slide', 'code', 'unknown']\"|",
       "count": 1
     },

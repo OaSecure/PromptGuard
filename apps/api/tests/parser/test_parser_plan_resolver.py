@@ -83,6 +83,33 @@ def test_parser_execution_plan_steps_are_ordered_and_deterministic():
     assert [step.ordinal for step in first.steps] == list(range(len(first.steps)))
 
 
+def test_pdf_plan_uses_native_only_when_full_pdf_ocr_capabilities_are_absent():
+    capability = ParserAdapterCapability(
+        capability_id="cap-pdf-native", step_kinds=("pdf_native_text_extract",), enabled=True
+    )
+
+    resolution = _resolve(_payload("pdf", "native_parse_then_ocr_fallback"), capabilities=(capability,))
+
+    assert resolution.failure is None
+    assert resolution.plan.plan_kind == "pdf_native"
+    assert [step.step_kind for step in resolution.plan.steps] == ["pdf_native_text_extract"]
+
+
+def test_pdf_plan_keeps_full_native_then_ocr_when_all_capabilities_exist():
+    resolution = _resolve(_payload("pdf", "native_parse_then_ocr_fallback"))
+
+    assert resolution.failure is None
+    assert resolution.plan.plan_kind == "pdf_native_then_page_ocr"
+    assert [step.step_kind for step in resolution.plan.steps] == [
+        "pdf_native_text_extract",
+        "pdf_coverage_evaluate",
+        "render_ocr_candidate_pages",
+        "ocr_primary",
+        "ocr_fallback",
+        "merge_blocks",
+    ]
+
+
 def test_parser_execution_plan_separates_steps_and_fallback_rules():
     plan = _resolve(_payload("pdf", "native_parse_then_ocr_fallback")).plan
     assert plan.steps
