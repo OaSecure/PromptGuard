@@ -82,9 +82,9 @@ def test_no_production_boundary_imports_or_registers_concrete_tesseract_adapter(
     for path in boundary_files:
         tree = _tree(path)
         for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom) and node.module and "infrastructure.ocr" in node.module:
+            if isinstance(node, ast.ImportFrom) and node.module and "tesseract" in node.module:
                 offenders.append(str(path.relative_to(API)))
-            if isinstance(node, ast.Import) and any("infrastructure.ocr" in alias.name for alias in node.names):
+            if isinstance(node, ast.Import) and any("tesseract" in alias.name for alias in node.names):
                 offenders.append(str(path.relative_to(API)))
             if isinstance(node, ast.Name) and node.id in {"TesseractOcrEngine", "PolicyBoundOcrProcessRunner"}:
                 offenders.append(str(path.relative_to(API)))

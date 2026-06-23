@@ -90,10 +90,16 @@ def test_ocr_infrastructure_has_only_isolated_subprocess_and_no_download_install
 
 def test_parser_and_production_runtime_do_not_register_concrete_tesseract_adapter():
     app_root = API_ROOT / "app"
-    production_source = "\n".join(
-        path.read_text(encoding="utf-8")
-        for path in app_root.rglob("*.py")
-        if "infrastructure/ocr" not in path.relative_to(app_root).as_posix()
-    )
-    assert "infrastructure.ocr" not in production_source
-    assert "TesseractOcrEngine" not in production_source
+    offenders: list[str] = []
+    for path in app_root.rglob("*.py"):
+        if "infrastructure/ocr" in path.relative_to(app_root).as_posix():
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module and "tesseract" in node.module:
+                offenders.append(str(path.relative_to(API_ROOT)))
+            if isinstance(node, ast.Import) and any("tesseract" in alias.name for alias in node.names):
+                offenders.append(str(path.relative_to(API_ROOT)))
+            if isinstance(node, ast.Name) and node.id == "TesseractOcrEngine":
+                offenders.append(str(path.relative_to(API_ROOT)))
+    assert offenders == []
