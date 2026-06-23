@@ -160,3 +160,37 @@ def test_validator_does_not_mutate_artifact_inventory():
     validate_parser_ocr_readiness(inventory)
 
     assert inventory == original
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("dependency_path", ["pypdf", {"raw_file_path": "/PRIVATE_TEMP_PATH"}]),
+        ("transitive_dependencies", [{"raw_ocr_text": "PRIVATE_OCR_TEXT"}]),
+        ("bundled_license_inventory", {"runtime_ref": "PRIVATE_RUNTIME_REF"}),
+    ],
+)
+def test_malformed_nested_component_fields_fail_closed_without_leaking_values(field, value):
+    inventory = _inventory()
+    inventory["parser_ocr_sbom.json"]["components"][0][field] = value
+
+    result = validate_parser_ocr_readiness(inventory)
+    serialized = json.dumps(asdict(result), sort_keys=True)
+
+    assert result.ready is False
+    assert "ACTIVE_COMPONENT_INVALID" in result.reason_codes
+    assert "/PRIVATE_TEMP_PATH" not in serialized
+    assert "PRIVATE_OCR_TEXT" not in serialized
+    assert "PRIVATE_RUNTIME_REF" not in serialized
+
+
+def test_model_weight_source_must_match_active_component_source():
+    inventory = _inventory()
+    inventory["ocr_model_weight_license_report.json"]["assets"][0][
+        "weight_source"
+    ] = "https://example.invalid/private-model-with-different-provenance"
+
+    result = validate_parser_ocr_readiness(inventory)
+
+    assert result.ready is False
+    assert "MODEL_ASSET_MISMATCH" in result.reason_codes
