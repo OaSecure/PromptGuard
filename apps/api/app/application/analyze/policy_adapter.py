@@ -34,11 +34,15 @@ def build_policy_request(
     inputs: Iterable[Any],
     matched_inputs: Iterable[tuple[int, Any, list[Any]]],
     classifier_outcome: Any,
+    input_results: Iterable[Any] | None = None,
 ) -> PolicyDecisionRequest:
-    input_evidence = [
-        PolicyInputEvidence(input_id=str(item.input_id), content_scanned=bool(item.content_included))
-        for item in inputs
-    ]
+    scanned_by_id = {str(item.input_id): bool(item.content_scanned) for item in input_results or []}
+    input_evidence = []
+    for item in inputs:
+        input_id = str(item.input_id)
+        input_evidence.append(
+            PolicyInputEvidence(input_id=input_id, content_scanned=scanned_by_id.get(input_id, bool(item.content_included)))
+        )
     rules: list[PolicyRuleEvidence] = []
     for _index, item, matches in matched_inputs:
         for match in matches:
