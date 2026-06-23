@@ -156,7 +156,7 @@ def test_offline_policy_forbids_runtime_download_and_network():
         "checksum_mismatch": "fail-before-execution",
     }
     gate = _report()["offline_fail_closed_gate"]
-    assert gate["status"] == "contract-defined-runtime-not-implemented"
+    assert gate["status"] == "candidate-runtime-boundary-implemented-production-disabled"
     assert set(gate["required_controls"]) == {
         "explicit-binary-path",
         "explicit-tessdata-path",
@@ -405,7 +405,7 @@ def test_windows_local_validation_scope_overclaim_fails_closed():
 
 def test_runtime_integration_preflight_requires_bounded_fail_closed_controls():
     gate = _report()["runtime_integration_preflight_gate"]
-    assert gate["status"] == "contract-defined-runtime-not-implemented"
+    assert gate["status"] == "candidate-runtime-boundary-implemented-production-disabled"
     assert set(gate["required_controls"]) == {
         "explicit-binary-path",
         "explicit-tessdata-directory",

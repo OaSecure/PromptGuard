@@ -180,3 +180,21 @@ def test_application_code_has_no_paddle_concrete_import():
         if imports & {"paddleocr", "paddle", "paddlepaddle"}:
             offenders.append(str(path.relative_to(API)))
     assert offenders == []
+
+
+def test_candidate_boundary_is_install_free_and_not_production_registered():
+    candidate = API / "app" / "infrastructure" / "ocr" / "paddle_candidate.py"
+    source = candidate.read_text(encoding="utf-8").lower()
+    assert "import paddle" not in source
+    assert "download" not in source
+    assert "subprocess" not in source
+
+    production_roots = ["main.py", "routes", "interfaces", "application", "runtime", "parser"]
+    production_source = []
+    for name in production_roots:
+        path = API / "app" / name
+        if path.is_file():
+            production_source.append(path.read_text(encoding="utf-8").lower())
+        elif path.is_dir():
+            production_source.extend(item.read_text(encoding="utf-8").lower() for item in path.rglob("*.py"))
+    assert "paddle_candidate" not in "\n".join(production_source)

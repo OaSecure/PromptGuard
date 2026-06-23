@@ -144,7 +144,7 @@
     "checksum_mismatch": "fail-before-execution"
   },
   "offline_fail_closed_gate": {
-    "status": "contract-defined-runtime-not-implemented",
+    "status": "candidate-runtime-boundary-implemented-production-disabled",
     "required_controls": [
       "explicit-binary-path",
       "explicit-tessdata-path",
@@ -157,7 +157,7 @@
     "production_approval": false
   },
   "runtime_integration_preflight_gate": {
-    "status": "contract-defined-runtime-not-implemented",
+    "status": "candidate-runtime-boundary-implemented-production-disabled",
     "required_controls": [
       "explicit-binary-path",
       "explicit-tessdata-directory",
