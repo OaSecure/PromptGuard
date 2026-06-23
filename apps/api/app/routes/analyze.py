@@ -4,6 +4,7 @@ import re
 import uuid
 from datetime import datetime, timedelta
 from functools import lru_cache
+from types import SimpleNamespace
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -13,7 +14,9 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.application.analyze.parser_payload import build_file_reference_parser_worker_payload
 from app.application.analyze.policy_adapter import build_policy_request, get_policy_orchestrator, to_legacy_action
+from app.atoms.models import ParsedDocument
 from app.core.config import Settings, get_settings
 from app.core.tokens import utc_now
 from app.interfaces.http.analyze_request import LegacyAnalyzeRequest, adapt_legacy_analyze_request
@@ -24,7 +27,9 @@ from app.ml.embedding import create_qwen3_backend
 from app.ml.embedding.loader import AtomEmbeddingModelLoader
 from app.ml.gpu_capacity import GpuWorkerCapacityPolicy, TorchCudaGpuCapacityProbe, resolve_gpu_worker_capacity
 from app.ml.verifier import VerifierServiceBuildError, build_verifier_service_from_manifest
+from app.parser.models import FileParserResult, TempFileAccessContext
 from app.runtime.ml_inference_queue import MlInferenceQueue
+from app.runtime.parser_worker import ParserWorkerPool
 from app.models.auth import User
 from app.models.filters import FilterRule
 from app.events.writer import SqlAlchemyEventWriter, load_idempotency_event_id as load_idempotency_key
@@ -260,21 +265,20 @@ def unavailable_inputs(payload: AnalyzeRequest) -> list[tuple[int, AnalyzeInput]
     return [(index, item) for index, item in enumerate(payload.inputs) if not item.content_included]
 
 
-def input_results_for_payload(payload: AnalyzeRequest, detection_input_indexes: set[int]) -> list[AnalyzeInputResult]:
+def input_results_for_payload(
+    payload: AnalyzeRequest,
+    detection_input_indexes: set[int],
+    parser_results: dict[int, FileParserResult] | None = None,
+) -> list[AnalyzeInputResult]:
     results: list[AnalyzeInputResult] = []
+    parser_results = parser_results or {}
     for index, item in enumerate(payload.inputs):
-        if item.content_included:
-            content_scanned = item.kind == "text"
-            decision_basis = "detection" if index in detection_input_indexes else "no_detection"
-        elif item.kind == "file_reference":
-            content_scanned = False
-            decision_basis = "content_unavailable"
-        elif item.kind == "attachment_metadata":
-            content_scanned = False
-            decision_basis = "metadata_only"
-        else:
-            content_scanned = False
-            decision_basis = "content_unavailable"
+        content_scanned, decision_basis = _input_scan_result(
+            item,
+            index=index,
+            detection_input_indexes=detection_input_indexes,
+            parser_result=parser_results.get(index),
+        )
 
         results.append(
             AnalyzeInputResult(
@@ -290,6 +294,22 @@ def input_results_for_payload(payload: AnalyzeRequest, detection_input_indexes: 
             )
         )
     return results
+
+
+def _input_scan_result(
+    item: Any,
+    *,
+    index: int,
+    detection_input_indexes: set[int],
+    parser_result: FileParserResult | None,
+) -> tuple[bool, str]:
+    if parser_result is not None and parser_result.parser_status == "parsed" and parser_result.document is not None:
+        return True, "detection" if index in detection_input_indexes else "no_detection"
+    if item.content_included:
+        return item.kind == "text", "detection" if index in detection_input_indexes else "no_detection"
+    if item.kind == "attachment_metadata":
+        return False, "metadata_only"
+    return False, "content_unavailable"
 
 
 def score_for_final_action(score: int, action: str) -> int:
@@ -407,6 +427,72 @@ def _resolve_ml_inference_max_workers(settings: Settings) -> int:
     return decision.worker_count
 
 
+def get_parser_worker_pool() -> ParserWorkerPool | None:
+    return None
+
+
+def parser_results_for_payload(
+    payload: LegacyAnalyzeRequest,
+    *,
+    current_user: User,
+    parser_worker_pool: ParserWorkerPool | None,
+    timeout_ms: int,
+) -> dict[int, FileParserResult]:
+    if parser_worker_pool is None:
+        return {}
+    results: dict[int, FileParserResult] = {}
+    for index, item in enumerate(payload.inputs):
+        if item.kind != "file_reference":
+            continue
+        access_context = TempFileAccessContext(
+            authenticated_subject_id=str(current_user.id),
+            session_id=str(current_user.id),
+            request_id=payload.client_request_id,
+            temp_scope_id=item.temp_scope_id,
+        )
+        parser_payload = build_file_reference_parser_worker_payload(
+            payload.client_request_id,
+            item,
+            access_context=access_context,
+        )
+        results[index] = parser_worker_pool.execute(parser_payload, timeout_ms=timeout_ms)
+    return results
+
+
+def parsed_file_matches(
+    payload: LegacyAnalyzeRequest,
+    parser_results: dict[int, FileParserResult],
+    rules: list[FilterRule],
+) -> list[tuple[int, Any, list[RuleMatch]]]:
+    matched: list[tuple[int, Any, list[RuleMatch]]] = []
+    for index, result in parser_results.items():
+        document = result.document
+        if result.parser_status != "parsed" or document is None:
+            continue
+        text = _runtime_text_from_document(document)
+        if not text:
+            continue
+        item = payload.inputs[index]
+        matches = evaluate_filter_rules(text, rules)
+        if matches:
+            matched.append((index, _parsed_file_match_item(item, text), matches))
+    return matched
+
+
+def _runtime_text_from_document(document: ParsedDocument) -> str:
+    return "\n".join(block.text for block in document.blocks if block.text)
+
+
+def _parsed_file_match_item(item: Any, content: str) -> SimpleNamespace:
+    return SimpleNamespace(
+        input_id=item.input_id,
+        kind=item.kind,
+        source=item.source,
+        content=content,
+        content_included=False,
+    )
+
+
 @router.post("/analyze", response_model=AnalyzeResponse, response_model_exclude_none=True)
 async def analyze_prompt(
     payload: LegacyAnalyzeRequest,
@@ -416,6 +502,7 @@ async def analyze_prompt(
     embedding_loader: AtomEmbeddingModelLoader | None = Depends(get_atom_embedding_loader),
     verifier_config: AnalyzeVerifierConfig | None = Depends(get_analyze_verifier_config),
     inference_queue: MlInferenceQueue | None = Depends(get_ml_inference_queue),
+    parser_worker_pool: ParserWorkerPool | None = Depends(get_parser_worker_pool),
     settings: Settings = Depends(get_settings),
     policy_orchestrator: PolicyOrchestratorPort = Depends(get_policy_orchestrator),
 ) -> AnalyzeResponse:
@@ -431,6 +518,13 @@ async def analyze_prompt(
     rules = await load_active_filter_rules(session)
     text_inputs = included_text_inputs(payload)
     matched_inputs = matched_text_inputs(text_inputs, rules)
+    parser_results = parser_results_for_payload(
+        payload,
+        current_user=current_user,
+        parser_worker_pool=parser_worker_pool,
+        timeout_ms=settings.ml_inference_queue_timeout_ms,
+    )
+    matched_inputs.extend(parsed_file_matches(payload, parser_results, rules))
     matches = [match for _index, _item, item_matches in matched_inputs for match in item_matches]
     detection_target = first_composer_input([(index, item) for index, item, item_matches in matched_inputs if item_matches])
     risk_score = score_for_matches(matches)
@@ -446,7 +540,9 @@ async def analyze_prompt(
             inference_timeout_ms=settings.ml_inference_queue_timeout_ms,
         )
     )
-    policy_request = build_policy_request(request_id, payload.inputs, matched_inputs, classifier_outcome)
+    detection_input_indexes = {index for index, _item, item_matches in matched_inputs if item_matches}
+    input_results = input_results_for_payload(payload, detection_input_indexes, parser_results)
+    policy_request = build_policy_request(request_id, payload.inputs, matched_inputs, classifier_outcome, input_results=input_results)
     action = to_legacy_action(policy_orchestrator.decide(policy_request).action)
     risk_score = score_for_final_action(risk_score, action)
     risk_level = risk_level_for_score(risk_score)
@@ -459,8 +555,6 @@ async def analyze_prompt(
     masking_detections = detections_for_masking(masking_matches)
     composer_text = detection_target[1].content if detection_target is not None else None
     masked = apply_placeholders(composer_text, masking_detections) if action == ACTION_MASK and masking_detections and composer_text else None
-    detection_input_indexes = {index for index, _item, item_matches in matched_inputs if item_matches}
-    input_results = input_results_for_payload(payload, detection_input_indexes)
 
     event_projection = serialize_event_write(
         event_id=event_id, user_id=current_user.id, login_id=current_user.login_id,
