@@ -180,3 +180,36 @@ def test_application_code_has_no_paddle_concrete_import():
         if imports & {"paddleocr", "paddle", "paddlepaddle"}:
             offenders.append(str(path.relative_to(API)))
     assert offenders == []
+
+
+def test_candidate_boundary_is_install_free_and_not_production_registered():
+    candidate = API / "app" / "infrastructure" / "ocr" / "paddle_candidate.py"
+    raw_source = candidate.read_text(encoding="utf-8")
+    source = raw_source.lower()
+    tree = ast.parse(raw_source)
+    imports = {
+        alias.name.split(".")[0]
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Import)
+        for alias in node.names
+    }
+    imports.update(
+        node.module.split(".")[0]
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.module
+    )
+    assert imports.isdisjoint({"paddleocr", "paddle", "paddlepaddle", "paddlex"})
+    assert "download" not in source
+    assert "subprocess" not in source
+    assert "requests" not in source
+    assert "aiohttp" not in source
+
+    production_roots = ["main.py", "routes", "interfaces", "application", "runtime", "parser"]
+    production_source = []
+    for name in production_roots:
+        path = API / "app" / name
+        if path.is_file():
+            production_source.append(path.read_text(encoding="utf-8").lower())
+        elif path.is_dir():
+            production_source.extend(item.read_text(encoding="utf-8").lower() for item in path.rglob("*.py"))
+    assert "paddle_candidate" not in "\n".join(production_source)
