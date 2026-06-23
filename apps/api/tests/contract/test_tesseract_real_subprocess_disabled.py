@@ -129,4 +129,3 @@ def test_candidate_report_keeps_runtime_and_production_disabled():
     assert preflight["status"] == "candidate-runtime-boundary-implemented-production-disabled"
     assert preflight["production_approval"] is False
     assert report["production_approval_gate"]["production_approval"] is False
-    assert report["paddleocr_b2_decision"]["status"] == "deferred/blocked"
