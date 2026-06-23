@@ -36,6 +36,17 @@ Recommended container layout:
 ./models:/opt/promptguard/models:ro
 ```
 
+Download the current artifact bundle from Hugging Face Hub from the repository
+root:
+
+```bash
+pip install "huggingface_hub[hf_xet]"
+huggingface-cli download OASecure/promptguard-context-classifier \
+  --revision v287-20260623 \
+  --include "models/*" \
+  --local-dir .
+```
+
 Configure runtime loading with absolute container paths:
 
 ```env

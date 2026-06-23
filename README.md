@@ -9,6 +9,8 @@ PromptGuard는 AI 서비스로 프롬프트와 파일이 전송되기 전에 민
 ### 현재 포함된 구성
 
 - `apps/extension`: Manifest V3 기반 Chrome Extension MVP.
+- `apps/api`: Analyze API와 민감정보 감지 파이프라인.
+- `models`: 실제 모델 파일을 두는 로컬 mount 위치와 샘플 manifest 문서.
 - `docs/references`: 구현 상태, 개발 기준, Analyze 연동 참고 문서.
 - 루트 문서: 프로젝트 범위, 보안 경계, 라이선스, 실행 방법을 빠르게 확인하기 위한 문서.
 
@@ -59,6 +61,29 @@ python apps/extension/tests/run_extension_checks.py all
 
 빌드 후 Chrome에서 `apps/extension/dist`를 unpacked extension으로 로드한다.
 
+### 모델 artifact 다운로드
+
+PromptGuard 코드는 GitHub에서 배포하고, 학습된 모델 artifact는 Hugging Face Hub에서 배포한다. 실제 `.joblib`, `.safetensors`, tokenizer 파일은 GitHub 저장소에 커밋하지 않는다.
+
+저장소 루트에서 다음 명령을 실행하면 `models/` 아래에 현재 v287 context classifier artifact가 내려받아진다.
+
+```bash
+pip install "huggingface_hub[hf_xet]"
+huggingface-cli download OASecure/promptguard-context-classifier \
+  --revision v287-20260623 \
+  --include "models/*" \
+  --local-dir .
+```
+
+Docker Compose 실행 시 `compose.yml`은 `./models`를 API 컨테이너의 `/opt/promptguard/models`에 read-only로 mount한다. 런타임을 켜려면 `.env`에서 다음 값을 사용한다.
+
+```env
+PROMPTGUARD_CLASSIFIER_RUNTIME_ENABLED=true
+PROMPTGUARD_CLASSIFIER_MANIFEST_PATH=/opt/promptguard/models/context_lr_roberta_active_best_f1_manifest.json
+PROMPTGUARD_VERIFIER_RUNTIME_ENABLED=true
+PROMPTGUARD_VERIFIER_MANIFEST_PATH=/opt/promptguard/models/context_lr_roberta_active_best_f1_manifest.json
+```
+
 ## English
 
 PromptGuard is a project for inspecting prompts and files before they leave a user workflow for an AI service. Its goal is to detect sensitive data, policy issues, and masking requirements before submission.
@@ -68,6 +93,8 @@ This repository represents the PromptGuard product project. The first implemente
 ### Current Contents
 
 - `apps/extension`: Manifest V3 Chrome Extension MVP.
+- `apps/api`: Analyze API and sensitive-data detection pipeline.
+- `models`: local mount location and sample manifests for model artifacts.
 - `docs/references`: implementation status, development references, and Analyze integration notes.
 - Root documents: project overview, security boundary, license, and quick operating commands.
 
@@ -108,3 +135,26 @@ python apps/extension/tests/run_extension_checks.py all
 ```
 
 After `npm run build`, load `apps/extension/dist` as an unpacked extension in Chrome.
+
+### Model Artifacts
+
+PromptGuard distributes application code through GitHub and trained model artifacts through Hugging Face Hub. Real `.joblib`, `.safetensors`, and tokenizer files are not committed to this GitHub repository.
+
+Run this from the repository root to download the current v287 context classifier into `models/`:
+
+```bash
+pip install "huggingface_hub[hf_xet]"
+huggingface-cli download OASecure/promptguard-context-classifier \
+  --revision v287-20260623 \
+  --include "models/*" \
+  --local-dir .
+```
+
+`compose.yml` mounts `./models` into the API container at `/opt/promptguard/models` as read-only. Enable the runtime with:
+
+```env
+PROMPTGUARD_CLASSIFIER_RUNTIME_ENABLED=true
+PROMPTGUARD_CLASSIFIER_MANIFEST_PATH=/opt/promptguard/models/context_lr_roberta_active_best_f1_manifest.json
+PROMPTGUARD_VERIFIER_RUNTIME_ENABLED=true
+PROMPTGUARD_VERIFIER_MANIFEST_PATH=/opt/promptguard/models/context_lr_roberta_active_best_f1_manifest.json
+```
