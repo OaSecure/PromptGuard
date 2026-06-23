@@ -257,15 +257,9 @@
     "production_approval": false
   },
   "dependency_burden_comparison": {
-    "relative_to_paddleocr": "lower-python-dependency-closure-but-higher-native-platform-provisioning-variance",
     "tesseract_runtime_shape": "external native executable plus Leptonica/codecs and two traineddata files",
     "pytesseract_runtime_shape": "small optional Python subprocess wrapper depending on packaging and Pillow",
-    "conclusion": "Tesseract avoids the PaddleOCR 73-distribution ML stack but still requires platform-specific native binary provenance and license inventory."
-  },
-  "paddleocr_b2_decision": {
-    "status": "deferred/blocked",
-    "changed_by_this_gate": false,
-    "gate_separation": "must-not-share-tesseract-isolated-validation-gate"
+    "conclusion": "Tesseract requires platform-specific native binary provenance and license inventory."
   },
   "blockers": [
     "Tesseract 5.5.2 release has no official binary assets or published source archive SHA-256 in the release metadata.",

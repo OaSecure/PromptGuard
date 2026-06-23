@@ -169,15 +169,6 @@ def test_offline_policy_forbids_runtime_download_and_network():
     assert gate["production_approval"] is False
 
 
-def test_paddleocr_b2_remains_deferred():
-    decision = _report()["paddleocr_b2_decision"]
-    assert decision == {
-        "status": "deferred/blocked",
-        "changed_by_this_gate": False,
-        "gate_separation": "must-not-share-tesseract-isolated-validation-gate",
-    }
-
-
 def test_heavy_validation_is_required_only_in_an_isolated_environment():
     gate = _report()["isolated_validation_gate"]
     assert gate["status"] == "additional-validation-required"
