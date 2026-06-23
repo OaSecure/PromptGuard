@@ -10,10 +10,11 @@ class RobertaVerifierLoadError(Exception):
 
 
 class HuggingFaceRobertaPairScorer:
-    def __init__(self, tokenizer: Any, model: Any, torch_module: Any) -> None:
+    def __init__(self, tokenizer: Any, model: Any, torch_module: Any, device: str) -> None:
         self._tokenizer = tokenizer
         self._model = model
         self._torch = torch_module
+        self._device = device
 
     def score_positive_probabilities(self, pair_texts: list[str], *, max_length_tokens: int) -> list[float]:
         encoded = self._tokenizer(
@@ -23,6 +24,7 @@ class HuggingFaceRobertaPairScorer:
             max_length=max_length_tokens,
             return_tensors="pt",
         )
+        encoded = {key: value.to(self._device) for key, value in encoded.items()}
         self._model.eval()
         with self._torch.no_grad():
             output = self._model(**encoded)
@@ -30,7 +32,7 @@ class HuggingFaceRobertaPairScorer:
         return [float(row[1].item()) for row in probabilities]
 
 
-def load_huggingface_roberta_pair_scorer(verifier_dir: str | Path) -> HuggingFaceRobertaPairScorer:
+def load_huggingface_roberta_pair_scorer(verifier_dir: str | Path, *, device: str | None = None) -> HuggingFaceRobertaPairScorer:
     try:
         import torch
         from transformers import AutoModelForSequenceClassification, AutoTokenizer
@@ -46,8 +48,9 @@ def load_huggingface_roberta_pair_scorer(verifier_dir: str | Path) -> HuggingFac
 
     try:
         tokenizer = AutoTokenizer.from_pretrained(path, local_files_only=True)
-        model = AutoModelForSequenceClassification.from_pretrained(path, local_files_only=True)
+        selected_device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+        model = AutoModelForSequenceClassification.from_pretrained(path, local_files_only=True).to(selected_device)
     except Exception as exc:
         raise RobertaVerifierLoadError(code="VERIFIER_ARTIFACT_LOAD_FAILED", message="verifier artifact could not be loaded") from exc
 
-    return HuggingFaceRobertaPairScorer(tokenizer=tokenizer, model=model, torch_module=torch)
+    return HuggingFaceRobertaPairScorer(tokenizer=tokenizer, model=model, torch_module=torch, device=selected_device)
