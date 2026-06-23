@@ -1,9 +1,12 @@
+import base64
 import json
 
 import pytest
 from app.atoms.models import ParsedBlock, ParsedDocument
+from app.infrastructure.temp_storage import EncryptedTemporaryFileStorage
 from app.parser.models import FileParserResult
 from app.routes import analyze as analyze_route
+from app.routes.temp_files import get_temp_storage
 
 from tests.contract.current_behavior.test_analyze_golden import (
     post_snapshot,
@@ -125,6 +128,52 @@ def test_file_reference_routes_through_parser_worker_without_persisting_runtime_
     assert runtime_text not in persisted
     assert opaque_ref not in persisted
     assert temp_scope_id not in persisted
+
+
+def test_file_reference_default_parser_pool_reads_temp_storage_without_raw_persistence(tmp_path):
+    user = _user()
+    client, session = _client(user, rules=[])
+    storage = EncryptedTemporaryFileStorage(tmp_path, base64.b64encode(b"K" * 32).decode(), 900)
+    runtime_text = "runtime temp storage admin@example.com"
+    stored = storage.store(
+        runtime_text.encode(),
+        subject_id=str(user.id),
+        request_id="req_123",
+        file_kind="plain_text",
+        mime_hint="text/plain",
+        extension_hint="txt",
+        size_bucket="tiny",
+    )
+    client.app.dependency_overrides[get_temp_storage] = lambda: storage
+    item = {
+        "input_id": "file_1",
+        "kind": "file_reference",
+        "source": "attached_file",
+        "size_bytes": 42,
+        "content_included": False,
+        "file_ref": stored["file_ref"],
+        "temp_scope_id": stored["temp_scope_id"],
+        "file_kind": "plain_text",
+        "mime": "text/plain",
+        "extension": "txt",
+        "size_bucket": "tiny",
+    }
+
+    response = client.post(
+        "/prompts/analyze",
+        headers=_bearer_header(user.id),
+        json=_analyze_payload(item),
+    )
+
+    body = response.json()
+    persisted = json.dumps([getattr(row, "__dict__", {}) for row in session.added], default=str, ensure_ascii=False)
+    assert response.status_code == 200
+    assert body["input_results"][0]["content_scanned"] is True
+    assert body["detections"][0]["kind"] == "file_reference"
+    assert runtime_text not in json.dumps(body, ensure_ascii=False)
+    assert runtime_text not in persisted
+    assert stored["file_ref"] not in persisted
+    assert stored["temp_scope_id"] not in persisted
 
 
 class _FakeParserWorkerPool:
