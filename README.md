@@ -69,7 +69,7 @@ PromptGuard 코드는 GitHub에서 배포하고, 학습된 모델 artifact는 Hu
 
 ```bash
 pip install "huggingface_hub[hf_xet]"
-huggingface-cli download OASecure/promptguard-context-classifier \
+hf download OASecure/promptguard-context-classifier \
   --revision v287-20260623 \
   --include "models/*" \
   --local-dir .
@@ -172,7 +172,7 @@ Run this from the repository root to download the current v287 context classifie
 
 ```bash
 pip install "huggingface_hub[hf_xet]"
-huggingface-cli download OASecure/promptguard-context-classifier \
+hf download OASecure/promptguard-context-classifier \
   --revision v287-20260623 \
   --include "models/*" \
   --local-dir .
