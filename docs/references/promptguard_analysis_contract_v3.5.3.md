@@ -1671,7 +1671,7 @@ TempUploadRequest(authenticated_subject_id, session_id, temp_scope_id, blob, mim
 #### Output schema
 
 ```text
-TempUploadResponse(file_ref, file_kind, mime, extension, size_bucket, expires_at)
+TempUploadResponse(file_ref, temp_scope_id, file_kind, mime, extension, size_bucket, expires_at)
 ```
 
 #### Field ownership
