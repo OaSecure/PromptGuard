@@ -21,6 +21,7 @@ def test_upload_derives_bucket_and_discards_filename(tmp_path):
     response = client(tmp_path).post("/files/temp", data={"request_id": "req_1", "file_kind": "plain_text", "mime_hint": "text/plain", "extension_hint": ".txt"}, files={"file": ("secret-customer.txt", b"x", "text/plain")})
     assert response.status_code == 200
     body = response.json(); assert body["size_bucket"] == "tiny" and body["file_ref"].startswith("fref_")
+    assert body["temp_scope_id"].startswith("tscope_")
     encoded = b"".join(path.read_bytes() for path in tmp_path.iterdir())
     assert b"secret-customer" not in encoded and b'"size_bytes"' not in encoded
 
