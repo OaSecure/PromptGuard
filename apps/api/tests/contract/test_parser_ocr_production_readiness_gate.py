@@ -194,3 +194,21 @@ def test_model_weight_source_must_match_active_component_source():
 
     assert result.ready is False
     assert "MODEL_ASSET_MISMATCH" in result.reason_codes
+
+
+def test_successful_windows_local_validation_cannot_make_readiness_true():
+    inventory = _inventory()
+    evidence = inventory["tesseract_isolated_validation_evidence.json"]
+    local = evidence["windows_local_validation"]
+
+    assert set(local["validation_results"].values()) == {"success"}
+    assert local["scope"] == "local-developer-isolated-validation"
+    assert local["production_artifact"] is False
+    assert local["satisfies_linux_production_pin"] is False
+    assert local["can_satisfy_production_approval"] is False
+    assert evidence["production_approval"] is False
+
+    result = validate_parser_ocr_readiness(inventory)
+
+    assert result.ready is False
+    assert "TESSERACT_EVIDENCE_NOT_APPROVED" in result.reason_codes

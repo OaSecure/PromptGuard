@@ -1,5 +1,7 @@
 import ast
 import json
+import re
+from copy import deepcopy
 from pathlib import Path
 
 ROOT = Path(__file__).parents[4]
@@ -11,6 +13,67 @@ WORKFLOW = ROOT / ".github" / "workflows" / "tesseract-isolated-validation.yml"
 
 def _report() -> dict:
     return json.loads(REPORT.read_text(encoding="utf-8"))
+
+
+WINDOWS_LOCAL_EVIDENCE_FIELDS = {
+    "scope",
+    "status",
+    "validation_date",
+    "distribution_source",
+    "provenance_status",
+    "tesseract_version",
+    "binary_sha256",
+    "eng_traineddata_sha256",
+    "input_scope",
+    "validation_results",
+    "production_artifact",
+    "satisfies_linux_production_pin",
+    "third_party_binary_provenance_approved",
+    "native_dependency_inventory_complete",
+    "representative_accuracy_validated",
+    "can_satisfy_production_approval",
+}
+WINDOWS_LOCAL_VALIDATION_RESULT_FIELDS = {
+    "synthetic_cli_ocr",
+    "pytest_real_ocr",
+    "ocr_result_text_surface",
+    "parsed_document_text_surface",
+    "rendered_image_boundary",
+    "selected_page_integrator_boundary",
+    "internal_file_ref_runner_boundary",
+    "privacy_boundary",
+    "cleanup",
+}
+
+
+def _windows_local_evidence_reasons(evidence: dict) -> set[str]:
+    reasons: set[str] = set()
+    local = evidence.get("windows_local_validation")
+    if not isinstance(local, dict) or set(local) != WINDOWS_LOCAL_EVIDENCE_FIELDS:
+        return {"WINDOWS_LOCAL_EVIDENCE_SCHEMA_INVALID"}
+    sha256 = re.compile(r"^[0-9a-f]{64}$")
+    for field in ("binary_sha256", "eng_traineddata_sha256"):
+        if not isinstance(local.get(field), str) or sha256.fullmatch(local[field]) is None:
+            reasons.add("WINDOWS_LOCAL_EVIDENCE_HASH_INVALID")
+    results = local.get("validation_results")
+    if not isinstance(results, dict) or set(results) != WINDOWS_LOCAL_VALIDATION_RESULT_FIELDS:
+        reasons.add("WINDOWS_LOCAL_EVIDENCE_SCHEMA_INVALID")
+    elif set(results.values()) != {"success"}:
+        reasons.add("WINDOWS_LOCAL_EVIDENCE_RESULT_INVALID")
+    expected = {
+        "scope": "local-developer-isolated-validation",
+        "status": "additional-validation-required",
+        "input_scope": "synthetic-only",
+        "production_artifact": False,
+        "satisfies_linux_production_pin": False,
+        "third_party_binary_provenance_approved": False,
+        "native_dependency_inventory_complete": False,
+        "representative_accuracy_validated": False,
+        "can_satisfy_production_approval": False,
+    }
+    if any(local.get(field) != value for field, value in expected.items()):
+        reasons.add("WINDOWS_LOCAL_EVIDENCE_SCOPE_OVERCLAIMED")
+    return reasons
 
 
 def test_candidate_stays_blocked_until_artifacts_and_native_dependencies_are_reviewed():
@@ -284,6 +347,60 @@ def test_evidence_cannot_satisfy_production_pin_policy_by_itself():
     assert policy["windows_blocker_is_independent"] is True
     assert policy["tesseract_5_5_2_artifact_inspection_is_independent"] is True
     assert policy["production_approval"] is False
+
+
+def test_windows_local_validation_evidence_is_privacy_safe_and_not_production_approval():
+    evidence = json.loads(EVIDENCE.read_text(encoding="utf-8"))
+    local = evidence["windows_local_validation"]
+
+    assert _windows_local_evidence_reasons(evidence) == set()
+    assert set(local) == WINDOWS_LOCAL_EVIDENCE_FIELDS
+    assert set(local["validation_results"]) == WINDOWS_LOCAL_VALIDATION_RESULT_FIELDS
+    serialized = json.dumps(local, sort_keys=True)
+    for forbidden in (
+        "C:\\Users\\",
+        "Program Files",
+        "AppData",
+        "TEMP",
+        "stdout",
+        "stderr",
+        "argv",
+        "original_filename",
+        "raw_exception",
+        "HELLO OCR",
+    ):
+        assert forbidden not in serialized
+
+
+def test_windows_local_validation_hashes_fail_closed_when_missing_or_malformed():
+    evidence = json.loads(EVIDENCE.read_text(encoding="utf-8"))
+    for field in ("binary_sha256", "eng_traineddata_sha256"):
+        missing = deepcopy(evidence)
+        del missing["windows_local_validation"][field]
+        assert _windows_local_evidence_reasons(missing)
+
+        malformed = deepcopy(evidence)
+        malformed["windows_local_validation"][field] = "NOT-A-SHA256"
+        assert "WINDOWS_LOCAL_EVIDENCE_HASH_INVALID" in _windows_local_evidence_reasons(
+            malformed
+        )
+
+
+def test_windows_local_validation_scope_overclaim_fails_closed():
+    evidence = json.loads(EVIDENCE.read_text(encoding="utf-8"))
+    for field in (
+        "production_artifact",
+        "satisfies_linux_production_pin",
+        "third_party_binary_provenance_approved",
+        "native_dependency_inventory_complete",
+        "representative_accuracy_validated",
+        "can_satisfy_production_approval",
+    ):
+        overclaimed = deepcopy(evidence)
+        overclaimed["windows_local_validation"][field] = True
+        assert "WINDOWS_LOCAL_EVIDENCE_SCOPE_OVERCLAIMED" in _windows_local_evidence_reasons(
+            overclaimed
+        )
 
 
 def test_runtime_integration_preflight_requires_bounded_fail_closed_controls():

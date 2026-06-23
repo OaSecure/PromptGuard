@@ -70,6 +70,34 @@
     "artifact_sha256_recorded": false,
     "runtime_smoke_verified": false
   },
+  "windows_local_validation": {
+    "scope": "local-developer-isolated-validation",
+    "status": "additional-validation-required",
+    "validation_date": "2026-06-23",
+    "distribution_source": "ub-mannheim-windows-build",
+    "provenance_status": "third-party-distribution-local-install-only-unapproved",
+    "tesseract_version": "5.4.0.20240606",
+    "binary_sha256": "babb405f4366b480d02cd8ff2bac8d497170f6c1711ce6f3d5d8bf0fb7fa6ed9",
+    "eng_traineddata_sha256": "7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2",
+    "input_scope": "synthetic-only",
+    "validation_results": {
+      "synthetic_cli_ocr": "success",
+      "pytest_real_ocr": "success",
+      "ocr_result_text_surface": "success",
+      "parsed_document_text_surface": "success",
+      "rendered_image_boundary": "success",
+      "selected_page_integrator_boundary": "success",
+      "internal_file_ref_runner_boundary": "success",
+      "privacy_boundary": "success",
+      "cleanup": "success"
+    },
+    "production_artifact": false,
+    "satisfies_linux_production_pin": false,
+    "third_party_binary_provenance_approved": false,
+    "native_dependency_inventory_complete": false,
+    "representative_accuracy_validated": false,
+    "can_satisfy_production_approval": false
+  },
   "artifact_separation_gate": {
     "source_license_candidate_version": "5.5.2",
     "verified_linux_package_version": "5.3.4-1build5",
@@ -112,7 +140,7 @@
   },
   "unverified_or_blocked": [
     "Tesseract candidate 5.5.2 was not the Ubuntu runner package version; the validated package was 5.3.4-1build5.",
-    "No official Windows binary assets exist for release 5.5.2, and no third-party or internal Windows binary was validated.",
+    "No official Windows binary assets exist for release 5.5.2; local third-party Windows runtime validation does not approve artifact provenance or production distribution.",
     "The smoke test proves offline process execution only and does not validate OCR recognition accuracy.",
     "Evidence is scoped to this workflow run and ephemeral Ubuntu runner, not a production runtime artifact."
   ]
