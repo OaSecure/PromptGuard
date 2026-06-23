@@ -1,4 +1,5 @@
 import base64
+import io
 import json
 
 import pytest
@@ -9,6 +10,8 @@ from app.parser.models import FileParserResult
 from app.routes import analyze as analyze_route
 from app.routes.temp_files import get_temp_storage
 from app.runtime import parser_worker_factory
+from pypdf import PdfWriter
+from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 
 from tests.contract.current_behavior.test_analyze_golden import (
     post_snapshot,
@@ -178,6 +181,59 @@ def test_file_reference_default_parser_pool_reads_temp_storage_without_raw_persi
     assert stored["temp_scope_id"] not in persisted
 
 
+def test_pdf_file_reference_default_parser_pool_reads_native_text_without_raw_persistence(tmp_path):
+    user = _user()
+    client, session = _client(user, rules=[rule("WARN")])
+    storage = EncryptedTemporaryFileStorage(tmp_path, base64.b64encode(b"K" * 32).decode(), 900)
+    runtime_text = "snapshot marker"
+    stored = storage.store(
+        _synthetic_text_pdf(runtime_text),
+        subject_id=str(user.id),
+        request_id="req_123",
+        file_kind="pdf",
+        mime_hint="application/pdf",
+        extension_hint="pdf",
+        size_bucket="tiny",
+    )
+    client.app.dependency_overrides[get_temp_storage] = lambda: storage
+    item = {
+        "input_id": "pdf_1",
+        "kind": "file_reference",
+        "source": "attached_file",
+        "size_bytes": 42,
+        "content_included": False,
+        "file_ref": stored["file_ref"],
+        "temp_scope_id": stored["temp_scope_id"],
+        "file_kind": "pdf",
+        "mime": "application/pdf",
+        "extension": "pdf",
+        "size_bucket": "tiny",
+    }
+
+    response = client.post(
+        "/prompts/analyze",
+        headers=_bearer_header(user.id),
+        json=_analyze_payload(item),
+    )
+
+    body = response.json()
+    persisted = json.dumps([getattr(row, "__dict__", {}) for row in session.added], default=str, ensure_ascii=False)
+    encoded_body = json.dumps(body, ensure_ascii=False)
+    assert response.status_code == 200
+    assert body["action"] == "Warn"
+    assert body["input_results"][0]["content_scanned"] is True
+    assert body["input_results"][0]["decision_basis"] == "detection"
+    assert body["detections"][0]["kind"] == "file_reference"
+    assert body["detections"][0]["type"] == "SNAPSHOT_MARKER"
+    assert body["detections"][0]["placeholder"] == "SNAPSHOT_MARKER"
+    assert body["detections"][0]["reason_code"] == "CUSTOM_KEYWORD_SNAPSHOT_MARKER"
+    assert runtime_text not in encoded_body
+    assert runtime_text not in persisted
+    assert stored["file_ref"] not in persisted
+    assert stored["temp_scope_id"] not in persisted
+    assert "original_filename" not in persisted
+
+
 def test_image_file_reference_default_parser_pool_uses_ocr_without_raw_persistence(tmp_path, monkeypatch):
     user = _user()
     client, session = _client(user, rules=[])
@@ -263,3 +319,22 @@ class _FakeOcrEngine:
             blocks=[OcrTextBlock(text=self.text, confidence_bucket="high")],
             engine_id=self.engine_id,
         )
+
+
+def _synthetic_text_pdf(text: str) -> bytes:
+    output = io.BytesIO()
+    writer = PdfWriter()
+    page = writer.add_blank_page(width=360, height=180)
+    font = DictionaryObject({
+        NameObject("/Type"): NameObject("/Font"),
+        NameObject("/Subtype"): NameObject("/Type1"),
+        NameObject("/BaseFont"): NameObject("/Helvetica"),
+    })
+    page[NameObject("/Resources")] = DictionaryObject({
+        NameObject("/Font"): DictionaryObject({NameObject("/F1"): writer._add_object(font)})
+    })
+    content = DecodedStreamObject()
+    content.set_data(f"BT /F1 18 Tf 32 90 Td ({text}) Tj ET".encode("ascii"))
+    page[NameObject("/Contents")] = writer._add_object(content)
+    writer.write(output)
+    return output.getvalue()

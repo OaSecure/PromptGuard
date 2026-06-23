@@ -8,6 +8,7 @@ from app.infrastructure.temp_storage.parser_adapter import (
 from app.parser.adapters.code_text import CodeTextParserAdapter
 from app.parser.adapters.image_ocr import ImageOcrAdapter
 from app.parser.adapters.native_text import NativeTextAdapter
+from app.parser.adapters.pdf_foundation import PdfParserFoundationAdapter
 from app.parser.executor import ParserPlanExecutor
 from app.parser.models import ParserAdapterCapability
 from app.parser.planning import ParserPlanResolver
@@ -50,6 +51,10 @@ def build_parser_worker_pool(
         ParserAdapterRegistration(
             capability=ParserAdapterCapability(capability_id="code-text-v1", step_kinds=("code_parse",)),
             adapter=CodeTextParserAdapter(content_source),
+        ),
+        ParserAdapterRegistration(
+            capability=ParserAdapterCapability(capability_id="pdf-native-v1", step_kinds=("pdf_native_text_extract",)),
+            adapter=PdfParserFoundationAdapter(content_source),
         ),
         ParserAdapterRegistration(
             capability=ParserAdapterCapability(capability_id="image-ocr-v1", step_kinds=("image_ocr", "ocr_fallback")),
