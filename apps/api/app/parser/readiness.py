@@ -136,11 +136,9 @@ def _validate_model_assets(
 ) -> None:
     component_ids = {_normalized_identity(item, "name", "version", "license_id") for item in components}
     asset_ids = {_normalized_identity(item, "model_id", "model_version", "license_id") for item in assets}
-    if None in asset_ids or any(not _nonempty_string(item.get("weight_source")) for item in assets):
+    if _model_asset_identity_invalid(asset_ids) or _model_asset_fields_invalid(assets):
         reasons.add("MODEL_ASSET_INVALID")
-    if any(item.get("license_id") not in _ALLOWED_LICENSES for item in assets):
-        reasons.add("MODEL_ASSET_INVALID")
-    if not asset_ids.issubset(component_ids):
+    if _model_asset_mismatch(asset_ids, component_ids, assets):
         reasons.add("MODEL_ASSET_MISMATCH")
 
 
@@ -207,7 +205,27 @@ def _identities(records: list[Mapping[str, object]], *fields: str) -> set[tuple[
 
 
 def _invalid_dependency_path_present(components: list[Mapping[str, object]]) -> bool:
-    return any(not _dependency_path_valid(item) for item in components)
+    return any(not _component_fields_valid(item) for item in components)
+
+
+def _model_asset_identity_invalid(asset_ids: set[tuple[str, ...] | None]) -> bool:
+    return None in asset_ids
+
+
+def _model_asset_fields_invalid(assets: list[Mapping[str, object]]) -> bool:
+    return any(not _nonempty_string(item.get("weight_source")) for item in assets) or any(
+        item.get("license_id") not in _ALLOWED_LICENSES for item in assets
+    )
+
+
+def _model_asset_mismatch(
+    asset_ids: set[tuple[str, ...] | None],
+    component_ids: set[tuple[str, ...] | None],
+    assets: list[Mapping[str, object]],
+) -> bool:
+    return not asset_ids.issubset(component_ids) or any(
+        not _asset_source_matches_identity(item) for item in assets
+    )
 
 
 def _forbidden_license_present(records: list[Mapping[str, object]]) -> bool:
@@ -222,6 +240,30 @@ def _notice_component_missing(components: list[Mapping[str, object]], notice: st
 def _dependency_path_valid(item: Mapping[str, object]) -> bool:
     path = item.get("dependency_path")
     return isinstance(path, list) and bool(path) and all(_nonempty_string(value) for value in path)
+
+
+def _component_fields_valid(item: Mapping[str, object]) -> bool:
+    if not _dependency_path_valid(item):
+        return False
+    transitive = item.get("transitive_dependencies")
+    if transitive is not None and not _string_list(transitive):
+        return False
+    bundled_inventory = item.get("bundled_license_inventory")
+    return bundled_inventory is None or _string_list(bundled_inventory)
+
+
+def _string_list(value: object) -> bool:
+    return isinstance(value, list) and all(_nonempty_string(item) for item in value)
+
+
+def _asset_source_matches_identity(item: Mapping[str, object]) -> bool:
+    model_id = item.get("model_id")
+    weight_source = item.get("weight_source")
+    return (
+        isinstance(model_id, str)
+        and isinstance(weight_source, str)
+        and model_id.casefold() in weight_source.casefold()
+    )
 
 
 def _nonempty_string(value: object) -> bool:
