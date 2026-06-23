@@ -15,7 +15,14 @@ from dataclasses import asdict
 from pathlib import Path
 
 import pytest
-from app.domain.types.parser import OcrImageInput, OcrOptions
+from app.domain.types.parser import (
+    OcrImageInput,
+    OcrOptions,
+    OcrResult,
+    OcrTextBlock,
+    ParsedBlock,
+    ParsedDocument,
+)
 from app.infrastructure.ocr.process_policy import ProcessExecutionPolicy
 from app.infrastructure.ocr.process_port import (
     OcrProcessBackendPort,
@@ -229,6 +236,43 @@ def _write_synthetic_image(directory: Path) -> Path:
     return image_path
 
 
+def _ocr_result_from_local_validation(text: str) -> OcrResult:
+    return OcrResult(
+        status="text_found",
+        blocks=[
+            OcrTextBlock(
+                text=text,
+                confidence_bucket="unknown",
+            ),
+        ],
+        engine_id="tesseract-local-only-validation",
+    )
+
+
+def _parsed_document_from_ocr_result(result: OcrResult) -> ParsedDocument:
+    return ParsedDocument(
+        input_id="local-only-synthetic-input",
+        file_ref="opaque-local-only-synthetic-ref",
+        file_kind="image",
+        parser_id="tesseract-local-only-validation",
+        parser_version="test-only",
+        parser_status="parsed",
+        ocr_status=result.status,
+        blocks=[
+            ParsedBlock(
+                block_id=f"ocr-block-{index}",
+                input_id="local-only-synthetic-input",
+                text=block.text,
+                source="ocr",
+                location=None,
+                extraction_status="extracted",
+            )
+            for index, block in enumerate(result.blocks)
+        ],
+        metadata={"validation_scope": "local-only"},
+    )
+
+
 def test_isolated_real_run_validation_is_skipped_by_default(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv(RUN_REAL_VALIDATION_FLAG, raising=False)
 
@@ -355,14 +399,27 @@ def test_manual_real_run_validation_executes_one_synthetic_ocr_when_explicitly_e
             "exit_code": completed.returncode,
             "text": completed.stdout.strip(),
         }
+        ocr_result = _ocr_result_from_local_validation(public_validation_result["text"])
+        parsed_document = _parsed_document_from_ocr_result(ocr_result)
+        serialized_document = parsed_document.model_dump(mode="json")
 
         assert completed.returncode == 0
         assert "HELLO OCR" in public_validation_result["text"]
+        assert [block.text for block in ocr_result.blocks] == [public_validation_result["text"]]
+        assert [block["text"] for block in serialized_document["blocks"]] == [public_validation_result["text"]]
+        assert "HELLO OCR" not in str(serialized_document["metadata"])
+        assert ocr_result.failure is None
+        assert all(block["location"] is None for block in serialized_document["blocks"])
         assert completed.stderr is not None
         _assert_public_result_is_sanitized(public_validation_result)
+        _assert_public_result_is_sanitized(ocr_result.model_dump(mode="json"))
+        _assert_public_result_is_sanitized(serialized_document)
         assert str(binary) not in str(public_validation_result)
         assert str(tessdata) not in str(public_validation_result)
         assert str(image_path) not in str(public_validation_result)
+        assert str(binary) not in str(serialized_document)
+        assert str(tessdata) not in str(serialized_document)
+        assert str(image_path) not in str(serialized_document)
         assert temp_dir_path.exists()
         assert image_path.exists()
 
