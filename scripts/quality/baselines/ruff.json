@@ -439,10 +439,6 @@
       "count": 1
     },
     {
-      "fingerprint": "ruff|apps/api/tests/parser/test_office_native_text_extraction.py|I001|Import block is un-sorted or un-formatted|import io",
-      "count": 1
-    },
-    {
       "fingerprint": "ruff|apps/api/tests/parser/test_office_pdf_parser_foundation.py|I001|Import block is un-sorted or un-formatted|import ast",
       "count": 1
     },

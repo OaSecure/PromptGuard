@@ -1,8 +1,8 @@
 import io
+import json
 import zipfile
 
 import pytest
-
 from app.parser.adapters.office_foundation import OfficeParserFoundationAdapter
 from app.parser.models import (
     ParserPlanStep,
@@ -94,6 +94,114 @@ def test_pptx_extracts_slide_text_without_notes_or_properties():
     assert result.status == "success"
     assert [block.text for block in result.document.blocks] == ["alpha\nbeta"]
     assert result.document.blocks[0].location == {"kind": "slide", "slide": 1}
+
+
+@pytest.mark.parametrize(
+    ("file_kind", "step_kind", "parts", "expected_text"),
+    [
+        (
+            "office_document",
+            "office_parse",
+            {
+                "word/document.xml": b"<w:document xmlns:w='w'><w:p><w:t>public body</w:t></w:p></w:document>",
+                "docProps/core.xml": b"<core><title>PRIVATE_TITLE original-private.docx C:\\private\\office.docx runtime-private-ref</title><author>PRIVATE_AUTHOR</author></core>",
+                "word/comments.xml": b"<w:comments xmlns:w='w'><w:comment><w:t>PRIVATE_COMMENT</w:t></w:comment></w:comments>",
+            },
+            ["public body"],
+        ),
+        (
+            "spreadsheet",
+            "spreadsheet_parse",
+            {
+                "xl/workbook.xml": b"<workbook><sheets><sheet name='PRIVATE_SHEET_NAME'/></sheets></workbook>",
+                "xl/worksheets/sheet1.xml": b"<worksheet><sheetData><row r='1'><c><v>42</v></c></row></sheetData></worksheet>",
+                "docProps/core.xml": b"<core><title>PRIVATE_TITLE</title><author>PRIVATE_AUTHOR</author></core>",
+            },
+            ["42"],
+        ),
+        (
+            "slide",
+            "slide_parse",
+            {
+                "ppt/slides/slide1.xml": b"<p:sld xmlns:p='p' xmlns:a='a'><a:t>public slide</a:t></p:sld>",
+                "ppt/notesSlides/notesSlide1.xml": b"<a:t xmlns:a='a'>PRIVATE_NOTE</a:t>",
+                "docProps/core.xml": b"<core><title>PRIVATE_TITLE</title><author>PRIVATE_AUTHOR</author></core>",
+            },
+            ["public slide"],
+        ),
+    ],
+)
+def test_office_package_private_metadata_is_not_exposed_in_result_failure_or_serialized_output(
+    file_kind, step_kind, parts, expected_text
+):
+    content = _zip(parts)
+    original_content = bytes(content)
+    payload = _payload(file_kind)
+    original_payload = payload.model_dump()
+
+    result = OfficeParserFoundationAdapter(ContentSource(content)).execute_step(
+        ParserPlanStep(
+            step_id="office-step", ordinal=0, step_kind=step_kind, capability_id="office-cap"
+        ),
+        payload,
+        ResolvedTemporaryFile(
+            file_ref="opaque-ref", file_kind=file_kind, local_runtime_ref="runtime-ref"
+        ),
+    )
+
+    assert result.status == "success"
+    assert [block.text for block in result.document.blocks] == expected_text
+    assert result.document.metadata == {}
+    assert all(block.metadata == {} for block in result.document.blocks)
+    serialized = json.dumps(result.model_dump(), sort_keys=True)
+    for private_value in (
+        "PRIVATE_TITLE",
+        "PRIVATE_AUTHOR",
+        "PRIVATE_COMMENT",
+        "PRIVATE_NOTE",
+        "PRIVATE_SHEET_NAME",
+        "original-private.docx",
+        "C:\\private\\office.docx",
+        "runtime-private-ref",
+    ):
+        assert private_value not in serialized
+    assert content == original_content
+    assert payload.model_dump() == original_payload
+
+
+def test_malformed_private_metadata_part_is_ignored_without_raw_failure_details():
+    content = _zip({
+        "word/document.xml": b"<w:document xmlns:w='w'><w:p><w:t>public body</w:t></w:p></w:document>",
+        "docProps/core.xml": b"<broken>PRIVATE_EXCEPTION C:\\private\\office.docx runtime-private-ref",
+        "word/comments.xml": b"<broken>PRIVATE_COMMENT",
+    })
+
+    result = _run(content, "office_document", "office_parse")
+
+    assert result.status == "success"
+    assert [block.text for block in result.document.blocks] == ["public body"]
+    serialized = json.dumps(result.model_dump(), sort_keys=True)
+    for private_value in (
+        "PRIVATE_EXCEPTION",
+        "PRIVATE_COMMENT",
+        "C:\\private\\office.docx",
+        "runtime-private-ref",
+    ):
+        assert private_value not in serialized
+
+
+def test_docx_private_metadata_without_body_text_returns_empty_document():
+    content = _zip({
+        "word/document.xml": b"<w:document xmlns:w='w'><w:body/></w:document>",
+        "docProps/core.xml": b"<core><title>PRIVATE_TITLE</title><author>PRIVATE_AUTHOR</author></core>",
+        "word/comments.xml": b"<w:comments xmlns:w='w'><w:comment><w:t>PRIVATE_COMMENT</w:t></w:comment></w:comments>",
+    })
+
+    result = _run(content, "office_document", "office_parse")
+
+    assert result.status == "success"
+    assert result.document.blocks == []
+    assert result.document.metadata == {}
 
 
 def test_csv_on_existing_spreadsheet_path_extracts_rows_and_utf8_sig():
