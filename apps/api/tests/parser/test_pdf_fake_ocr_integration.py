@@ -1,3 +1,4 @@
+import json
 import logging
 
 from app.atoms.models import ParsedBlock, ParsedDocument
@@ -115,6 +116,106 @@ def test_ocr_failure_is_sanitized_and_preserves_available_blocks(caplog):
     assert result.failure.code == "OCR_FAILED"
     for forbidden in ("PRIVATE_RAW_EXCEPTION", "secret.pdf", "PRIVATE_RUNTIME_REF", "file_ref", "base64"):
         assert forbidden not in exposed
+
+
+def test_fake_ocr_merge_does_not_propagate_private_runtime_metadata():
+    safe_coverage_metadata = [{
+        "page_index": 1,
+        "native_extraction_status": "success",
+        "meaningful_character_count": 0,
+        "image_evidence": "unknown",
+    }]
+    native_document = _native_document().model_copy(update={
+        "metadata": {
+            "page_coverage_inputs": safe_coverage_metadata,
+            "failed_page_indices": [3],
+            "temp_path": "C:\\private\\rendered-page.png",
+            "runtime_ref": "PRIVATE_RUNTIME_REF",
+            "original_filename": "private-original.pdf",
+            "raw_exception": "PRIVATE_RAW_EXCEPTION",
+        }
+    })
+    coverage = PdfCoverageEvaluator().evaluate([_page(1)], 1)
+    renderer = FakePdfRenderer()
+    engine = FakeOcrEngine(text_by_page={1: "PRIVATE_OCR_TEXT"})
+
+    result = PdfSelectedPageOcrIntegrator(renderer, engine).integrate(
+        native_document, "PRIVATE_RUNTIME_REF", coverage, OcrOptions(timeout_ms=1000)
+    )
+
+    assert result.document.metadata == {
+        "page_coverage_inputs": safe_coverage_metadata,
+        "failed_page_indices": [3],
+    }
+    ocr_block = next(
+        block for block in result.document.blocks if block.source_type == "pdf_ocr_page"
+    )
+    assert ocr_block.text == "PRIVATE_OCR_TEXT"
+    assert ocr_block.metadata == {}
+    assert ocr_block.location == {"kind": "pdf", "page": 1}
+    non_text_output = result.model_dump()
+    for block in non_text_output["document"]["blocks"]:
+        block.pop("text", None)
+    serialized = json.dumps(non_text_output, sort_keys=True)
+    for private_value in (
+        "PRIVATE_OCR_TEXT",
+        "C:\\private\\rendered-page.png",
+        "PRIVATE_RUNTIME_REF",
+        "private-original.pdf",
+        "PRIVATE_RAW_EXCEPTION",
+    ):
+        assert private_value not in serialized
+    assert set(type(result).model_fields).isdisjoint(
+        {"action", "reason_code", "user_notice", "event", "storage"}
+    )
+
+
+def test_fake_ocr_merge_rebuilds_duplicate_blocks_deterministically_without_engine_metadata():
+    class DuplicateBlockEngine:
+        engine_id = "fake-duplicate-ocr"
+
+        def recognize(self, image, options):
+            return OcrResult(
+                status="text_found",
+                engine_id=self.engine_id,
+                blocks=[
+                    OcrTextBlock(
+                        text="first OCR block",
+                        confidence_bucket="high",
+                        location={"page": image.page},
+                    ),
+                    OcrTextBlock(
+                        text="second OCR block",
+                        confidence_bucket="low",
+                        location={"page": image.page},
+                    ),
+                ],
+            )
+
+    native_document = _native_document()
+    coverage = PdfCoverageEvaluator().evaluate([_page(1)], 1)
+    options = OcrOptions(timeout_ms=1000)
+    original_document = native_document.model_dump()
+    original_coverage = coverage.model_dump()
+    original_options = options.model_dump()
+
+    result = PdfSelectedPageOcrIntegrator(
+        FakePdfRenderer(), DuplicateBlockEngine()
+    ).integrate(native_document, "PRIVATE_RUNTIME_REF", coverage, options)
+
+    ocr_blocks = [
+        block for block in result.document.blocks if block.source_type == "pdf_ocr_page"
+    ]
+    assert [block.block_id for block in ocr_blocks] == [
+        "pdf-ocr-page-1-block-1",
+        "pdf-ocr-page-1-block-2",
+    ]
+    assert [block.text for block in ocr_blocks] == ["first OCR block", "second OCR block"]
+    assert all(block.metadata == {} for block in ocr_blocks)
+    assert all(block.location == {"kind": "pdf", "page": 1} for block in ocr_blocks)
+    assert native_document.model_dump() == original_document
+    assert coverage.model_dump() == original_coverage
+    assert options.model_dump() == original_options
 
 
 def test_fake_ocr_contract_returns_typed_result():
