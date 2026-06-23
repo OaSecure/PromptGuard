@@ -144,7 +144,7 @@
     "checksum_mismatch": "fail-before-execution"
   },
   "offline_fail_closed_gate": {
-    "status": "contract-defined-runtime-not-implemented",
+    "status": "candidate-runtime-boundary-implemented-production-disabled",
     "required_controls": [
       "explicit-binary-path",
       "explicit-tessdata-path",
@@ -157,7 +157,7 @@
     "production_approval": false
   },
   "runtime_integration_preflight_gate": {
-    "status": "contract-defined-runtime-not-implemented",
+    "status": "candidate-runtime-boundary-implemented-production-disabled",
     "required_controls": [
       "explicit-binary-path",
       "explicit-tessdata-directory",
@@ -300,8 +300,6 @@
     "local_heavy_work_not_performed": ["installation", "OCR execution", "model download", "Docker build", "native build"],
     "required_location": "ci-runner-or-dedicated-remote-isolated-environment",
     "follow_up_pr_boundary": [
-      "B3-I: isolated runtime adapter implementation",
-      "B3-J: fail-closed and process-boundary tests",
       "B3-K: OCR accuracy corpus/acceptance policy",
       "B3-L: production artifact/native dependency pin decision",
       "separate: Windows artifact validation or Windows support exclusion decision"

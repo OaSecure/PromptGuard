@@ -156,7 +156,7 @@ def test_offline_policy_forbids_runtime_download_and_network():
         "checksum_mismatch": "fail-before-execution",
     }
     gate = _report()["offline_fail_closed_gate"]
-    assert gate["status"] == "contract-defined-runtime-not-implemented"
+    assert gate["status"] == "candidate-runtime-boundary-implemented-production-disabled"
     assert set(gate["required_controls"]) == {
         "explicit-binary-path",
         "explicit-tessdata-path",
@@ -405,7 +405,7 @@ def test_windows_local_validation_scope_overclaim_fails_closed():
 
 def test_runtime_integration_preflight_requires_bounded_fail_closed_controls():
     gate = _report()["runtime_integration_preflight_gate"]
-    assert gate["status"] == "contract-defined-runtime-not-implemented"
+    assert gate["status"] == "candidate-runtime-boundary-implemented-production-disabled"
     assert set(gate["required_controls"]) == {
         "explicit-binary-path",
         "explicit-tessdata-directory",
@@ -485,11 +485,9 @@ def test_existing_evidence_does_not_claim_runtime_or_accuracy_validation():
         assert scope[claim] is False
 
 
-def test_follow_up_work_stays_outside_the_preflight_contract_pr():
+def test_follow_up_work_excludes_completed_candidate_runtime_boundaries():
     follow_up = _report()["next_validation"]["follow_up_pr_boundary"]
     assert follow_up == [
-        "B3-I: isolated runtime adapter implementation",
-        "B3-J: fail-closed and process-boundary tests",
         "B3-K: OCR accuracy corpus/acceptance policy",
         "B3-L: production artifact/native dependency pin decision",
         "separate: Windows artifact validation or Windows support exclusion decision",

@@ -122,9 +122,9 @@ def test_ocr_infrastructure_has_no_download_install_native_build_or_windows_runn
 
 def test_candidate_report_keeps_runtime_and_production_disabled():
     report = json.loads(REPORT.read_text(encoding="utf-8"))
-    assert report["offline_fail_closed_gate"]["status"] == "contract-defined-runtime-not-implemented"
+    assert report["offline_fail_closed_gate"]["status"] == "candidate-runtime-boundary-implemented-production-disabled"
     preflight = report["runtime_integration_preflight_gate"]
-    assert preflight["status"] == "contract-defined-runtime-not-implemented"
+    assert preflight["status"] == "candidate-runtime-boundary-implemented-production-disabled"
     assert preflight["production_approval"] is False
     assert report["production_approval_gate"]["production_approval"] is False
     assert report["paddleocr_b2_decision"]["status"] == "deferred/blocked"
