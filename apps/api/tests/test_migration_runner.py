@@ -97,6 +97,8 @@ def test_model_artifact_directory_documents_samples_without_real_artifacts() -> 
     label_definitions = json.loads((examples_root / "context_label_definitions.sample.json").read_text(encoding="utf-8"))
 
     assert "./models:/opt/promptguard/models:ro" in readme_text
+    assert "OASecure/promptguard-context-classifier" in readme_text
+    assert "v287-20260623" in readme_text
     assert "Do not commit real model artifacts to Git" in readme_text
     assert lr_manifest["selected"]["lr_model"].endswith(".joblib")
     assert lr_manifest["selected"]["target_labels_json"] == "models/context_target_labels.sample.json"
