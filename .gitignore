@@ -8,7 +8,10 @@ apps/dashboard/dist/
 .env
 .env.*
 !.env.example
+.venv/
+apps/api/.venv/
 *.log
+__pycache__/
 .pytest_cache/
 apps/api/.pytest_cache/
 

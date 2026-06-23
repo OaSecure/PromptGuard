@@ -84,6 +84,24 @@ PROMPTGUARD_VERIFIER_RUNTIME_ENABLED=true
 PROMPTGUARD_VERIFIER_MANIFEST_PATH=/opt/promptguard/models/context_lr_roberta_active_best_f1_manifest.json
 ```
 
+### API 로컬 CUDA 런타임 확인
+
+로컬에서 실제 모델 런타임을 검증할 때는 저장소 루트에 전용 venv를 만들고 CUDA용 PyTorch wheel을 설치한다.
+
+```bash
+python -m venv .venv
+.venv\Scripts\python -m pip install --upgrade pip setuptools wheel
+.venv\Scripts\python -m pip install -r apps/api/requirements.txt -r apps/api/requirements-ml.txt
+.venv\Scripts\python -m pip install --force-reinstall -r apps/api/requirements-ml-cu128.txt
+```
+
+현재 Python 런타임이 CUDA를 쓰는지 확인한다.
+
+```bash
+cd apps/api
+..\..\.venv\Scripts\python scripts/runtime_readiness.py
+```
+
 ## English
 
 PromptGuard is a project for inspecting prompts and files before they leave a user workflow for an AI service. Its goal is to detect sensitive data, policy issues, and masking requirements before submission.
@@ -157,4 +175,22 @@ PROMPTGUARD_CLASSIFIER_RUNTIME_ENABLED=true
 PROMPTGUARD_CLASSIFIER_MANIFEST_PATH=/opt/promptguard/models/context_lr_roberta_active_best_f1_manifest.json
 PROMPTGUARD_VERIFIER_RUNTIME_ENABLED=true
 PROMPTGUARD_VERIFIER_MANIFEST_PATH=/opt/promptguard/models/context_lr_roberta_active_best_f1_manifest.json
+```
+
+### API Local CUDA Runtime Check
+
+For local real-model runtime verification, create a repository-local venv and install the CUDA PyTorch wheel.
+
+```bash
+python -m venv .venv
+.venv\Scripts\python -m pip install --upgrade pip setuptools wheel
+.venv\Scripts\python -m pip install -r apps/api/requirements.txt -r apps/api/requirements-ml.txt
+.venv\Scripts\python -m pip install --force-reinstall -r apps/api/requirements-ml-cu128.txt
+```
+
+Check whether the active Python runtime can use CUDA.
+
+```bash
+cd apps/api
+..\..\.venv\Scripts\python scripts/runtime_readiness.py
 ```
