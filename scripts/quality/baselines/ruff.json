@@ -167,10 +167,6 @@
       "count": 1
     },
     {
-      "fingerprint": "ruff|apps/api/app/parser/models.py|F401|`typing.Any` imported but unused|from typing import Any, Literal",
-      "count": 1
-    },
-    {
       "fingerprint": "ruff|apps/api/app/parser/planning.py|I001|Import block is un-sorted or un-formatted|from app.parser.models import (",
       "count": 1
     },
@@ -444,10 +440,6 @@
     },
     {
       "fingerprint": "ruff|apps/api/tests/parser/test_parser_adapter_registry.py|I001|Import block is un-sorted or un-formatted|import pytest",
-      "count": 1
-    },
-    {
-      "fingerprint": "ruff|apps/api/tests/parser/test_parser_plan_models.py|I001|Import block is un-sorted or un-formatted|import pytest",
       "count": 1
     },
     {

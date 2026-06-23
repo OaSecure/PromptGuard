@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -133,13 +133,26 @@ class ParserExecutionPlan(BaseModel):
         steps_by_id = {step.step_id: step for step in self.steps}
         if len(steps_by_id) != len(self.steps):
             raise ValueError("step ids must be unique")
-        for rule in self.fallback_rules:
-            if rule.source_step_id not in steps_by_id:
-                raise ValueError("fallback source step must exist")
-            target = steps_by_id.get(rule.target_step_id)
-            if target is None or target.execution_mode != "fallback":
-                raise ValueError("fallback target must be an existing fallback step")
+        _validate_fallback_graph(steps_by_id, self.fallback_rules)
         return self
+
+
+def _validate_fallback_graph(
+    steps_by_id: dict[str, ParserPlanStep],
+    rules: tuple[ParserFallbackRule, ...],
+) -> None:
+    routes: set[tuple[str, FallbackTrigger]] = set()
+    for rule in rules:
+        source = steps_by_id.get(rule.source_step_id)
+        if source is None or source.execution_mode == "fallback":
+            raise ValueError("fallback source must be an existing non-fallback step")
+        target = steps_by_id.get(rule.target_step_id)
+        if target is None or target.execution_mode != "fallback":
+            raise ValueError("fallback target must be an existing fallback step")
+        route = (rule.source_step_id, rule.trigger)
+        if route in routes:
+            raise ValueError("fallback source and trigger route must be unique")
+        routes.add(route)
 
 
 class ParserAdapterCapability(BaseModel):

@@ -1,3 +1,4 @@
+import pytest
 from app.atoms.models import ParsedBlock, ParsedDocument
 from app.parser.executor import ParserPlanExecutor
 from app.parser.fakes import FakeParserStepAdapter
@@ -94,6 +95,75 @@ def test_undefined_trigger_does_not_apply_fallback():
     result = _executor(adapter).execute(_payload(), None, plan)
     assert adapter.calls == ["primary"]
     assert result.parser_status == "failed"
+
+
+def test_primary_success_does_not_apply_fallback():
+    adapter = FakeParserStepAdapter(results={
+        "primary": ParserStepResult(step_id="primary", status="success", document=_document()),
+    })
+    plan = ParserExecutionPlan(
+        plan_id="fallback-not-needed", plan_kind="image_ocr",
+        steps=(_step("primary", 0), _step("fallback", 1, "fallback")),
+        fallback_rules=(ParserFallbackRule(
+            rule_id="rule", source_step_id="primary", trigger="step_failed",
+            target_step_id="fallback", ordinal=0,
+        ),),
+    )
+
+    result = _executor(adapter).execute(_payload(), None, plan)
+
+    assert adapter.calls == ["primary"]
+    assert result.parser_status == "parsed"
+
+
+def test_failed_fallback_returns_sanitized_failure_without_running_other_steps():
+    adapter = FakeParserStepAdapter(results={
+        "primary": ParserStepResult(
+            step_id="primary", status="failed", trigger="step_failed",
+            failure=sanitized_failure("PARSER_WORKER_FAILED"),
+        ),
+        "fallback": ParserStepResult(
+            step_id="fallback", status="failed", trigger="step_failed",
+            failure=sanitized_failure("OCR_FAILED"),
+        ),
+    })
+    plan = ParserExecutionPlan(
+        plan_id="failed-fallback", plan_kind="image_ocr",
+        steps=(
+            _step("primary", 0),
+            _step("fallback", 1, "fallback"),
+            _step("after", 2),
+        ),
+        fallback_rules=(ParserFallbackRule(
+            rule_id="rule", source_step_id="primary", trigger="step_failed",
+            target_step_id="fallback", ordinal=0,
+        ),),
+    )
+
+    result = _executor(adapter, capability_ids=("cap-primary", "cap-fallback", "cap-after")).execute(
+        _payload(), None, plan
+    )
+
+    assert adapter.calls == ["primary", "fallback"]
+    assert result.parser_status == "failed"
+    assert result.failure.model_dump() == {
+        "code": "OCR_FAILED",
+        "message": "OCR_FAILED",
+        "metadata": {"failure_code": "OCR_FAILED"},
+    }
+
+
+@pytest.mark.parametrize("plan_kind", ["metadata_only", "unsupported"])
+def test_empty_non_execution_plan_does_not_resolve_an_adapter(plan_kind):
+    adapter = FakeParserStepAdapter()
+    result = _executor(adapter, capability_ids=()).execute(
+        _payload(), None,
+        ParserExecutionPlan(plan_id=plan_kind, plan_kind=plan_kind, steps=()),
+    )
+
+    assert adapter.calls == []
+    assert result.document is None
+    assert result.parser_status == "parsed"
 
 
 def test_parser_plan_executor_preserves_failure_code():
