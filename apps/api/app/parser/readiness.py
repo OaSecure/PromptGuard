@@ -1,4 +1,4 @@
-"""Static, fail-closed readiness checks for parser/OCR license artifacts."""
+"""Static, fail-closed readiness checks for parser/OCR runtime artifacts."""
 
 from dataclasses import dataclass
 from typing import Mapping
@@ -8,7 +8,7 @@ REQUIRED_ARTIFACTS = (
     "parser_ocr_license_report.json",
     "ocr_model_weight_license_report.json",
     "NOTICE.parser_ocr.txt",
-    "paddle_ocr_candidate_report.json",
+    "paddle_ocr_runtime_report.json",
     "tesseract_ocr_candidate_report.json",
     "tesseract_isolated_validation_evidence.json",
 )
@@ -95,8 +95,8 @@ def validate_parser_ocr_readiness(artifacts: Mapping[str, object]) -> ParserOcrR
         _validate_active_components(components, decisions, notice, reasons)
         _validate_model_assets(assets, components, reasons)
 
-    _validate_candidate(
-        artifacts["paddle_ocr_candidate_report.json"],
+    _validate_runtime_report(
+        artifacts["paddle_ocr_runtime_report.json"],
         "PADDLE",
         reasons,
     )
@@ -140,6 +140,22 @@ def _validate_model_assets(
         reasons.add("MODEL_ASSET_INVALID")
     if _model_asset_mismatch(asset_ids, component_ids, assets):
         reasons.add("MODEL_ASSET_MISMATCH")
+
+
+def _validate_runtime_report(artifact: object, prefix: str, reasons: set[str]) -> None:
+    report = _mapping(artifact)
+    if report is None:
+        reasons.add("ARTIFACT_SCHEMA_INVALID")
+        return
+    status = report.get("status")
+    dependency_enabled = report.get("dependency_overlay_enabled")
+    runtime_enabled = report.get("default_runtime_enabled")
+    if not isinstance(status, str) or not isinstance(dependency_enabled, bool) or not isinstance(runtime_enabled, bool):
+        reasons.add("ARTIFACT_SCHEMA_INVALID")
+        return
+    if dependency_enabled and runtime_enabled and status in {"runtime-ready", "approved", "enabled", "ready"}:
+        return
+    reasons.add(f"{prefix}_RUNTIME_NOT_READY")
 
 
 def _validate_candidate(artifact: object, prefix: str, reasons: set[str]) -> None:

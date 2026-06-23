@@ -1,4 +1,4 @@
-"""Install-free, production-disabled boundary for a possible OCR candidate."""
+"""PaddleOCR engine boundary with sanitized runtime output handling."""
 
 from dataclasses import dataclass
 from typing import Literal, Protocol
@@ -8,24 +8,12 @@ from app.domain.types.parser import BlockLocation, OcrImageInput, OcrOptions, Oc
 
 
 @dataclass(frozen=True)
-class PaddleOcrCandidateConfig:
-    enabled: bool = False
-    dependency_review_approved: bool = False
-    model_license_review_approved: bool = False
-    runtime_policy_approved: bool = False
-
-    @property
-    def approved(self) -> bool:
-        return (
-            self.enabled
-            and self.dependency_review_approved
-            and self.model_license_review_approved
-            and self.runtime_policy_approved
-        )
+class PaddleOcrRuntimeConfig:
+    enabled: bool = True
 
 
 @dataclass(frozen=True)
-class PaddleOcrCandidateRequest:
+class PaddleOcrRuntimeRequest:
     image_handle: str
     page: int | None
     languages: tuple[str, ...]
@@ -33,7 +21,7 @@ class PaddleOcrCandidateRequest:
 
 
 @dataclass(frozen=True)
-class PaddleOcrCandidateRuntimeResult:
+class PaddleOcrRuntimeResult:
     status: Literal["success", "failed", "timeout", "unavailable"]
     blocks: list[dict[str, object]] | None = None
     stdout: str = ""
@@ -42,28 +30,28 @@ class PaddleOcrCandidateRuntimeResult:
     metadata: dict[str, object] | None = None
 
 
-class PaddleOcrCandidateRuntimePort(Protocol):
-    def recognize(self, request: PaddleOcrCandidateRequest) -> PaddleOcrCandidateRuntimeResult: ...
+class PaddleOcrRuntimePort(Protocol):
+    def recognize(self, request: PaddleOcrRuntimeRequest) -> PaddleOcrRuntimeResult: ...
 
 
-class PaddleOcrCandidateEngine:
-    """OcrEnginePort-compatible placeholder that never starts a runtime."""
+class PaddleOcrEngine:
+    """OcrEnginePort-compatible PaddleOCR adapter."""
 
-    engine_id = "paddleocr-candidate-disabled"
+    engine_id = "paddleocr-runtime"
 
     def __init__(
         self,
-        config: PaddleOcrCandidateConfig,
-        runtime: PaddleOcrCandidateRuntimePort | None = None,
+        config: PaddleOcrRuntimeConfig,
+        runtime: PaddleOcrRuntimePort | None = None,
     ) -> None:
         self._config = config
         self._runtime = runtime
 
     def recognize(self, image: OcrImageInput, options: OcrOptions) -> OcrResult:
-        if self._runtime is None or not self._config.approved:
+        if self._runtime is None or not self._config.enabled:
             return _failure(self.engine_id, "OCR_ENGINE_UNAVAILABLE")
         try:
-            runtime_result = self._runtime.recognize(PaddleOcrCandidateRequest(
+            runtime_result = self._runtime.recognize(PaddleOcrRuntimeRequest(
                 image_handle=image.image_handle,
                 page=image.page,
                 languages=tuple(options.languages),
@@ -86,7 +74,7 @@ class PaddleOcrCandidateEngine:
 
 
 def _fake_engine_id() -> str:
-    return "paddleocr-candidate-fake"
+    return "paddleocr-runtime"
 
 
 def _failure(
@@ -137,8 +125,9 @@ def _confidence_bucket(value: object) -> Literal["low", "medium", "high", "unkno
     return "high"
 
 
-def compose_paddle_ocr_candidate(
-    config: PaddleOcrCandidateConfig,
-    runtime: PaddleOcrCandidateRuntimePort | None = None,
-) -> PaddleOcrCandidateEngine:
-    return PaddleOcrCandidateEngine(config, runtime)
+def compose_paddle_ocr_engine(
+    config: PaddleOcrRuntimeConfig,
+    runtime: PaddleOcrRuntimePort | None = None,
+) -> PaddleOcrEngine:
+    return PaddleOcrEngine(config, runtime)
+

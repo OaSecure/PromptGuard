@@ -303,10 +303,6 @@
       "count": 1
     },
     {
-      "fingerprint": "ruff|apps/api/tests/contract/test_paddle_ocr_candidate_gate.py|I001|Import block is un-sorted or un-formatted|import ast",
-      "count": 1
-    },
-    {
       "fingerprint": "ruff|apps/api/tests/contract/test_parser_dependency_license_gate.py|I001|Import block is un-sorted or un-formatted|import importlib.metadata",
       "count": 1
     },
