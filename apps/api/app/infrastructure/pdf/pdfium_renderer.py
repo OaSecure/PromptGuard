@@ -60,8 +60,42 @@ class InMemoryRenderedImageStore:
     def get(self, handle: str) -> RenderedImage:
         return self._images[handle]
 
+    def resolve_for_ocr(self, handle: str) -> object:
+        return _rendered_image_to_rgb_array(self._images[handle])
+
     def release(self, handle: str) -> None:
         self._images.pop(handle, None)
+
+
+def _rendered_image_to_rgb_array(image: RenderedImage) -> object:
+    import numpy as np
+
+    channels = _pixel_channels(image.pixel_format)
+    if channels is None:
+        raise ValueError("unsupported_pixel_format")
+    row_width = image.width * channels
+    rows = []
+    for row_index in range(image.height):
+        offset = row_index * image.stride
+        rows.append(image.buffer[offset:offset + row_width])
+    array = np.frombuffer(b"".join(rows), dtype=np.uint8).reshape((image.height, image.width, channels))
+    normalized = image.pixel_format.upper()
+    if normalized == "BGRA":
+        return array[:, :, [2, 1, 0]]
+    if normalized == "BGR":
+        return array[:, :, [2, 1, 0]]
+    if normalized == "RGBA":
+        return array[:, :, :3]
+    return array
+
+
+def _pixel_channels(pixel_format: str) -> int | None:
+    normalized = pixel_format.upper()
+    if normalized in {"RGB", "BGR"}:
+        return 3
+    if normalized in {"RGBA", "BGRA"}:
+        return 4
+    return None
 
 
 class PdfRendererError(Exception):

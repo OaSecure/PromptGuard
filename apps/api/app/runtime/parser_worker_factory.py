@@ -1,5 +1,10 @@
 from app.infrastructure.ocr.paddle_real_adapter import PaddleOcrLazyRuntimeConfig, PaddleOcrLazyRuntimeSkeleton
 from app.infrastructure.ocr.paddle_runtime import PaddleOcrRuntimeConfig, compose_paddle_ocr_engine
+from app.infrastructure.pdf.pdfium_renderer import (
+    InMemoryRenderedImageStore,
+    PdfiumRenderer,
+    RuntimePdfSourcePort,
+)
 from app.infrastructure.temp_storage import EncryptedTemporaryFileStorage
 from app.infrastructure.temp_storage.parser_adapter import (
     TemporaryStorageContentSource,
@@ -9,6 +14,7 @@ from app.parser.adapters.code_text import CodeTextParserAdapter
 from app.parser.adapters.image_ocr import ImageOcrAdapter
 from app.parser.adapters.native_text import NativeTextAdapter
 from app.parser.adapters.pdf_foundation import PdfParserFoundationAdapter
+from app.parser.adapters.pdf_native_ocr import PdfNativeOcrAdapter
 from app.parser.executor import ParserPlanExecutor
 from app.parser.models import ParserAdapterCapability
 from app.parser.planning import ParserPlanResolver
@@ -35,9 +41,17 @@ def build_parser_worker_pool(
 ) -> ParserWorkerPool:
     clock = clock or SystemClock()
     content_source = TemporaryStorageContentSource(storage, clock)
+    rendered_images = InMemoryRenderedImageStore()
+
+    def pdf_renderer_factory(source: RuntimePdfSourcePort) -> PdfiumRenderer:
+        return PdfiumRenderer(source, rendered_images)
+
     paddle_runtime = PaddleOcrLazyRuntimeSkeleton(
         PaddleOcrLazyRuntimeConfig(enabled=True),
-        image_resolver=lambda handle: handle,
+        image_resolver=lambda handle: (
+            rendered_images.resolve_for_ocr(handle)
+            if handle.startswith("rendered-image-") else handle
+        ),
     )
     paddle_engine = compose_paddle_ocr_engine(
         PaddleOcrRuntimeConfig(enabled=True),
@@ -55,6 +69,14 @@ def build_parser_worker_pool(
         ParserAdapterRegistration(
             capability=ParserAdapterCapability(capability_id="pdf-native-v1", step_kinds=("pdf_native_text_extract",)),
             adapter=PdfParserFoundationAdapter(content_source),
+        ),
+        ParserAdapterRegistration(
+            capability=ParserAdapterCapability(capability_id="pdf-native-ocr-v1", step_kinds=("pdf_native_ocr",)),
+            adapter=PdfNativeOcrAdapter(
+                content_source,
+                paddle_engine,
+                renderer_factory=pdf_renderer_factory,
+            ),
         ),
         ParserAdapterRegistration(
             capability=ParserAdapterCapability(capability_id="image-ocr-v1", step_kinds=("image_ocr", "ocr_fallback")),

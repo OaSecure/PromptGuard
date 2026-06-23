@@ -11,7 +11,7 @@ from app.routes import analyze as analyze_route
 from app.routes.temp_files import get_temp_storage
 from app.runtime import parser_worker_factory
 from pypdf import PdfWriter
-from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
+from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject, NumberObject
 
 from tests.contract.current_behavior.test_analyze_golden import (
     post_snapshot,
@@ -185,7 +185,7 @@ def test_pdf_file_reference_default_parser_pool_reads_native_text_without_raw_pe
     user = _user()
     client, session = _client(user, rules=[rule("WARN")])
     storage = EncryptedTemporaryFileStorage(tmp_path, base64.b64encode(b"K" * 32).decode(), 900)
-    runtime_text = "snapshot marker"
+    runtime_text = "snapshot marker " + ("native pdf filler " * 10)
     stored = storage.store(
         _synthetic_text_pdf(runtime_text),
         subject_id=str(user.id),
@@ -229,6 +229,66 @@ def test_pdf_file_reference_default_parser_pool_reads_native_text_without_raw_pe
     assert body["detections"][0]["reason_code"] == "CUSTOM_KEYWORD_SNAPSHOT_MARKER"
     assert runtime_text not in encoded_body
     assert runtime_text not in persisted
+    assert stored["file_ref"] not in persisted
+    assert stored["temp_scope_id"] not in persisted
+    assert "original_filename" not in persisted
+
+
+def test_scanned_pdf_file_reference_default_parser_pool_ocr_detects_fixture_text_without_raw_persistence(
+    tmp_path, monkeypatch
+):
+    user = _user()
+    client, session = _client(user, rules=[rule("WARN")])
+    storage = EncryptedTemporaryFileStorage(tmp_path, base64.b64encode(b"K" * 32).decode(), 900)
+    fixture_text = "SNAPSHOT MARKER"
+    stored = storage.store(
+        _synthetic_scanned_pdf(fixture_text),
+        subject_id=str(user.id),
+        request_id="req_123",
+        file_kind="pdf",
+        mime_hint="application/pdf",
+        extension_hint="pdf",
+        size_bucket="tiny",
+    )
+    monkeypatch.setattr(
+        parser_worker_factory,
+        "compose_paddle_ocr_engine",
+        lambda *_args, **_kwargs: _FakeOcrEngine(fixture_text),
+    )
+    client.app.dependency_overrides[get_temp_storage] = lambda: storage
+    item = {
+        "input_id": "pdf_scan_1",
+        "kind": "file_reference",
+        "source": "attached_file",
+        "size_bytes": 42,
+        "content_included": False,
+        "file_ref": stored["file_ref"],
+        "temp_scope_id": stored["temp_scope_id"],
+        "file_kind": "pdf",
+        "mime": "application/pdf",
+        "extension": "pdf",
+        "size_bucket": "tiny",
+    }
+
+    response = client.post(
+        "/prompts/analyze",
+        headers=_bearer_header(user.id),
+        json=_analyze_payload(item),
+    )
+
+    body = response.json()
+    encoded_body = json.dumps(body, ensure_ascii=False)
+    persisted = json.dumps([getattr(row, "__dict__", {}) for row in session.added], default=str, ensure_ascii=False)
+    assert response.status_code == 200
+    assert body["action"] == "Warn"
+    assert body["input_results"][0]["content_scanned"] is True
+    assert body["input_results"][0]["decision_basis"] == "detection"
+    assert body["detections"][0]["kind"] == "file_reference"
+    assert body["detections"][0]["type"] == "SNAPSHOT_MARKER"
+    assert body["detections"][0]["placeholder"] == "SNAPSHOT_MARKER"
+    assert body["detections"][0]["reason_code"] == "CUSTOM_KEYWORD_SNAPSHOT_MARKER"
+    assert fixture_text not in encoded_body
+    assert fixture_text not in persisted
     assert stored["file_ref"] not in persisted
     assert stored["temp_scope_id"] not in persisted
     assert "original_filename" not in persisted
@@ -338,3 +398,64 @@ def _synthetic_text_pdf(text: str) -> bytes:
     page[NameObject("/Contents")] = writer._add_object(content)
     writer.write(output)
     return output.getvalue()
+
+
+def _synthetic_scanned_pdf(text: str) -> bytes:
+    output = io.BytesIO()
+    writer = PdfWriter()
+    page = writer.add_blank_page(width=360, height=160)
+    width, height, pixels = _raster_text(text)
+    image = DecodedStreamObject()
+    image.set_data(pixels)
+    image.update({
+        NameObject("/Type"): NameObject("/XObject"),
+        NameObject("/Subtype"): NameObject("/Image"),
+        NameObject("/Width"): NumberObject(width),
+        NameObject("/Height"): NumberObject(height),
+        NameObject("/ColorSpace"): NameObject("/DeviceRGB"),
+        NameObject("/BitsPerComponent"): NumberObject(8),
+    })
+    page[NameObject("/Resources")] = DictionaryObject({
+        NameObject("/XObject"): DictionaryObject({NameObject("/Im1"): writer._add_object(image)})
+    })
+    content = DecodedStreamObject()
+    content.set_data(f"q {width} 0 0 {height} 32 64 cm /Im1 Do Q".encode("ascii"))
+    page[NameObject("/Contents")] = writer._add_object(content)
+    writer.write(output)
+    return output.getvalue()
+
+
+def _raster_text(text: str) -> tuple[int, int, bytes]:
+    scale = 4
+    glyph_w, glyph_h, gap = 5, 7, 1
+    width = (len(text) * (glyph_w + gap) - gap) * scale
+    height = glyph_h * scale
+    canvas = bytearray([255] * width * height * 3)
+    for char_index, character in enumerate(text.upper()):
+        pattern = _FONT.get(character, _FONT[" "])
+        x0 = char_index * (glyph_w + gap) * scale
+        for row, bits in enumerate(pattern):
+            for col, bit in enumerate(bits):
+                if bit == "0":
+                    continue
+                for y in range(row * scale, (row + 1) * scale):
+                    for x in range(x0 + col * scale, x0 + (col + 1) * scale):
+                        offset = (y * width + x) * 3
+                        canvas[offset:offset + 3] = b"\x00\x00\x00"
+    return width, height, bytes(canvas)
+
+
+_FONT = {
+    " ": ("00000", "00000", "00000", "00000", "00000", "00000", "00000"),
+    "A": ("01110", "10001", "10001", "11111", "10001", "10001", "10001"),
+    "C": ("01111", "10000", "10000", "10000", "10000", "10000", "01111"),
+    "E": ("11111", "10000", "10000", "11110", "10000", "10000", "11111"),
+    "H": ("10001", "10001", "10001", "11111", "10001", "10001", "10001"),
+    "K": ("10001", "10010", "10100", "11000", "10100", "10010", "10001"),
+    "M": ("10001", "11011", "10101", "10101", "10001", "10001", "10001"),
+    "O": ("01110", "10001", "10001", "10001", "10001", "10001", "01110"),
+    "P": ("11110", "10001", "10001", "11110", "10000", "10000", "10000"),
+    "R": ("11110", "10001", "10001", "11110", "10100", "10010", "10001"),
+    "S": ("01111", "10000", "10000", "01110", "00001", "00001", "11110"),
+    "T": ("11111", "00100", "00100", "00100", "00100", "00100", "00100"),
+}
