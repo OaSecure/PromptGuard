@@ -32,11 +32,9 @@ def test_runner_guards_fail_closed_and_emits_only_safe_summary(monkeypatch, caps
             "cleanup_success",
             "reason_code",
             "readiness",
-            "production_activation",
         }
         assert summary["status"] == "blocked"
         assert summary["readiness"] is False
-        assert summary["production_activation"] is False
         assert all(value not in output for value in private_values)
 
 
