@@ -87,6 +87,7 @@ export interface AnalyzeInput {
   content_included: boolean;
   content?: string;
   file_ref?: string;
+  temp_scope_id?: string;
   file_kind?: AnalyzeFileKind;
   mime?: string;
   extension?: string;

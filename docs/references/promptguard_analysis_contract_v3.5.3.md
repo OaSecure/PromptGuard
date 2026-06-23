@@ -400,6 +400,7 @@ class AnalyzeInputItem(BaseModel):
 
     content: str | None = None
     file_ref: str | None = None
+    temp_scope_id: str | None = None
     file_kind: FileKind | None = None
 
     mime: str | None = None
@@ -425,9 +426,11 @@ Input invariant:
 * `content_included=true`는 `kind="text"`에서만 허용되며 `content`가 non-null이어야 한다.
 * `content_included=false`이면 `content`는 null이어야 한다.
 * `kind="text"`에서 `content=""`는 schema level에서 허용할 수 있으나, whitespace-only content는 AnalyzeService input normalization에서 blank input으로 처리한다.
-* `kind="file_reference"`이면 `file_ref`는 required이고 `content`는 null이어야 한다.
+* `kind="file_reference"`이면 `file_ref`와 `temp_scope_id`는 required이고 `content`는 null이어야 한다.
 * `file_ref`는 opaque reference여야 하며 local path, URL, original file name, user-visible file name, file extension, MIME string을 포함하지 않는다.
 * `file_ref`는 영구 파일 ID가 아니며 ownership, TTL, request/session scope 검증 전에는 신뢰하지 않는다.
+* `temp_scope_id`는 upload/temp endpoint가 발급한 opaque scope token이며 `file_ref` resolve 시 request/session access context 검증에만 사용한다.
+* `temp_scope_id`는 EventStorage, dashboard projection, user-visible response에 저장하거나 노출하지 않는다.
 * `file_kind=None`은 파일이 아닌 text input에만 사용한다. 파일이지만 종류를 모르는 경우는 `file_kind="unknown"`을 사용한다.
 * `extension`은 `.pdf`, `.png`, `.docx` 같은 suffix hint만 허용하며 original file name, basename, path fragment를 포함하지 않는다.
 * `mime`은 client-provided hint이며 신뢰하지 않는다. Parser plan resolution은 server-side validation과 resolved file metadata를 기준으로 한다.
@@ -1679,11 +1682,11 @@ TempUploadResponse(file_ref, temp_scope_id, file_kind, mime, extension, size_buc
 | field | produced by | consumed by | persisted | rule |
 | --- | --- | --- | ---: | --- |
 | file_ref | TemporaryFileStore | AnalyzeService/ParserWorker | temp metadata only | opaque |
+| temp_scope_id | TemporaryFileStore | AnalyzeService/ParserWorker | temp metadata only | opaque request/session scope guard |
 | raw bytes | Extension upload | TemporaryFileStore | temporary encrypted | EventStorage forbidden |
 | expires_at | TemporaryFileStore | cleanup worker | temp metadata only | required |
 | authenticated_subject_id | auth/session | TemporaryFileStore | temp metadata only | required for access context |
 | session_id | auth/session | TemporaryFileStore | temp metadata only | required for session scope |
-| temp_scope_id | upload endpoint | TemporaryFileStore | temp metadata only | request/session-scoped access guard |
 | original file name | browser | none | no | rejected/stripped |
 
 #### Invariants

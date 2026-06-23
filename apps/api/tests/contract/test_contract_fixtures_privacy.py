@@ -3,7 +3,7 @@ import re
 from pathlib import Path
 
 FIXTURES = Path(__file__).parents[1] / "fixtures" / "contracts"
-EVENT_DENIED = {"raw_text", "raw_prompt", "parsed_text", "extracted_text", "ocr_text", "normalized_text", "atom_text", "segment_text", "raw_value", "matched_value", "secret_value", "original_file_name", "filename", "file_name", "file_ref", "temp_file_path", "local_path", "rendered_image_path", "embedding", "embedding_vector", "segment_vector", "raw_logits", "category_scores", "suppressor_scores", "exact_score", "size_bytes", "masked_prompt", "full_masked_prompt"}
+EVENT_DENIED = {"raw_text", "raw_prompt", "parsed_text", "extracted_text", "ocr_text", "normalized_text", "atom_text", "segment_text", "raw_value", "matched_value", "secret_value", "original_file_name", "filename", "file_name", "file_ref", "temp_scope_id", "temp_file_path", "local_path", "rendered_image_path", "embedding", "embedding_vector", "segment_vector", "raw_logits", "category_scores", "suppressor_scores", "exact_score", "size_bytes", "masked_prompt", "full_masked_prompt"}
 RUNTIME_RAW_DENIED = {"raw_value", "matched_value", "secret_value", "original_file_name", "filename", "file_name", "temp_file_path", "local_path", "rendered_image_path", "embedding_vector", "raw_logits"}
 
 

@@ -18,7 +18,7 @@ describe("PR0 extension current behavior snapshots", () => {
   it("freezes composer and file-reference request payload", () => {
     const request = createAnalyzeRequest(context, "snapshot_config", [
       createComposerInput({ text: "composer snapshot text", inputMethod: "CLICK" }),
-      createFileReferenceInput({ fileRef: "fref_snapshot_opaque", fileKind: "plain_text", extension: ".txt", mimeType: "text/plain", sizeBytes: 15 })
+      createFileReferenceInput({ fileRef: "fref_snapshot_opaque", tempScopeId: "tscope_abcdefghijklmnopqrstuvwxyz123456", fileKind: "plain_text", extension: ".txt", mimeType: "text/plain", sizeBytes: 15 })
     ], "snapshot_request");
     const normalized = { ...request, inputs: request.inputs.map((input) => ({ ...input, input_id: "<GENERATED_ID>" })) };
     const fixturePath = resolve(process.cwd(), "tests/fixtures/current_behavior/request_builder.json");

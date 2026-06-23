@@ -50,6 +50,7 @@ def test_file_reference_http_boundary_fails_closed_without_persisting_reference(
     user = _user()
     client, session = _client(user, rules=[])
     opaque_ref = "fref_abcdefghijklmnopqrstuvwxyzABCDEFG123456"
+    temp_scope_id = "tscope_abcdefghijklmnopqrstuvwxyz123456"
     item = {
         "input_id": "file_1",
         "kind": "file_reference",
@@ -57,6 +58,7 @@ def test_file_reference_http_boundary_fails_closed_without_persisting_reference(
         "size_bytes": 42,
         "content_included": False,
         "file_ref": opaque_ref,
+        "temp_scope_id": temp_scope_id,
         "file_kind": "plain_text",
         "mime": "text/plain",
         "extension": "txt",
@@ -74,5 +76,6 @@ def test_file_reference_http_boundary_fails_closed_without_persisting_reference(
     assert response.json()["input_results"][0]["content_scanned"] is False
     persisted = json.dumps([getattr(row, "__dict__", {}) for row in session.added], default=str)
     assert opaque_ref not in persisted
+    assert temp_scope_id not in persisted
     assert "size_bytes" not in persisted
     assert "masked_prompt" not in persisted

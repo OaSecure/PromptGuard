@@ -50,6 +50,45 @@ def test_public_input_rejects_file_ref_and_duplicate_ids():
     with pytest.raises(ValidationError): request(text("in_1", "hello"), text("in_1", "again"))
 
 
+def test_file_reference_requires_temp_scope_id_and_adapts_it():
+    item = {
+        "input_id": "file_1",
+        "kind": "file_reference",
+        "source": "attached_file",
+        "size_bytes": 42,
+        "content_included": False,
+        "file_ref": "fref_abcdefghijklmnopqrstuvwxyzABCDEFG123456",
+        "temp_scope_id": "tscope_abcdefghijklmnopqrstuvwxyz123456",
+        "file_kind": "plain_text",
+        "mime": "text/plain",
+        "extension": "txt",
+        "size_bucket": "tiny",
+    }
+
+    adapted = adapt_legacy_analyze_request(request(item), "trusted_login")
+
+    assert adapted.v3_request.inputs[0].file_ref == item["file_ref"]
+    assert adapted.v3_request.inputs[0].temp_scope_id == item["temp_scope_id"]
+
+
+def test_file_reference_without_temp_scope_id_is_rejected():
+    item = {
+        "input_id": "file_1",
+        "kind": "file_reference",
+        "source": "attached_file",
+        "size_bytes": 42,
+        "content_included": False,
+        "file_ref": "fref_abcdefghijklmnopqrstuvwxyzABCDEFG123456",
+        "file_kind": "plain_text",
+        "mime": "text/plain",
+        "extension": "txt",
+        "size_bucket": "tiny",
+    }
+
+    with pytest.raises(ValidationError):
+        request(item)
+
+
 def test_pr0_supported_attachment_metadata_remains_accepted():
     metadata = {"extension": "pdf", "mime": "application/pdf", "size_bytes": 42,
                 "attachment_kind": "file", "attachment_index": 0}

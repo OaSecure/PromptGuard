@@ -3,7 +3,7 @@ import { getSettings } from "./configStore";
 import type { AnalyzeFileKind, AnalyzeSizeBucket, NormalizedError } from "../shared/types";
 
 /** Safe metadata returned after an encrypted temporary upload. */
-export interface TempUploadResult { file_ref: string; file_kind: AnalyzeFileKind; mime_hint?: string; extension_hint?: string; size_bucket: AnalyzeSizeBucket; expires_at: string }
+export interface TempUploadResult { file_ref: string; temp_scope_id: string; file_kind: AnalyzeFileKind; mime_hint?: string; extension_hint?: string; size_bucket: AnalyzeSizeBucket; expires_at: string }
 
 /** Uploads a file to the authenticated temporary-file boundary. */
 export async function uploadTempFile(payload: { file: File; requestId: string; fileKind: AnalyzeFileKind; extension: string; mime: string }): Promise<TempUploadResult | NormalizedError> {
@@ -17,4 +17,4 @@ export async function uploadTempFile(payload: { file: File; requestId: string; f
     const value = await response.json(); return isResult(value) ? value : { code: "VALIDATION_ERROR", message: "Temporary upload response was invalid." };
   } catch { return { code: "NETWORK_ERROR", message: "Temporary upload failed." }; }
 }
-function isResult(value: any): value is TempUploadResult { return value && /^fref_[A-Za-z0-9_-]{32,}$/.test(value.file_ref) && typeof value.expires_at === "string"; }
+function isResult(value: any): value is TempUploadResult { return value && /^fref_[A-Za-z0-9_-]{32,}$/.test(value.file_ref) && /^tscope_[A-Za-z0-9_-]{24,}$/.test(value.temp_scope_id) && typeof value.expires_at === "string"; }

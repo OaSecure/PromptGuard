@@ -14,6 +14,7 @@ TEXT_SOURCES = ("composer", "converted_paste")
 TEXT_SOURCE_LIMITS = {"composer": 262_144, "converted_paste": 1_048_576}
 FORBIDDEN_METADATA_KEYS = {"name", "filename", "file_name", "original_filename", "path", "url"}
 SECRET_LIKE_ID_RE = re.compile(r"(?:gh[pousr]_|sk-[A-Za-z0-9]|xox[baprs]-|AKIA[0-9A-Z]|postgres://|mysql://|bearer|private[_-]?key)", re.IGNORECASE)
+SAFE_TEMP_SCOPE_ID_RE = re.compile(r"^tscope_[A-Za-z0-9_-]{24,}$")
 
 
 class LegacyAnalyzeRequest(BaseModel):
@@ -57,6 +58,7 @@ class LegacyAnalyzeInput(BaseModel):
     content_included: bool
     content: str | None = Field(default=None, max_length=1_048_576)
     file_ref: str | None = None
+    temp_scope_id: str | None = None
     file_kind: FileKind | None = None
     mime: str | None = None
     extension: str | None = None
@@ -75,7 +77,7 @@ class LegacyAnalyzeInput(BaseModel):
     @model_validator(mode="after")
     def validate_contract(self) -> "LegacyAnalyzeInput":
         if self.kind == "text":
-            if self.file_ref is not None or self.file_kind is not None:
+            if self.file_ref is not None or self.temp_scope_id is not None or self.file_kind is not None:
                 raise ValueError("text input forbids file reference fields")
             if self.source not in TEXT_SOURCES:
                 raise ValueError("text input source must be composer or converted_paste")
@@ -101,8 +103,9 @@ class LegacyAnalyzeInput(BaseModel):
                 raise ValueError("file_reference has invalid source")
             if not self.file_ref or not re.fullmatch(r"fref_[A-Za-z0-9_-]{32,}", self.file_ref):
                 raise ValueError("file_reference requires opaque file_ref")
-            if self.file_kind is None or self.content is not None or self.content_included:
-                raise ValueError("file_reference requires file_kind and forbids content")
+            if not self.temp_scope_id or not SAFE_TEMP_SCOPE_ID_RE.fullmatch(self.temp_scope_id):
+                raise ValueError("file_reference requires opaque temp_scope_id")
+            _validate_file_reference_content_fields(self)
         elif self.kind == "attachment_metadata":
             if self.source != "attachment_chip":
                 raise ValueError("attachment_metadata source must be attachment_chip")
@@ -133,6 +136,7 @@ class AnalyzeInputItemV3(BaseModel):
     content_included: bool
     content: str | None = None
     file_ref: str | None = None
+    temp_scope_id: str | None = None
     file_kind: FileKind | None = None
     mime: str | None = None
     extension: str | None = None
@@ -165,7 +169,7 @@ def adapt_legacy_analyze_request(request: LegacyAnalyzeRequest, authenticated_lo
 def _adapt_input(item: LegacyAnalyzeInput) -> AnalyzeInputItemV3:
     metadata = item.metadata or {}
     return AnalyzeInputItemV3(input_id=item.input_id, kind=item.kind, source=item.source, content_included=item.content_included,
-                              content=item.content, file_ref=item.file_ref, file_kind=item.file_kind,
+                              content=item.content, file_ref=item.file_ref, temp_scope_id=item.temp_scope_id, file_kind=item.file_kind,
                               mime=item.mime or _string(metadata.get("mime")), extension=item.extension or _string(metadata.get("extension")),
                               size_bucket=item.size_bucket or ("unknown" if item.kind not in {"text", "file_reference"} else None),
                               content_unavailable_reason=item.content_unavailable_reason or ("metadata_only" if item.kind == "attachment_metadata" else None))
@@ -173,6 +177,11 @@ def _adapt_input(item: LegacyAnalyzeInput) -> AnalyzeInputItemV3:
 
 def _string(value: Any) -> str | None:
     return value if isinstance(value, str) else None
+
+
+def _validate_file_reference_content_fields(item: LegacyAnalyzeInput) -> None:
+    if item.file_kind is None or item.content is not None or item.content_included:
+        raise ValueError("file_reference requires file_kind and forbids content")
 
 
 def validate_safe_attachment_metadata(metadata: dict[str, Any]) -> None:

@@ -25,7 +25,7 @@ describe("analyze request builder", () => {
     const request = createAnalyzeRequest(context, "cfg_2026_06_09", [
       createComposerInput({ text: "최종 composer", inputMethod: "ENTER" }),
       createConvertedPasteInput({ text: "붙여넣기 원문" }),
-      createFileReferenceInput({ fileRef: "fref_opaque_123", fileKind: "plain_text", extension: ".txt", mimeType: "text/plain", sizeBytes: 12 }),
+      createFileReferenceInput({ fileRef: "fref_opaque_123", tempScopeId: "tscope_abcdefghijklmnopqrstuvwxyz123456", fileKind: "plain_text", extension: ".txt", mimeType: "text/plain", sizeBytes: 12 }),
       createAttachmentMetadataInput({ extension: ".png", mimeType: "image/png", sizeBytes: 2048, attachmentKind: "image", attachmentIndex: 0 })
     ]);
 
@@ -37,6 +37,7 @@ describe("analyze request builder", () => {
       kind: "file_reference",
       content_included: false,
       file_ref: "fref_opaque_123",
+      temp_scope_id: "tscope_abcdefghijklmnopqrstuvwxyz123456",
       file_kind: "plain_text",
       extension: "txt",
       mime: "text/plain"
@@ -80,6 +81,7 @@ describe("analyze request builder", () => {
     for (const [sizeBytes, sizeBucket] of samples) {
       const input = createFileReferenceInput({
         fileRef: `fref_${sizeBytes}`,
+        tempScopeId: `tscope_abcdefghijklmnopqrstuvwxyz${String(sizeBytes).padStart(6, "0")}`,
         fileKind: "plain_text",
         extension: ".txt",
         mimeType: "text/plain",
