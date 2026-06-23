@@ -123,4 +123,7 @@ def test_env_example_documents_verifier_runtime_settings():
     text = env_example.read_text(encoding="utf-8")
 
     assert "PROMPTGUARD_VERIFIER_RUNTIME_ENABLED=false" in text
-    assert "PROMPTGUARD_VERIFIER_MANIFEST_PATH=/opt/promptguard/models/context_roberta_verifier_manifest.json" in text
+    assert (
+        "PROMPTGUARD_VERIFIER_MANIFEST_PATH=/opt/promptguard/models/context_lr_roberta_active_best_f1_manifest.json"
+        in text
+    )

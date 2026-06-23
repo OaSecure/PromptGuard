@@ -141,13 +141,39 @@ def _chunk_text(text: str, *, chunk_chars: int, chunk_overlap: int, max_chunks: 
     chunk_size = max(1, chunk_chars)
     overlap = min(max(0, chunk_overlap), chunk_size - 1)
     chunks: list[str] = []
-    start = 0
-    while start < len(stripped) and len(chunks) < max_chunks:
-        end = min(len(stripped), start + chunk_size)
-        chunk = stripped[start:end].strip()
-        if chunk:
-            chunks.append(chunk)
-        if end == len(stripped):
+
+    if len(stripped) <= chunk_size:
+        chunks.append(stripped)
+    else:
+        start = 0
+        while start < len(stripped):
+            end = min(len(stripped), start + chunk_size)
+            chunk = stripped[start:end].strip()
+            if chunk:
+                chunks.append(chunk)
+            if end == len(stripped):
+                break
+            start = end - overlap
+
+        for line in stripped.splitlines():
+            candidate = line.strip()
+            if 80 <= len(candidate) <= chunk_size:
+                chunks.append(candidate)
+
+    return _dedupe_chunks(chunks, max_chunks=max_chunks, fallback=stripped[:chunk_size].strip())
+
+
+def _dedupe_chunks(chunks: list[str], *, max_chunks: int, fallback: str) -> list[str]:
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for chunk in chunks:
+        key = " ".join(chunk.split())
+        if key and key not in seen:
+            seen.add(key)
+            deduped.append(chunk)
+        if len(deduped) >= max_chunks:
             break
-        start = end - overlap
-    return chunks
+
+    if deduped:
+        return deduped
+    return [fallback] if fallback else []

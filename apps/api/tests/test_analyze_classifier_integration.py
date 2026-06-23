@@ -535,8 +535,8 @@ def test_real_trained_lr_artifact_reaches_analyze_classifier_helper(tmp_path: Pa
     with zipfile.ZipFile(artifact_zip_path) as archive:
         archive.extractall(artifact_root)
 
-    manifest_path = artifact_root / "models" / "context_lr_roberta_best_v205_manifest.json"
-    joblib_path = artifact_root / "models" / "context_with_patch_v205_deploy_candidate_classifier.joblib"
+    manifest_path = artifact_root / "models" / "context_lr_roberta_active_best_f1_manifest.json"
+    joblib_path = artifact_root / "models" / "context_with_patch_v287_lr_c4_dev_classifier.joblib"
     bundle = build_classifier_service_from_manifest(manifest_path, artifact_root=artifact_root)
     vector_dimension = _trained_joblib_vector_dimension(joblib_path)
     loader = AtomEmbeddingModelLoader(
@@ -550,7 +550,7 @@ def test_real_trained_lr_artifact_reaches_analyze_classifier_helper(tmp_path: Pa
 
     outcome = evaluate_analyze_classifier(text_inputs, provider, loader)
 
-    assert bundle.artifact.artifact_id == "context_lr_roberta_best_v205"
+    assert bundle.artifact.artifact_id == "context_lr_roberta_active_best_f1_2026_06_23"
     assert bundle.artifact.target_labels
     assert outcome.enabled is True
     assert outcome.failure is None

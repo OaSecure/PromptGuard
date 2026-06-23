@@ -160,4 +160,7 @@ def test_env_example_documents_classifier_runtime_settings():
     text = env_example.read_text(encoding="utf-8")
 
     assert "PROMPTGUARD_CLASSIFIER_RUNTIME_ENABLED=false" in text
-    assert "PROMPTGUARD_CLASSIFIER_MANIFEST_PATH=/opt/promptguard/models/context_lr_manifest.json" in text
+    assert (
+        "PROMPTGUARD_CLASSIFIER_MANIFEST_PATH=/opt/promptguard/models/context_lr_roberta_active_best_f1_manifest.json"
+        in text
+    )

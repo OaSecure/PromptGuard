@@ -81,6 +81,67 @@ def test_verifier_manifest_loader_reads_selected_roberta_artifact_ref(tmp_path):
     assert loaded.label_definitions["SECRET_CREDENTIAL_CONTEXT"].positive == "YES when an actual credential appears."
 
 
+def test_verifier_manifest_loader_reads_v287_labelwise_thresholds_and_chunk_policy(tmp_path):
+    models_dir = tmp_path / "models"
+    verifier_dir = models_dir / "context_verifier_klue_roberta_base_lrmined_v287_global002_compactv2_lpft_focal_1p2ep"
+    verifier_dir.mkdir(parents=True)
+    labels = ["SECRET_CREDENTIAL_CONTEXT", "PERSONAL_DATA_CONTEXT"]
+    (tmp_path / "context_target_labels.json").write_text(json.dumps({"target_labels": labels}), encoding="utf-8")
+    (tmp_path / "context_label_definitions_verifier_compact_v2.json").write_text(
+        json.dumps(
+            {
+                "SECRET_CREDENTIAL_CONTEXT": {
+                    "positive": "YES when an actual credential appears.",
+                    "negative": "NO for placeholder-only examples.",
+                    "boundary": "Filled value is decisive.",
+                },
+                "PERSONAL_DATA_CONTEXT": {
+                    "positive": "YES when personal data appears.",
+                    "negative": "NO for synthetic labels only.",
+                    "boundary": "Real person data is decisive.",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    manifest_path = models_dir / "context_lr_roberta_active_best_f1_manifest.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "manifest_version": "context_lr_roberta_active_best_f1_2026_06_23",
+                "selected": {
+                    "verifier_dir": "models/context_verifier_klue_roberta_base_lrmined_v287_global002_compactv2_lpft_focal_1p2ep",
+                    "target_labels_json": "context_target_labels.json",
+                    "label_definitions_json": "context_label_definitions_verifier_compact_v2.json",
+                    "verifier_threshold_mode": "labelwise",
+                    "verifier_thresholds": {
+                        "SECRET_CREDENTIAL_CONTEXT": 0.915,
+                        "PERSONAL_DATA_CONTEXT": 0.48,
+                    },
+                    "max_length_tokens": 384,
+                    "chunk_policy": {
+                        "chunk_chars": 900,
+                        "chunk_overlap": 120,
+                        "max_chunks": 8,
+                        "pooling": "max verifier score per label across chunks",
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    loaded = load_verifier_manifest(manifest_path)
+
+    assert loaded.thresholds == {"SECRET_CREDENTIAL_CONTEXT": 0.915, "PERSONAL_DATA_CONTEXT": 0.48}
+    assert loaded.chunk_chars == 900
+    assert loaded.chunk_overlap == 120
+    assert loaded.max_chunks == 8
+    assert loaded.verifier_dir_path == Path(
+        "models/context_verifier_klue_roberta_base_lrmined_v287_global002_compactv2_lpft_focal_1p2ep"
+    )
+
+
 @pytest.mark.parametrize(
     ("field", "path_value"),
     [
@@ -129,6 +190,23 @@ def test_verifier_manifest_loader_rejects_unsafe_paths_without_sensitive_metadat
                 "target_labels_json": "context_target_labels.json",
                 "verifier_threshold_mode": "global",
                 "verifier_threshold": 1.001,
+            },
+            "VERIFIER_MANIFEST_INVALID_PAYLOAD",
+        ),
+        (
+            {
+                "verifier_dir": "models/verifier",
+                "label_definitions_json": "context_label_definitions.json",
+                "target_labels_json": "context_target_labels.json",
+                "verifier_threshold_mode": "labelwise",
+                "verifier_thresholds": {"SECRET_CREDENTIAL_CONTEXT": 0.5, "EXTRA_CONTEXT": 0.5},
+                "max_length_tokens": 384,
+                "chunk_policy": {
+                    "chunk_chars": 900,
+                    "chunk_overlap": 120,
+                    "max_chunks": 8,
+                    "pooling": "max verifier score per label across chunks",
+                },
             },
             "VERIFIER_MANIFEST_INVALID_PAYLOAD",
         ),

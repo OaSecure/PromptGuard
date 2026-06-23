@@ -75,9 +75,12 @@ def test_compose_mounts_model_artifacts_read_only_and_documents_manifest_paths()
     assert "PROMPTGUARD_CLASSIFIER_MANIFEST_PATH: ${PROMPTGUARD_CLASSIFIER_MANIFEST_PATH:-}" in compose_text
     assert "PROMPTGUARD_VERIFIER_RUNTIME_ENABLED: ${PROMPTGUARD_VERIFIER_RUNTIME_ENABLED:-false}" in compose_text
     assert "PROMPTGUARD_VERIFIER_MANIFEST_PATH: ${PROMPTGUARD_VERIFIER_MANIFEST_PATH:-}" in compose_text
-    assert "PROMPTGUARD_CLASSIFIER_MANIFEST_PATH=/opt/promptguard/models/context_lr_manifest.json" in env_example_text
     assert (
-        "PROMPTGUARD_VERIFIER_MANIFEST_PATH=/opt/promptguard/models/context_roberta_verifier_manifest.json"
+        "PROMPTGUARD_CLASSIFIER_MANIFEST_PATH=/opt/promptguard/models/context_lr_roberta_active_best_f1_manifest.json"
+        in env_example_text
+    )
+    assert (
+        "PROMPTGUARD_VERIFIER_MANIFEST_PATH=/opt/promptguard/models/context_lr_roberta_active_best_f1_manifest.json"
         in env_example_text
     )
 
@@ -99,6 +102,8 @@ def test_model_artifact_directory_documents_samples_without_real_artifacts() -> 
     assert lr_manifest["selected"]["target_labels_json"] == "models/context_target_labels.sample.json"
     assert verifier_manifest["selected"]["verifier_dir"].startswith("models/")
     assert verifier_manifest["selected"]["label_definitions_json"] == "models/context_label_definitions.sample.json"
+    assert verifier_manifest["selected"]["verifier_threshold_mode"] == "labelwise"
+    assert set(verifier_manifest["selected"]["verifier_thresholds"]) == set(target_labels["target_labels"])
     assert target_labels["target_labels"]
     assert set(target_labels["target_labels"]) == set(label_definitions)
 

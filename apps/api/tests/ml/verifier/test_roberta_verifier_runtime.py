@@ -38,7 +38,13 @@ def request(*, candidates: list[RobertaVerificationCandidate] | None = None) -> 
     )
 
 
-def runtime(scorer: FakePairScorer, *, threshold: float = 0.475, chunk_chars: int = 200) -> RobertaVerifierRuntime:
+def runtime(
+    scorer: FakePairScorer,
+    *,
+    threshold: float = 0.475,
+    chunk_chars: int = 200,
+    max_chunks: int = 3,
+) -> RobertaVerifierRuntime:
     return RobertaVerifierRuntime(
         pair_scorer=scorer,
         label_definitions={
@@ -53,7 +59,7 @@ def runtime(scorer: FakePairScorer, *, threshold: float = 0.475, chunk_chars: in
         max_length_tokens=384,
         chunk_chars=chunk_chars,
         chunk_overlap=5,
-        max_chunks=3,
+        max_chunks=max_chunks,
     )
 
 
@@ -89,6 +95,18 @@ def test_roberta_runtime_uses_highest_chunk_score():
     assert len(scorer.seen_pair_texts) == 3
     assert result.verifications[0].verifier_status == "confirmed"
     assert result.verifications[0].confidence == 0.77
+
+
+def test_roberta_runtime_adds_long_line_chunks_for_reference_policy():
+    long_line = "customer record contains direct identifier " + ("x" * 70)
+    text = ("intro " * 30) + "\n" + long_line + "\n" + ("tail " * 30)
+    scorer = FakePairScorer([0.1, 0.2, 0.3, 0.4, 0.8])
+
+    result = runtime(scorer, chunk_chars=120, max_chunks=6).verify(request(candidates=[candidate(text=text)]))
+
+    assert result.failure is None
+    assert any(pair_text.endswith(long_line) for pair_text in scorer.seen_pair_texts)
+    assert result.verifications[0].confidence == 0.8
 
 
 def test_roberta_runtime_marks_uncertain_when_label_definition_is_missing():

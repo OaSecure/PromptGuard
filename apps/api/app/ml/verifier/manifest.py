@@ -54,30 +54,13 @@ def load_verifier_manifest(
     verifier_dir_path = _require_relative_path(selected.get("verifier_dir"), "selected.verifier_dir")
     label_definitions_path = _require_relative_path(selected.get("label_definitions_json"), "selected.label_definitions_json")
     target_labels_path = _require_relative_path(selected.get("target_labels_json"), "selected.target_labels_json")
-    verifier_threshold_mode = _require_text(selected.get("verifier_threshold_mode"), "selected.verifier_threshold_mode")
-    verifier_threshold = _require_threshold(selected.get("verifier_threshold"), "selected.verifier_threshold")
     max_length_tokens = _require_positive_int(selected.get("max_length_tokens"), "selected.max_length_tokens")
-    chunk_chars = _require_positive_int(selected.get("chunk_chars"), "selected.chunk_chars")
-    chunk_overlap = _require_nonnegative_int(selected.get("chunk_overlap"), "selected.chunk_overlap")
-    max_chunks = _require_positive_int(selected.get("max_chunks"), "selected.max_chunks")
-
-    if verifier_threshold_mode != "global":
-        raise VerifierManifestLoadError(
-            code="VERIFIER_MANIFEST_INVALID_PAYLOAD",
-            message="verifier manifest payload is invalid",
-            metadata={"field": "selected.verifier_threshold_mode"},
-        )
-    if chunk_overlap >= chunk_chars:
-        raise VerifierManifestLoadError(
-            code="VERIFIER_MANIFEST_INVALID_PAYLOAD",
-            message="verifier manifest payload is invalid",
-            metadata={"field": "selected.chunk_overlap"},
-        )
+    chunk_chars, chunk_overlap, max_chunks = _read_chunk_policy(selected)
 
     root = Path(artifact_root) if artifact_root is not None else _infer_artifact_root(path)
     target_labels = _coerce_target_labels(
         _read_json_file(
-            root / target_labels_path,
+            _resolve_json_path(root, target_labels_path, manifest_dir=path.parent),
             invalid_code="VERIFIER_MANIFEST_INVALID_LABELS_JSON",
             invalid_message="verifier manifest label json is invalid",
             not_found_code="VERIFIER_MANIFEST_LABELS_NOT_FOUND",
@@ -86,7 +69,7 @@ def load_verifier_manifest(
     )
     label_definitions = _coerce_label_definitions(
         _read_json_file(
-            root / label_definitions_path,
+            _resolve_json_path(root, label_definitions_path, manifest_dir=path.parent),
             invalid_code="VERIFIER_MANIFEST_INVALID_LABEL_DEFINITIONS_JSON",
             invalid_message="verifier manifest label definitions json is invalid",
             not_found_code="VERIFIER_MANIFEST_LABEL_DEFINITIONS_NOT_FOUND",
@@ -94,6 +77,7 @@ def load_verifier_manifest(
         ),
         target_labels,
     )
+    thresholds = _read_verifier_thresholds(selected, target_labels)
 
     try:
         artifact = VerifierArtifactRef(
@@ -110,7 +94,7 @@ def load_verifier_manifest(
         artifact_root=root,
         target_labels=target_labels,
         label_definitions=label_definitions,
-        thresholds={label: verifier_threshold for label in target_labels},
+        thresholds=thresholds,
         max_length_tokens=max_length_tokens,
         chunk_chars=chunk_chars,
         chunk_overlap=chunk_overlap,
@@ -122,6 +106,18 @@ def _infer_artifact_root(manifest_path: Path) -> Path:
     if manifest_path.parent.name == "models":
         return manifest_path.parent.parent
     return manifest_path.parent
+
+
+def _resolve_json_path(root: Path, relative_path: Path, *, manifest_dir: Path) -> Path:
+    root_candidate = root / relative_path
+    if root_candidate.is_file():
+        return root_candidate
+
+    manifest_dir_candidate = manifest_dir / relative_path
+    if manifest_dir_candidate.is_file():
+        return manifest_dir_candidate
+
+    return root_candidate
 
 
 def _read_json_file(
@@ -165,6 +161,73 @@ def _require_threshold(value: Any, field: str) -> float:
             metadata={"field": field},
         )
     return threshold
+
+
+def _read_verifier_thresholds(selected: dict[str, Any], target_labels: list[str]) -> dict[str, float]:
+    verifier_threshold_mode = _require_text(selected.get("verifier_threshold_mode"), "selected.verifier_threshold_mode")
+    if verifier_threshold_mode == "global":
+        verifier_threshold = _require_threshold(selected.get("verifier_threshold"), "selected.verifier_threshold")
+        return {label: verifier_threshold for label in target_labels}
+
+    if verifier_threshold_mode != "labelwise":
+        raise VerifierManifestLoadError(
+            code="VERIFIER_MANIFEST_INVALID_PAYLOAD",
+            message="verifier manifest payload is invalid",
+            metadata={"field": "selected.verifier_threshold_mode"},
+        )
+
+    payload = selected.get("verifier_thresholds")
+    if not isinstance(payload, dict):
+        raise VerifierManifestLoadError(
+            code="VERIFIER_MANIFEST_INVALID_PAYLOAD",
+            message="verifier manifest payload is invalid",
+            metadata={"field": "selected.verifier_thresholds"},
+        )
+
+    thresholds: dict[str, float] = {}
+    for label in target_labels:
+        thresholds[label] = _require_threshold(payload.get(label), f"selected.verifier_thresholds.{label}")
+
+    if set(payload) != set(target_labels):
+        raise VerifierManifestLoadError(
+            code="VERIFIER_MANIFEST_INVALID_PAYLOAD",
+            message="verifier manifest payload is invalid",
+            metadata={"field": "selected.verifier_thresholds"},
+        )
+    return thresholds
+
+
+def _read_chunk_policy(selected: dict[str, Any]) -> tuple[int, int, int]:
+    if "chunk_policy" in selected:
+        chunk_policy = selected.get("chunk_policy")
+        if not isinstance(chunk_policy, dict):
+            raise VerifierManifestLoadError(
+                code="VERIFIER_MANIFEST_INVALID_PAYLOAD",
+                message="verifier manifest payload is invalid",
+                metadata={"field": "selected.chunk_policy"},
+            )
+        pooling = chunk_policy.get("pooling")
+        if pooling != "max verifier score per label across chunks":
+            raise VerifierManifestLoadError(
+                code="VERIFIER_MANIFEST_INVALID_PAYLOAD",
+                message="verifier manifest payload is invalid",
+                metadata={"field": "selected.chunk_policy.pooling"},
+            )
+        chunk_chars = _require_positive_int(chunk_policy.get("chunk_chars"), "selected.chunk_policy.chunk_chars")
+        chunk_overlap = _require_nonnegative_int(chunk_policy.get("chunk_overlap"), "selected.chunk_policy.chunk_overlap")
+        max_chunks = _require_positive_int(chunk_policy.get("max_chunks"), "selected.chunk_policy.max_chunks")
+    else:
+        chunk_chars = _require_positive_int(selected.get("chunk_chars"), "selected.chunk_chars")
+        chunk_overlap = _require_nonnegative_int(selected.get("chunk_overlap"), "selected.chunk_overlap")
+        max_chunks = _require_positive_int(selected.get("max_chunks"), "selected.max_chunks")
+
+    if chunk_overlap >= chunk_chars:
+        raise VerifierManifestLoadError(
+            code="VERIFIER_MANIFEST_INVALID_PAYLOAD",
+            message="verifier manifest payload is invalid",
+            metadata={"field": "selected.chunk_overlap"},
+        )
+    return chunk_chars, chunk_overlap, max_chunks
 
 
 def _require_positive_int(value: Any, field: str) -> int:
