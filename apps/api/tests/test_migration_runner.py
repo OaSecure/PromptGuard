@@ -1,4 +1,5 @@
 import json
+import sys
 from pathlib import Path
 
 from alembic.config import Config
@@ -49,6 +50,20 @@ def test_start_api_runner_waits_migrates_seeds_then_runs_uvicorn(monkeypatch) ->
     assert order == ["wait_for_db", "alembic_upgrade", "seed_default_admin", "uvicorn"]
 
 
+def test_startup_subprocesses_run_inside_current_python_environment(monkeypatch) -> None:
+    commands: list[list[str]] = []
+
+    monkeypatch.setattr(startup, "run_checked", lambda command: commands.append(command))
+
+    startup.run_alembic_upgrade()
+    uvicorn_command = startup.build_uvicorn_command()
+
+    assert commands == [[sys.executable, "-m", "alembic", "upgrade", "head"]]
+    assert uvicorn_command[:3] == [sys.executable, "-m", "uvicorn"]
+    assert "alembic" not in {commands[0][0], uvicorn_command[0]}
+    assert "uvicorn" not in {commands[0][0], uvicorn_command[0]}
+
+
 def test_compose_uses_startup_runner_and_v1_admin_default() -> None:
     compose_text = load_compose_text()
     env_example_text = load_env_example_text()
@@ -57,7 +72,7 @@ def test_compose_uses_startup_runner_and_v1_admin_default() -> None:
     assert "PROMPTGUARD_INITIAL_ADMIN_PASSWORD: ${PROMPTGUARD_INITIAL_ADMIN_PASSWORD:-1234}" in compose_text
     assert "command: /bin/sh /app/scripts/start_api.sh" in compose_text
     assert "PROMPTGUARD_INITIAL_ADMIN_PASSWORD=1234" in env_example_text
-    assert "python -m app.db.startup" in start_api_script
+    assert "/opt/venvs/api/bin/python -m app.db.startup" in start_api_script
     assert "ACCESS_TOKEN_SECRET=" not in start_api_script
     assert "REFRESH_TOKEN_SECRET=" not in start_api_script
     assert "DATABASE_URL=" not in start_api_script
@@ -105,7 +120,10 @@ def test_compose_builds_single_api_image_with_split_worker_virtualenvs() -> None
     assert "ARG PROMPTGUARD_INSTALL_OCR_GPU" not in dockerfile_text
     assert "libgl1" in dockerfile_text
     assert "libglib2.0-0" in dockerfile_text
-    assert "COPY requirements.txt requirements-paddle-gpu.txt requirements-torch-gpu.txt ./" in dockerfile_text
+    assert "COPY requirements.txt ./" in dockerfile_text
+    assert "COPY requirements-paddle-gpu.txt ./" in dockerfile_text
+    assert "COPY requirements-torch-gpu.txt ./" in dockerfile_text
+    assert "COPY requirements.txt requirements-paddle-gpu.txt requirements-torch-gpu.txt ./" not in dockerfile_text
     assert "python -m venv /opt/venvs/api" in dockerfile_text
     assert "python -m venv /opt/venvs/paddle" in dockerfile_text
     assert "python -m venv /opt/venvs/torch" in dockerfile_text

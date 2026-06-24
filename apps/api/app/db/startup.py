@@ -15,7 +15,7 @@ def run_checked(command: list[str]) -> None:
 
 
 def run_alembic_upgrade() -> None:
-    run_checked(["alembic", "upgrade", "head"])
+    run_checked([sys.executable, "-m", "alembic", "upgrade", "head"])
 
 
 def run_default_admin_seed() -> None:
@@ -26,6 +26,8 @@ def build_uvicorn_command() -> list[str]:
     host = os.getenv("PROMPTGUARD_API_HOST", DEFAULT_API_HOST)
     port = os.getenv("PROMPTGUARD_API_PORT", DEFAULT_API_PORT)
     return [
+        sys.executable,
+        "-m",
         "uvicorn",
         "app.main:app",
         "--host",
