@@ -1,0 +1,117 @@
+from typing import Literal
+
+from fastapi import APIRouter, Depends
+from pydantic import BaseModel, ConfigDict
+
+from app.core.config import Settings, get_settings
+from app.models.auth import User
+from app.routes.auth import require_active_user
+
+router = APIRouter(prefix="/config", tags=["extension-config"])
+
+
+class ExtensionSelectors(BaseModel):
+    """Selectors the extension uses to find protected ChatGPT UI controls."""
+
+    input: list[str]
+    send_button: list[str]
+    file_input: list[str]
+    drop_zone: list[str]
+    attachment_chip: list[str]
+
+
+class AiServiceConfig(BaseModel):
+    """Per-service extension detection config."""
+
+    service: Literal["CHATGPT"]
+    domains: list[str]
+    selectors: ExtensionSelectors
+
+
+class FileUploadPolicy(BaseModel):
+    """File upload limits exposed to the extension without raw file data."""
+
+    enabled: bool
+    max_file_size_bytes: int
+    max_total_size_bytes: int
+    max_file_count: int
+    allowed_extensions: list[str]
+    excluded_extensions: list[str]
+
+
+class ExtensionConfigResponse(BaseModel):
+    """Remote config shape consumed by the MV3 extension."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    api_base_url: str
+    policy_version: str
+    timeout_ms: int
+    ai_service_configs: list[AiServiceConfig]
+    file_upload: FileUploadPolicy
+
+
+@router.get("/extension", response_model=ExtensionConfigResponse)
+async def extension_config(
+    _current_user: User = Depends(require_active_user),
+    settings: Settings = Depends(get_settings),
+) -> ExtensionConfigResponse:
+    """Return remote extension config for authenticated extension clients."""
+
+    return ExtensionConfigResponse(
+        api_base_url=settings.api_public_url,
+        policy_version="cfg_default",
+        timeout_ms=8000,
+        ai_service_configs=[
+            AiServiceConfig(
+                service="CHATGPT",
+                domains=["chatgpt.com", "chat.openai.com"],
+                selectors=ExtensionSelectors(
+                    input=["textarea", "[contenteditable='true']"],
+                    send_button=[
+                        "button[data-testid='send-button']",
+                        "button[data-testid='composer-send-button']",
+                        "button[data-testid*='send']",
+                        "button[aria-label='Send message']",
+                        "button[aria-label='Send prompt']",
+                        "button[aria-label='Send']",
+                        "button[aria-label*='보내기']",
+                    ],
+                    file_input=["input[type='file']"],
+                    drop_zone=["body"],
+                    attachment_chip=[
+                        "[data-promptguard-attachment-chip]",
+                        "[data-testid='attachment-chip']",
+                        "[data-testid='attachment-item']",
+                    ],
+                ),
+            )
+        ],
+        file_upload=FileUploadPolicy(
+            enabled=True,
+            max_file_size_bytes=settings.temp_file_max_bytes,
+            max_total_size_bytes=settings.temp_file_max_bytes * 3,
+            max_file_count=5,
+            allowed_extensions=[
+                ".txt",
+                ".md",
+                ".csv",
+                ".json",
+                ".yaml",
+                ".yml",
+                ".xml",
+                ".log",
+                ".env",
+                ".ini",
+                ".conf",
+                ".sql",
+                ".py",
+                ".js",
+                ".ts",
+                ".java",
+                ".go",
+                ".rs",
+            ],
+            excluded_extensions=[".pdf", ".docx", ".xlsx", ".pptx", ".zip", ".png", ".jpg", ".jpeg"],
+        ),
+    )
