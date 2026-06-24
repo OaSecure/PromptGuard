@@ -101,6 +101,11 @@ def _extract_blocks(raw_result: object, page: int | None) -> list[dict[str, obje
 
 
 def _collect_blocks(value: object, page: int | None, blocks: list[dict[str, object]]) -> None:
+    parsed = _json_result(value)
+    if parsed is not None:
+        _collect_blocks(parsed.get("res", parsed), page, blocks)
+        return
+
     if isinstance(value, dict):
         texts = value.get("rec_texts")
         scores = value.get("rec_scores")
@@ -119,6 +124,17 @@ def _collect_blocks(value: object, page: int | None, blocks: list[dict[str, obje
             _collect_blocks(item, page, blocks)
 
 
+def _json_result(value: object) -> dict[str, object] | None:
+    json_result = getattr(value, "json", None)
+    if not callable(json_result):
+        return None
+    try:
+        parsed = json_result()
+    except Exception:
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
 def _legacy_text_and_score(value: object) -> tuple[object | None, object | None]:
     if not isinstance(value, (list, tuple)) or len(value) < 2:
         return None, None
@@ -135,4 +151,3 @@ def _append_block(blocks: list[dict[str, object]], text: object, confidence: obj
     if page is not None:
         block["page"] = page
     blocks.append(block)
-

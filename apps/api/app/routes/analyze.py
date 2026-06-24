@@ -444,6 +444,9 @@ def get_parser_worker_pool(settings: Settings = Depends(get_settings), storage=D
         storage,
         max_workers=settings.ml_inference_queue_max_workers,
         max_queue_size=settings.ml_inference_queue_max_queue_size,
+        paddle_worker_python_path=settings.paddle_worker_python_path,
+        paddle_worker_script_path=settings.paddle_worker_script_path,
+        paddle_worker_payload_dir=settings.paddle_worker_payload_dir,
     )
 
 

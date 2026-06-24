@@ -6,6 +6,7 @@ import os
 import sys
 import tempfile
 from collections.abc import Iterator
+from urllib.request import urlopen
 from uuid import UUID
 
 import pytest
@@ -13,10 +14,11 @@ from app.infrastructure.temp_storage import EncryptedTemporaryFileStorage
 from app.models.filters import FilterRule
 from app.routes import analyze as analyze_route
 from app.routes.temp_files import get_temp_storage
-from pypdf import PdfWriter
-from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject, NumberObject
 
 from tests.test_analyze import _analyze_payload, _bearer_header, _client, _user
+
+WEB_PDF_FIXTURE_URL = "https://solutions.weblite.ca/pdfocrx/scansmpl.pdf"
+WEB_PDF_EXPECTED_KEYWORD = "facsimile"
 
 
 @pytest.mark.skipif(
@@ -30,11 +32,10 @@ def test_public_analyze_scanned_pdf_file_reference_uses_real_paddleocr_without_r
     monkeypatch.setenv("PROMPTGUARD_ML_INFERENCE_QUEUE_TIMEOUT_MS", "120000")
     analyze_route.get_settings.cache_clear()
     user = _user()
-    client, session = _client(user, rules=[_keyword_rule("WARN")])
+    client, session = _client(user, rules=[_keyword_rule("BLOCK")])
     storage = EncryptedTemporaryFileStorage(tmp_path, base64.b64encode(b"K" * 32).decode(), 900)
-    marker_text = "ORION"
     stored = storage.store(
-        _synthetic_scanned_pdf(marker_text),
+        _download_web_fixture(WEB_PDF_FIXTURE_URL, max_bytes=2_000_000),
         subject_id=str(user.id),
         request_id="req_123",
         file_kind="pdf",
@@ -69,16 +70,16 @@ def test_public_analyze_scanned_pdf_file_reference_uses_real_paddleocr_without_r
     encoded_body = json.dumps(body, ensure_ascii=False)
 
     assert response.status_code == 200
-    assert body["action"] == "Warn"
+    assert body["action"] == "Block"
     assert body["input_results"][0]["content_scanned"] is True
     assert body["input_results"][0]["decision_basis"] == "detection"
     assert body["detections"][0]["kind"] == "file_reference"
-    assert body["detections"][0]["action"] == "Warn"
+    assert body["detections"][0]["action"] == "Block"
     assert body["detections"][0]["type"] == "PDF_OCR_MARKER"
     assert body["detections"][0]["placeholder"] == "PDF_OCR_MARKER"
     assert body["detections"][0]["reason_code"] == "CUSTOM_KEYWORD_PDF_OCR_MARKER"
-    assert marker_text.casefold() not in encoded_body.casefold()
-    assert marker_text.casefold() not in persisted.casefold()
+    assert WEB_PDF_EXPECTED_KEYWORD not in encoded_body.casefold()
+    assert WEB_PDF_EXPECTED_KEYWORD not in persisted.casefold()
     assert stored["file_ref"] not in persisted
     assert stored["temp_scope_id"] not in persisted
     assert "original_filename" not in persisted
@@ -93,7 +94,7 @@ def _keyword_rule(action: str) -> FilterRule:
         kind="keyword",
         category="Custom",
         label="Pdf OCR marker",
-        keyword="orion",
+        keyword=WEB_PDF_EXPECTED_KEYWORD,
         placeholder="PDF_OCR_MARKER",
         severity="high",
         action=action,
@@ -101,6 +102,14 @@ def _keyword_rule(action: str) -> FilterRule:
         editable_fields={"enabled": True},
         version=1,
     )
+
+
+def _download_web_fixture(url: str, *, max_bytes: int) -> bytes:
+    with urlopen(url, timeout=30) as response:
+        content = response.read(max_bytes + 1)
+    if len(content) > max_bytes:
+        raise AssertionError("web OCR fixture exceeded test byte limit")
+    return content
 
 
 @contextlib.contextmanager
@@ -129,39 +138,3 @@ def _suppress_native_output() -> Iterator[None]:
         os.dup2(saved_stderr, stderr_fd)
         os.close(saved_stdout)
         os.close(saved_stderr)
-
-
-def _synthetic_scanned_pdf(text: str) -> bytes:
-    Image = pytest.importorskip("PIL.Image")
-    ImageDraw = pytest.importorskip("PIL.ImageDraw")
-    ImageFont = pytest.importorskip("PIL.ImageFont")
-
-    width = 1200
-    height = 320
-    image = Image.new("RGB", (width, height), "white")
-    draw = ImageDraw.Draw(image)
-    font_path = "C:/Windows/Fonts/arial.ttf"
-    font = ImageFont.truetype(font_path, 104) if os.path.exists(font_path) else None
-    draw.text((80, 96), text, fill="black", font=font)
-
-    output = io.BytesIO()
-    writer = PdfWriter()
-    page = writer.add_blank_page(width=720, height=260)
-    pdf_image = DecodedStreamObject()
-    pdf_image.set_data(image.tobytes())
-    pdf_image.update({
-        NameObject("/Type"): NameObject("/XObject"),
-        NameObject("/Subtype"): NameObject("/Image"),
-        NameObject("/Width"): NumberObject(width),
-        NameObject("/Height"): NumberObject(height),
-        NameObject("/ColorSpace"): NameObject("/DeviceRGB"),
-        NameObject("/BitsPerComponent"): NumberObject(8),
-    })
-    page[NameObject("/Resources")] = DictionaryObject({
-        NameObject("/XObject"): DictionaryObject({NameObject("/Im1"): writer._add_object(pdf_image)})
-    })
-    content = DecodedStreamObject()
-    content.set_data(b"q 620 0 0 165 50 52 cm /Im1 Do Q")
-    page[NameObject("/Contents")] = writer._add_object(content)
-    writer.write(output)
-    return output.getvalue()
