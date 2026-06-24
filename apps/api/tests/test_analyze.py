@@ -570,9 +570,9 @@ def test_analyze_accepts_content_unavailable_metadata_without_text_body() -> Non
     input_rows = [item for item in fake_session.added if isinstance(item, EventInput)]
     encoded = json.dumps(body, ensure_ascii=False)
     assert response.status_code == 200
-    assert body["action"] == "Block"
-    assert body["allow_original_send"] is False
-    assert body["risk_level"] == "critical"
+    assert body["action"] == "Warn"
+    assert body["allow_original_send"] is True
+    assert body["requires_user_confirmation"] is True
     assert body["input_results"][1] == {
         "input_id": "in_2",
         "input_index": 1,
@@ -596,7 +596,7 @@ def test_analyze_accepts_content_unavailable_metadata_without_text_body() -> Non
     ]
     assert "2_500_000" not in encoded
     assert len(events) == 1
-    assert events[0].action == "BLOCK"
+    assert events[0].action == "WARN"
     assert len(input_rows) == 2
     assert input_rows[1].input_id == "in_2"
     assert input_rows[1].source == "converted_paste"
@@ -858,7 +858,7 @@ def test_analyze_rejects_legacy_file_text_without_echoing_content() -> None:
     assert fake_session.added == []
 
 
-def test_analyze_blocks_unavailable_input_even_when_text_would_mask() -> None:
+def test_analyze_preserves_mask_priority_over_unsupported_attachment_warn() -> None:
     user = _user()
     client, _ = _client(user)
     unavailable_input = {
@@ -878,11 +878,10 @@ def test_analyze_blocks_unavailable_input_even_when_text_would_mask() -> None:
 
     body = response.json()
     assert response.status_code == 200
-    assert body["action"] == "Block"
-    assert body["risk_level"] == "critical"
+    assert body["action"] == "Mask"
     assert body["allow_original_send"] is False
-    assert body["requires_user_confirmation"] is False
-    assert "masked_prompt" not in body
+    assert body["requires_user_confirmation"] is True
+    assert body["masked_prompt"] == "Contact [EMAIL_1]"
     assert body["content_unavailable_inputs"] == [
         {
             "input_id": "attachment_1",

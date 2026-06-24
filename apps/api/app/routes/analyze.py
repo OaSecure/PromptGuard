@@ -20,6 +20,7 @@ from app.application.analyze.policy_adapter import build_policy_request, get_pol
 from app.atoms.models import ParsedDocument
 from app.core.config import Settings, get_settings
 from app.core.tokens import utc_now
+from app.domain.types.common import ReasonCode
 from app.events.writer import SqlAlchemyEventWriter
 from app.events.writer import load_idempotency_event_id as load_idempotency_key
 from app.interfaces.http.analyze_request import LegacyAnalyzeRequest, adapt_legacy_analyze_request
@@ -301,6 +302,33 @@ def input_results_for_payload(
             )
         )
     return results
+
+
+def policy_evidence_codes_for_payload(
+    payload: LegacyAnalyzeRequest,
+    parser_results: dict[int, FileParserResult] | None = None,
+) -> list[ReasonCode]:
+    parser_results = parser_results or {}
+    codes: list[ReasonCode] = []
+    for index, item in enumerate(payload.inputs):
+        parser_result = parser_results.get(index)
+        if parser_result is not None and parser_result.failure is not None:
+            _append_once(codes, "PARSER_OR_OCR_FAILED")
+            continue
+        if parser_result is not None and parser_result.parser_status in {"failed", "timeout", "too_large", "encrypted"}:
+            _append_once(codes, "PARSER_OR_OCR_FAILED")
+            continue
+        if item.kind == "unsupported_attachment" or item.content_unavailable_reason == "unsupported":
+            _append_once(codes, "UNSUPPORTED_FILE")
+            continue
+        if not item.content_included:
+            _append_once(codes, "CONTENT_NOT_SCANNED")
+    return codes
+
+
+def _append_once(codes: list[ReasonCode], code: ReasonCode) -> None:
+    if code not in codes:
+        codes.append(code)
 
 
 def _input_scan_result(
@@ -598,7 +626,14 @@ async def analyze_prompt(
         )
     detection_input_indexes = {index for index, _item, item_matches in matched_inputs if item_matches}
     input_results = input_results_for_payload(payload, detection_input_indexes, parser_results)
-    policy_request = build_policy_request(request_id, payload.inputs, matched_inputs, classifier_outcome, input_results=input_results)
+    policy_request = build_policy_request(
+        request_id,
+        payload.inputs,
+        matched_inputs,
+        classifier_outcome,
+        input_results=input_results,
+        evidence_codes=policy_evidence_codes_for_payload(payload, parser_results),
+    )
     action = to_legacy_action(policy_orchestrator.decide(policy_request).action)
     risk_score = score_for_final_action(risk_score, action)
     risk_level = risk_level_for_score(risk_score)

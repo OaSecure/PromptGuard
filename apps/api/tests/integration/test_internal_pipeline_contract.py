@@ -119,7 +119,7 @@ def test_encrypted_resolution_parser_and_policy_contract_are_deterministic(tmp_p
     ("owner", "failure_code"),
     [("resolver", "TEMP_FILE_RESOLVE_FAILED"), ("plan", "PARSER_DISABLED"), ("executor", "PARSER_WORKER_FAILED")],
 )
-def test_parser_boundary_failures_project_to_fail_closed_policy(owner, failure_code):
+def test_parser_boundary_failures_project_to_warn_policy(owner, failure_code):
     from app.parser.fakes import FakeTemporaryFileResolver
 
     runner = FileParserRunner(
@@ -132,12 +132,14 @@ def test_parser_boundary_failures_project_to_fail_closed_policy(owner, failure_c
         PolicyDecisionRequest(
             request_id="request_1",
             input_ids=["file_input_1"],
+            evidence_codes=["PARSER_OR_OCR_FAILED"],
             inputs=[PolicyInputEvidence(input_id="file_input_1", content_scanned=False)],
         )
     )
 
     assert result.failure.code == failure_code
-    assert decision.action == "block"
+    assert decision.action == "warn"
+    assert decision.reason_code == "PARSER_OR_OCR_FAILED"
 
 
 def test_candidate_only_verifier_and_policy_never_downgrade_stronger_rule():

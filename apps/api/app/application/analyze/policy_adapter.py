@@ -35,6 +35,7 @@ def build_policy_request(
     matched_inputs: Iterable[tuple[int, Any, list[Any]]],
     classifier_outcome: Any,
     input_results: Iterable[Any] | None = None,
+    evidence_codes: Iterable[ReasonCode] | None = None,
 ) -> PolicyDecisionRequest:
     scanned_by_id = {str(item.input_id): bool(item.content_scanned) for item in input_results or []}
     input_evidence = []
@@ -59,6 +60,7 @@ def build_policy_request(
     return PolicyDecisionRequest(
         request_id=request_id,
         input_ids=[item.input_id for item in input_evidence],
+        evidence_codes=list(evidence_codes or []),
         rules=rules,
         inputs=input_evidence,
         ml=PolicyMlEvidence(

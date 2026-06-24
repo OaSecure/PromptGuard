@@ -271,10 +271,6 @@
       "count": 1
     },
     {
-      "fingerprint": "ruff|apps/api/tests/contract/test_file_reference_analyze.py|E702|Multiple statements on one line (semicolon)|body = response.json(); assert body[\"action\"] == \"Block\" and body[\"input_results\"][0][\"content_scanned\"] is False",
-      "count": 1
-    },
-    {
       "fingerprint": "ruff|apps/api/tests/contract/test_file_reference_analyze.py|E702|Multiple statements on one line (semicolon)|user = _user(); client, session = _client(user, rules=[])",
       "count": 1
     },

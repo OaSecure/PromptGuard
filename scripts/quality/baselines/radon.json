@@ -15,10 +15,6 @@
       "count": 1
     },
     {
-      "fingerprint": "radon|apps/api/app/domain/policy/orchestrator.py|method|decide||complexity=15",
-      "count": 1
-    },
-    {
       "fingerprint": "radon|apps/api/app/interfaces/http/analyze_request.py|class|LegacyAnalyzeInput||complexity=18",
       "count": 1
     },

@@ -57,7 +57,7 @@ def test_converted_paste_mask_fails_closed_without_persisting_masked_prompt():
     assert "masked_prompt" not in json.dumps(actual["storage"], default=str)
 
 
-def test_file_reference_http_boundary_fails_closed_without_persisting_reference():
+def test_file_reference_http_boundary_warns_without_persisting_reference():
     user = _user()
     client, session = _client(user, rules=[])
     opaque_ref = "fref_abcdefghijklmnopqrstuvwxyzABCDEFG123456"
@@ -83,7 +83,7 @@ def test_file_reference_http_boundary_fails_closed_without_persisting_reference(
     )
 
     assert response.status_code == 200
-    assert response.json()["action"] == "Block"
+    assert response.json()["action"] == "Warn"
     assert response.json()["input_results"][0]["content_scanned"] is False
     persisted = json.dumps([getattr(row, "__dict__", {}) for row in session.added], default=str)
     assert opaque_ref not in persisted

@@ -688,7 +688,7 @@ def test_classifier_candidate_escalates_allow_to_warn_without_raw_leakage(monkey
     assert sentinel not in _stored_payload(fake_session)
 
 
-def test_classifier_failure_fails_closed_without_masked_prompt(monkeypatch) -> None:
+def test_classifier_failure_falls_back_to_lexical_parser_policy_without_masked_prompt(monkeypatch) -> None:
     def failed_outcome(*_args, **_kwargs):
         return SimpleNamespace(
             enabled=True,
@@ -708,8 +708,8 @@ def test_classifier_failure_fails_closed_without_masked_prompt(monkeypatch) -> N
 
     assert response.status_code == 200
     body = response.json()
-    assert body["action"] == "Block"
-    assert body["allow_original_send"] is False
+    assert body["action"] == "Allow"
+    assert body["allow_original_send"] is True
     assert body["requires_user_confirmation"] is False
     assert "masked_prompt" not in body
 
