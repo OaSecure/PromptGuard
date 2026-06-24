@@ -5,6 +5,7 @@ from app.domain.policy import PolicyOrchestrator
 from app.domain.types.common import ReasonCode
 from app.domain.types.policy import (
     PolicyAction,
+    PolicyActionSettings,
     PolicyDecisionRequest,
     PolicyInputEvidence,
     PolicyMlEvidence,
@@ -36,6 +37,7 @@ def build_policy_request(
     classifier_outcome: Any,
     input_results: Iterable[Any] | None = None,
     evidence_codes: Iterable[ReasonCode] | None = None,
+    action_settings: PolicyActionSettings | None = None,
 ) -> PolicyDecisionRequest:
     scanned_by_id = {str(item.input_id): bool(item.content_scanned) for item in input_results or []}
     input_evidence = []
@@ -55,21 +57,14 @@ def build_policy_request(
                     masking_supported=item.source == "composer",
                 )
             )
-    failure = getattr(classifier_outcome, "failure", None)
-    summaries = getattr(classifier_outcome, "verifier_summaries", []) or []
     return PolicyDecisionRequest(
         request_id=request_id,
         input_ids=[item.input_id for item in input_evidence],
         evidence_codes=list(evidence_codes or []),
         rules=rules,
         inputs=input_evidence,
-        ml=PolicyMlEvidence(
-            classifier_enabled=bool(getattr(classifier_outcome, "enabled", False)),
-            classifier_has_candidates=bool(getattr(classifier_outcome, "has_candidates", False)),
-            classifier_failed=failure is not None,
-            verifier_failed=failure is not None and "VERIFIER" in str(getattr(failure, "code", "")).upper(),
-            verifier_summary_present=bool(summaries),
-        ),
+        ml=_policy_ml_evidence(classifier_outcome),
+        action_settings=action_settings or PolicyActionSettings(),
     )
 
 
@@ -80,3 +75,15 @@ def _safe_reason_code(match: Any) -> ReasonCode:
     if "SECRET" in category or "CREDENTIAL" in category:
         return "LEXICAL_DETERMINISTIC_SECRET_SIGNAL"
     return "INTERNAL_POLICY_REASON_UNMAPPED"
+
+
+def _policy_ml_evidence(classifier_outcome: Any) -> PolicyMlEvidence:
+    failure = getattr(classifier_outcome, "failure", None)
+    summaries = getattr(classifier_outcome, "verifier_summaries", []) or []
+    return PolicyMlEvidence(
+        classifier_enabled=bool(getattr(classifier_outcome, "enabled", False)),
+        classifier_has_candidates=bool(getattr(classifier_outcome, "has_candidates", False)),
+        classifier_failed=failure is not None,
+        verifier_failed=failure is not None and "VERIFIER" in str(getattr(failure, "code", "")).upper(),
+        verifier_summary_present=bool(summaries),
+    )

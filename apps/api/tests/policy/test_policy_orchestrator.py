@@ -2,6 +2,7 @@ import pytest
 
 from app.domain.policy import PolicyOrchestrator
 from app.domain.types.policy import (
+    PolicyActionSettings,
     PolicyDecisionRequest,
     PolicyInputEvidence,
     PolicyMlEvidence,
@@ -18,6 +19,12 @@ def _request(*rules, scanned=True, ml=None, evidence_codes=None):
         rules=list(rules),
         ml=ml or PolicyMlEvidence(),
     )
+
+
+def _request_with_settings(settings: PolicyActionSettings, *rules, scanned=True, ml=None, evidence_codes=None):
+    request = _request(*rules, scanned=scanned, ml=ml, evidence_codes=evidence_codes)
+    request.action_settings = settings
+    return request
 
 
 def _rule(action, *, masking_supported=True, severity="medium"):
@@ -62,6 +69,20 @@ def test_parser_or_ocr_failure_warns_without_becoming_allow_or_block():
     assert decision.reason_code == "PARSER_OR_OCR_FAILED"
 
 
+def test_content_not_scanned_and_parser_failure_use_configured_notice_actions():
+    settings = PolicyActionSettings(content_not_scanned_action="block", parser_or_ocr_failure_action="warn")
+
+    content_not_scanned = PolicyOrchestrator().decide(
+        _request_with_settings(settings, scanned=False, evidence_codes=["CONTENT_NOT_SCANNED"])
+    )
+    parser_failed = PolicyOrchestrator().decide(_request_with_settings(settings, evidence_codes=["PARSER_OR_OCR_FAILED"]))
+
+    assert content_not_scanned.action == "block"
+    assert content_not_scanned.reason_code == "CONTENT_NOT_SCANNED"
+    assert parser_failed.action == "warn"
+    assert parser_failed.reason_code == "PARSER_OR_OCR_FAILED"
+
+
 def test_mask_is_preserved_only_when_origin_supports_masking():
     orchestrator = PolicyOrchestrator()
     assert orchestrator.decide(_request(_rule("mask", masking_supported=True))).action == "mask"
@@ -69,6 +90,14 @@ def test_mask_is_preserved_only_when_origin_supports_masking():
     assert orchestrator.decide(
         _request(_rule("mask", masking_supported=True), _rule("mask", masking_supported=False))
     ).action == "block"
+
+
+def test_unsupported_mask_fallback_uses_configured_warn_or_block_only():
+    settings = PolicyActionSettings(unsupported_mask_fallback_action="warn")
+
+    decision = PolicyOrchestrator().decide(_request_with_settings(settings, _rule("mask", masking_supported=False)))
+
+    assert decision.action == "warn"
 
 
 @pytest.mark.parametrize("existing", ["warn", "mask", "block"])
@@ -83,6 +112,32 @@ def test_classifier_candidate_upgrades_allow_to_warn_but_disabled_classifier_doe
     disabled = PolicyMlEvidence(classifier_enabled=False, classifier_has_candidates=True)
     assert orchestrator.decide(_request(ml=enabled)).action == "warn"
     assert orchestrator.decide(_request(ml=disabled)).action == "allow"
+
+
+def test_classifier_candidate_uses_configured_context_action_without_mask_target():
+    ml = PolicyMlEvidence(classifier_enabled=True, classifier_has_candidates=True)
+    settings = PolicyActionSettings(context_classifier_action="block")
+
+    decision = PolicyOrchestrator().decide(_request_with_settings(settings, ml=ml))
+
+    assert decision.action == "block"
+    assert decision.reason_code == "RISK_CONTEXT_LR_ONLY"
+
+
+def test_empty_input_uses_configured_empty_input_action():
+    settings = PolicyActionSettings(empty_input_action="warn")
+
+    decision = PolicyOrchestrator().decide(
+        PolicyDecisionRequest(
+            request_id="req-empty-policy",
+            input_ids=[],
+            inputs=[],
+            action_settings=settings,
+        )
+    )
+
+    assert decision.action == "warn"
+    assert decision.reason_code == "EMPTY_INPUT"
 
 
 @pytest.mark.parametrize("failure", ["classifier_failed", "verifier_failed"])

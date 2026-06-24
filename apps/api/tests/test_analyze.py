@@ -18,14 +18,16 @@ from app.atoms.models import PipelineFailure
 from app.ml.classifier.factory import ClassifierRuntimeProviderResult
 from app.models.events import AnalysisEvent, EventDetection, EventInput, IdempotencyKey
 from app.models.filters import FilterRule
+from app.models.policy_settings import PolicySettings
 from app.routes import analyze as analyze_route
 from app.routes.auth import get_db_session
 
 
 class _FakeSession:
-    def __init__(self, user, rules=None):
+    def __init__(self, user, rules=None, policy_settings=None):
         self.user = user
         self.rules = rules
+        self.policy_settings = policy_settings
         self.added = []
         self.commits = 0
         self.rollbacks = 0
@@ -39,6 +41,8 @@ class _FakeSession:
     async def execute(self, statement):
         if "FROM idempotency_keys" in str(statement):
             return _FakeResult([])
+        if "FROM policy_settings" in str(statement):
+            return _FakeResult([self.policy_settings] if self.policy_settings is not None else [])
         if self.rules is None:
             raise RuntimeError("filter rules not configured")
         return _FakeResult(self.rules)
@@ -101,10 +105,10 @@ def _filter_rule(**overrides):
     return FilterRule(**values)
 
 
-def _client(user=None, rules=None) -> tuple[TestClient, _FakeSession]:
+def _client(user=None, rules=None, policy_settings=None) -> tuple[TestClient, _FakeSession]:
     app = FastAPI()
     app.include_router(analyze_route.router)
-    fake_session = _FakeSession(user, rules)
+    fake_session = _FakeSession(user, rules, policy_settings)
 
     @app.exception_handler(RequestValidationError)
     async def request_validation_exception_handler(_request, exc):
@@ -213,6 +217,37 @@ def test_analyze_idempotency_schema_is_metadata_only() -> None:
     assert {"login_id", "client_request_id", "event_id", "created_at", "expires_at"}.issubset(columns)
     assert primary_key_columns == {"login_id", "client_request_id"}
     assert forbidden_columns.isdisjoint(columns)
+
+
+def test_analyze_uses_policy_settings_for_content_not_scanned_action_without_raw_storage() -> None:
+    user = _user()
+    settings = PolicySettings(
+        settings_key="default",
+        context_classifier_action="WARN",
+        content_not_scanned_action="BLOCK",
+        parser_or_ocr_failure_action="WARN",
+        empty_input_action="ALLOW",
+        unsupported_mask_fallback_action="BLOCK",
+        version=7,
+    )
+    client, session = _client(user, rules=[], policy_settings=settings)
+    item = {
+        "input_id": "file_1",
+        "kind": "unsupported_attachment",
+        "source": "attachment_chip",
+        "size_bytes": 42,
+        "content_included": False,
+        "content_unavailable_reason": "unsupported",
+    }
+
+    response = client.post("/prompts/analyze", headers=_bearer_header(user.id), json=_analyze_payload(item))
+    persisted = json.dumps([getattr(row, "__dict__", {}) for row in session.added], default=str)
+
+    assert response.status_code == 200
+    assert response.json()["action"] == "Block"
+    assert "content_not_scanned_action" not in persisted
+    assert "original_filename" not in persisted
+    assert "masked_prompt" not in persisted
 
 
 def test_event_metadata_schema_avoids_required_internal_identifiers() -> None:

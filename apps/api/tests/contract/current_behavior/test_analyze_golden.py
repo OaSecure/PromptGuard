@@ -27,7 +27,11 @@ class FakeResult:
 class FakeSession:
     def __init__(self, rules): self.rules, self.added, self.commits, self.rollbacks = rules, [], 0, 0
     async def get(self, _model, user_id): return USER if user_id == USER_ID else None
-    async def execute(self, statement): return FakeResult([] if "FROM idempotency_keys" in str(statement) else self.rules)
+    async def execute(self, statement):
+        query = str(statement)
+        if "FROM idempotency_keys" in query or "FROM policy_settings" in query:
+            return FakeResult([])
+        return FakeResult(self.rules)
     def add(self, item): self.added.append(item)
     async def commit(self): self.commits += 1
     async def rollback(self): self.rollbacks += 1
