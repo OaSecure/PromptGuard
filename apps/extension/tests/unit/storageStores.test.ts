@@ -16,7 +16,7 @@ describe("config and auth storage boundaries", () => {
 
     expect(settings).toMatchObject({
       apiBaseUrl: DEFAULT_CONFIG.api_base_url,
-      mockMode: true,
+      mockMode: false,
       config: DEFAULT_CONFIG
     });
   });

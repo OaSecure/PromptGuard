@@ -1,4 +1,5 @@
 import { DEFAULT_CONFIG, EXTENSION_VERSION } from "../shared/constants";
+import { filterConfigRevision } from "../shared/configAccessors";
 import { isExtensionConfigResponse } from "../shared/configValidation";
 import type { AnalyzeRequest, ExtensionConfigResponse, ExtensionContext } from "../shared/types";
 import { collectAttachmentChipInputs, resolveAttachmentChipScope } from "./attachmentChipCapture";
@@ -50,7 +51,7 @@ export function buildPromptAnalyzeRequest(inputMethod: "CLICK" | "ENTER" | "UNKN
     candidate.element,
     inputMethod,
     currentContext(),
-    activeConfig.policy_version,
+    filterConfigRevision(activeConfig),
     undefined,
     undefined,
     collectAttachmentChipInputs(resolveAttachmentChipScope(candidate.element, document), {

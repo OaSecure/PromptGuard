@@ -1,6 +1,7 @@
 import { postJsonWithAuthRefresh } from "./authenticatedApiClient";
 import { getSettings } from "./configStore";
 import { mockFilesAnalyze } from "./mockApi";
+import { analyzeTimeoutMs } from "../shared/configAccessors";
 import type { AnalyzeRequest, AnalyzeResponse, NormalizedError } from "../shared/types";
 
 /**
@@ -16,6 +17,6 @@ export async function analyzeFiles(request: AnalyzeRequest): Promise<AnalyzeResp
   }
   return postJsonWithAuthRefresh<AnalyzeRequest, AnalyzeResponse>("/prompts/analyze", request, {
     baseUrl: settings.apiBaseUrl,
-    timeoutMs: settings.config.timeout_ms
+    timeoutMs: analyzeTimeoutMs(settings.config)
   });
 }

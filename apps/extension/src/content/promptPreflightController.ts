@@ -1,4 +1,5 @@
 import { createAnalyzeRequest, createComposerInput, createConvertedPasteInput } from "../shared/analyzeRequestBuilder";
+import { analyzeTimeoutMs, filterConfigRevision } from "../shared/configAccessors";
 import { createClientRequestId } from "../shared/hashing";
 import type { AnalyzeInput } from "../shared/types";
 import { isAnalyzeResponse } from "../shared/responseValidation";
@@ -90,7 +91,7 @@ export function startPromptPreflightController(options: PromptPreflightControlle
       candidate.element,
       attempt.method,
       options.getContext(),
-      options.config.policy_version,
+      filterConfigRevision(options.config),
       convertedPasteText,
       requestIdForAttempt(attempt),
       collectAttachmentChipInputs(resolveAttachmentChipScope(candidate.element, doc), { attachment_chip: selectors.attachment_chip })
@@ -108,7 +109,7 @@ export function startPromptPreflightController(options: PromptPreflightControlle
     const cancelAnalyzingOverlay = scheduleAnalyzingOverlay();
 
     try {
-      const response = await withTimeout(options.sendAnalyze(request), options.config.timeout_ms);
+      const response = await withTimeout(options.sendAnalyze(request), analyzeTimeoutMs(options.config));
       if (attemptId !== currentAttemptId) {
         return;
       }

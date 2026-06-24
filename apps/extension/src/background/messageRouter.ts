@@ -5,6 +5,7 @@ import { getSettings, saveConfig } from "./configStore";
 import { mockAuthMe, mockConfig } from "./mockApi";
 import { getJsonWithAuthRefresh } from "./authenticatedApiClient";
 import { postJson } from "./apiClient";
+import { configRequestTimeoutMs } from "../shared/configAccessors";
 import { isExtensionConfigResponse } from "../shared/configValidation";
 import { isNormalizedError } from "../shared/errors";
 import type { AuthLoginResponse, AuthMeResponse, ExtensionConfigResponse, ExtensionMessage, NormalizedError } from "../shared/types";
@@ -49,7 +50,7 @@ async function authLogout(): Promise<{ ok: true } | NormalizedError> {
 
   const response = await postJson<{ refresh_token: string }, unknown>("/auth/logout", { refresh_token: auth.refreshToken }, {
     baseUrl: settings.apiBaseUrl,
-    timeoutMs: settings.config.timeout_ms,
+    timeoutMs: configRequestTimeoutMs(settings.config),
     token: auth.accessToken
   });
   await clearAuthState();
@@ -73,7 +74,7 @@ async function authLogin(payload: { login_id: string; password: string }): Promi
   };
   const response = await postJson<typeof credentials, unknown>("/auth/login", credentials, {
     baseUrl: settings.apiBaseUrl,
-    timeoutMs: settings.config.timeout_ms
+    timeoutMs: configRequestTimeoutMs(settings.config)
   });
   if (isNormalizedError(response)) {
     return response;
@@ -95,7 +96,7 @@ async function authMe(): Promise<AuthMeResponse | NormalizedError> {
   }
   return getJsonWithAuthRefresh<AuthMeResponse>("/auth/me", {
     baseUrl: settings.apiBaseUrl,
-    timeoutMs: settings.config.timeout_ms
+    timeoutMs: configRequestTimeoutMs(settings.config)
   });
 }
 
@@ -122,7 +123,7 @@ async function syncConfig(): Promise<ExtensionConfigResponse | NormalizedError> 
     ? await mockConfig()
     : await getJsonWithAuthRefresh<ExtensionConfigResponse>("/config/extension", {
         baseUrl: settings.apiBaseUrl,
-        timeoutMs: settings.config.timeout_ms
+        timeoutMs: configRequestTimeoutMs(settings.config)
       });
 
   if (isNormalizedError(config)) {

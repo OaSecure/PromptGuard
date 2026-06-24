@@ -1,4 +1,5 @@
-import { DEFAULT_CONFIG, STORAGE_KEYS } from "../shared/constants";
+import { DEFAULT_CONFIG, DEFAULT_MOCK_MODE, STORAGE_KEYS } from "../shared/constants";
+import { attachmentPolicy, filterConfigRevision } from "../shared/configAccessors";
 import { isExtensionConfigResponse } from "../shared/configValidation";
 import { isNormalizedError } from "../shared/errors";
 import type { AuthMeResponse, ExtensionConfigResponse, NormalizedError } from "../shared/types";
@@ -34,7 +35,7 @@ async function loadSettings(): Promise<void> {
   const cachedConfig = result[STORAGE_KEYS.configCache];
   const config = isExtensionConfigResponse(cachedConfig) ? cachedConfig : DEFAULT_CONFIG;
   const storedApiBaseUrl = typeof result[STORAGE_KEYS.apiBaseUrl] === "string" ? result[STORAGE_KEYS.apiBaseUrl].trim() : "";
-  const mockMode = (result[STORAGE_KEYS.mockMode] as boolean | undefined) ?? true;
+  const mockMode = (result[STORAGE_KEYS.mockMode] as boolean | undefined) ?? DEFAULT_MOCK_MODE;
   setValue(apiBaseUrlInput, storedApiBaseUrl || config.api_base_url);
   if (mockModeInput) {
     mockModeInput.checked = mockMode;
@@ -65,9 +66,13 @@ async function saveSettings(): Promise<void> {
 }
 
 async function persistSettings(): Promise<{ mockMode: boolean }> {
-  const mockMode = mockModeInput?.checked ?? true;
+  const mockMode = mockModeInput?.checked ?? DEFAULT_MOCK_MODE;
+  const apiBaseUrl = apiBaseUrlInput?.value.trim() || DEFAULT_CONFIG.api_base_url;
+  if (!mockMode) {
+    await ensureApiOriginPermission(apiBaseUrl);
+  }
   await chrome.storage.local.set({
-    [STORAGE_KEYS.apiBaseUrl]: apiBaseUrlInput?.value.trim() || DEFAULT_CONFIG.api_base_url,
+    [STORAGE_KEYS.apiBaseUrl]: apiBaseUrl,
     [STORAGE_KEYS.mockMode]: mockMode
   });
   const loginId = loginIdInput?.value.trim() ?? "";
@@ -89,6 +94,35 @@ async function persistSettings(): Promise<{ mockMode: boolean }> {
     }
   }
   return { mockMode };
+}
+
+async function ensureApiOriginPermission(apiBaseUrl: string): Promise<void> {
+  const origin = apiOriginPattern(apiBaseUrl);
+  if (!origin) {
+    throw new Error("API URL must be a valid http or https origin.");
+  }
+  if (!chrome.permissions) {
+    return;
+  }
+  const permissions = { origins: [origin] };
+  if (await chrome.permissions.contains(permissions)) {
+    return;
+  }
+  if (!(await chrome.permissions.request(permissions))) {
+    throw new Error("API URL permission is required to use Real API mode.");
+  }
+}
+
+function apiOriginPattern(apiBaseUrl: string): string | null {
+  try {
+    const parsed = new URL(apiBaseUrl);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return null;
+    }
+    return `${parsed.origin}/*`;
+  } catch {
+    return null;
+  }
 }
 
 /** Tests the mock or real auth boundary and renders the connection result. */
@@ -176,8 +210,8 @@ function renderModeStatus(mockMode: boolean): void {
 }
 
 function renderConfig(config: ExtensionConfigResponse): void {
-  setText(policyVersion, config.policy_version);
-  setText(fileInspection, config.file_upload.enabled ? "Enabled" : "Disabled");
+  setText(policyVersion, filterConfigRevision(config));
+  setText(fileInspection, attachmentPolicy(config).enabled ? "Enabled" : "Disabled");
 }
 
 async function refreshLastConfigSync(): Promise<void> {
