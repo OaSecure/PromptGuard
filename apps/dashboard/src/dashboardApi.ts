@@ -1,5 +1,3 @@
-const DEFAULT_API_BASE_URL = "http://localhost:8000";
-
 type RequestOptions = {
   method?: "GET" | "POST" | "PATCH" | "DELETE";
   body?: unknown;
@@ -18,7 +16,7 @@ export class DashboardApiError extends Error {
 
 export function dashboardApiBaseUrl(): string {
   const configured = document.documentElement.dataset.promptguardApiBaseUrl?.trim();
-  return (configured || DEFAULT_API_BASE_URL).replace(/\/+$/, "");
+  return configured ? configured.replace(/\/+$/, "") : "";
 }
 
 export async function dashboardRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {

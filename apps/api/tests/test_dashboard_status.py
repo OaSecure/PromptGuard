@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.core.tokens import create_access_token
+from app.core.config import get_settings
 from app.routes import dashboard_status
 from app.routes.auth import get_db_session
 
@@ -169,6 +170,24 @@ def test_dashboard_status_reports_forwarded_external_origin(monkeypatch) -> None
         "external_api_origin": "https://promptguard.example.com",
         "api_port": "8000",
     }
+
+
+def test_dashboard_status_uses_configured_public_api_origin_without_path_or_credentials(monkeypatch) -> None:
+    user = _user()
+    monkeypatch.setattr(dashboard_status, "collect_server_ipv4_addresses", lambda: ["10.1.2.3"])
+    monkeypatch.setenv("PROMPTGUARD_API_PUBLIC_URL", "https://user:pass@promptguard.example.com:9443/app?token=secret")
+    get_settings.cache_clear()
+    try:
+        response = _client(monkeypatch, user=user).get("/dashboard/status", headers={"host": "localhost:8000"})
+    finally:
+        get_settings.cache_clear()
+
+    assert response.status_code == 200
+    assert response.json()["extension_connection"]["external_api_origin"] == "https://promptguard.example.com:9443"
+    encoded = json.dumps(response.json(), ensure_ascii=False)
+    assert "user:pass" not in encoded
+    assert "token=secret" not in encoded
+    assert "/app" not in encoded
 
 
 def test_dashboard_status_excludes_docker_bridge_origin_from_recommended_extension_urls(monkeypatch) -> None:

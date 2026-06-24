@@ -1,4 +1,3 @@
-const DEFAULT_API_BASE_URL = "http://localhost:8000";
 export class DashboardApiError extends Error {
     status;
     constructor(status) {
@@ -9,7 +8,7 @@ export class DashboardApiError extends Error {
 }
 export function dashboardApiBaseUrl() {
     const configured = document.documentElement.dataset.promptguardApiBaseUrl?.trim();
-    return (configured || DEFAULT_API_BASE_URL).replace(/\/+$/, "");
+    return configured ? configured.replace(/\/+$/, "") : "";
 }
 export async function dashboardRequest(path, options = {}) {
     const headers = new Headers({ Accept: "application/json" });

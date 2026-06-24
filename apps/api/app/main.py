@@ -11,6 +11,7 @@ from app.routes.dashboard_filters import router as dashboard_filters_router
 from app.routes.dashboard_overview import router as dashboard_overview_router
 from app.routes.dashboard_policy_settings import router as dashboard_policy_settings_router
 from app.routes.dashboard_session import router as dashboard_session_router
+from app.routes.dashboard_static import register_dashboard_static
 from app.routes.dashboard_status import router as dashboard_status_router
 from app.routes.events import router as events_router
 from app.routes.extension_config import router as extension_config_router
@@ -70,3 +71,4 @@ app.include_router(setup_router)
 app.include_router(stats_router)
 app.include_router(status_router)
 app.include_router(temp_files_router)
+register_dashboard_static(app)

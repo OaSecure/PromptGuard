@@ -84,6 +84,33 @@ PROMPTGUARD_VERIFIER_RUNTIME_ENABLED=true
 PROMPTGUARD_VERIFIER_MANIFEST_PATH=/opt/promptguard/models/context_lr_roberta_active_best_f1_manifest.json
 ```
 
+### Docker 단일 서버 실행
+
+Docker Compose 기본 배포는 API 컨테이너 하나가 API, Analyze runtime, dashboard 정적 파일을 함께 제공한다.
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+기본 접속 주소는 다음과 같다.
+
+```text
+Dashboard: http://localhost:8000/dashboard/
+API health: http://localhost:8000/healthz
+API ready: http://localhost:8000/readyz
+```
+
+포트를 바꾸려면 `.env`에서 `PROMPTGUARD_API_PORT`와 public URL 값을 함께 바꾼다.
+
+```env
+PROMPTGUARD_API_PORT=18000
+PROMPTGUARD_API_PUBLIC_URL=http://localhost:18000
+PROMPTGUARD_DASHBOARD_PUBLIC_URL=http://localhost:18000/dashboard/
+```
+
+Chrome Extension 사용자는 dashboard의 서버 상태 화면에 표시되는 API URL 후보 중 자신의 컴퓨터에서 접속 가능한 주소를 Extension 설정에 입력한다. 서버 관리자 PC의 `localhost`는 다른 사용자 컴퓨터에서는 통하지 않으므로, 같은 내부망 사용자는 서버 PC의 내부망 IP 주소를 사용하고 외부 사용자는 포트포워딩 또는 reverse proxy로 공개된 API origin을 사용한다.
+
 ### API 로컬 CUDA 런타임 확인
 
 Docker 배포는 API 이미지 하나를 사용한다. 이미지 내부에서는 Python 환경을 세 개로 나눈다.
@@ -200,6 +227,33 @@ PROMPTGUARD_CLASSIFIER_MANIFEST_PATH=/opt/promptguard/models/context_lr_roberta_
 PROMPTGUARD_VERIFIER_RUNTIME_ENABLED=true
 PROMPTGUARD_VERIFIER_MANIFEST_PATH=/opt/promptguard/models/context_lr_roberta_active_best_f1_manifest.json
 ```
+
+### Docker Single-Server Runtime
+
+The default Docker Compose deployment uses one API container to serve API routes, the Analyze runtime, and dashboard static files together.
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+Default URLs:
+
+```text
+Dashboard: http://localhost:8000/dashboard/
+API health: http://localhost:8000/healthz
+API ready: http://localhost:8000/readyz
+```
+
+To change the public port, update `PROMPTGUARD_API_PORT` and the public URL values together:
+
+```env
+PROMPTGUARD_API_PORT=18000
+PROMPTGUARD_API_PUBLIC_URL=http://localhost:18000
+PROMPTGUARD_DASHBOARD_PUBLIC_URL=http://localhost:18000/dashboard/
+```
+
+Chrome Extension users should copy an API URL candidate from the dashboard Server Status screen only when that origin is reachable from their own computer. `localhost` on the server admin machine is not valid for other users; same-LAN users need the server machine's LAN IP, and external users need the port-forwarded or reverse-proxied API origin.
 
 ### API Local CUDA Runtime Check
 

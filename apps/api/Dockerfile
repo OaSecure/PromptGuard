@@ -1,7 +1,9 @@
+# syntax=docker/dockerfile:1.4
 FROM python:3.13-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+ENV PROMPTGUARD_DASHBOARD_STATIC_DIR=/opt/promptguard/dashboard
 
 WORKDIR /app
 
@@ -29,6 +31,7 @@ RUN python -m venv /opt/venvs/torch \
     && /opt/venvs/torch/bin/python -m pip install --no-cache-dir -r requirements-torch-gpu.txt
 
 COPY . .
+COPY --from=dashboard . /opt/promptguard/dashboard
 
 EXPOSE 8000
 

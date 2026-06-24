@@ -2,13 +2,16 @@ services:
   api:
     build:
       context: ./apps/api
+      additional_contexts:
+        dashboard: ./apps/dashboard
     environment:
       PROMPTGUARD_ENV: ${PROMPTGUARD_ENV:-development}
       PROMPTGUARD_API_HOST: ${PROMPTGUARD_API_HOST:-0.0.0.0}
       PROMPTGUARD_API_PORT: ${PROMPTGUARD_API_PORT:-8000}
       PROMPTGUARD_API_PUBLIC_URL: ${PROMPTGUARD_API_PUBLIC_URL:-http://localhost:8000}
-      PROMPTGUARD_DASHBOARD_PUBLIC_URL: ${PROMPTGUARD_DASHBOARD_PUBLIC_URL:-http://localhost:3000}
-      PROMPTGUARD_CORS_ORIGINS: ${PROMPTGUARD_CORS_ORIGINS:-http://localhost:3000,chrome-extension://placeholder}
+      PROMPTGUARD_DASHBOARD_PUBLIC_URL: ${PROMPTGUARD_DASHBOARD_PUBLIC_URL:-http://localhost:8000/dashboard/}
+      PROMPTGUARD_DASHBOARD_STATIC_DIR: ${PROMPTGUARD_DASHBOARD_STATIC_DIR:-/opt/promptguard/dashboard}
+      PROMPTGUARD_CORS_ORIGINS: ${PROMPTGUARD_CORS_ORIGINS:-http://localhost:8000,chrome-extension://placeholder}
       PROMPTGUARD_INITIAL_ADMIN_PASSWORD: ${PROMPTGUARD_INITIAL_ADMIN_PASSWORD:-1234}
       PROMPTGUARD_TEMP_FILE_ENCRYPTION_KEY: ${PROMPTGUARD_TEMP_FILE_ENCRYPTION_KEY:-}
       PROMPTGUARD_TEMP_FILE_DIR: ${PROMPTGUARD_TEMP_FILE_DIR:-.promptguard-temp}
@@ -37,7 +40,7 @@ services:
       PROMPTGUARD_PADDLE_WORKER_PYTHON_PATH: ${PROMPTGUARD_PADDLE_WORKER_PYTHON_PATH:-/opt/venvs/paddle/bin/python}
       PROMPTGUARD_PADDLE_WORKER_SCRIPT_PATH: ${PROMPTGUARD_PADDLE_WORKER_SCRIPT_PATH:-/app/scripts/paddle_ocr_worker.py}
     ports:
-      - "8000:8000"
+      - "${PROMPTGUARD_API_PORT:-8000}:${PROMPTGUARD_API_PORT:-8000}"
     gpus: all
     depends_on:
       postgres:
