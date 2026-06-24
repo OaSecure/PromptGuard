@@ -9,10 +9,11 @@ from app.domain.types.policy import (
 )
 
 
-def _request(*rules, scanned=True, ml=None):
+def _request(*rules, scanned=True, ml=None, evidence_codes=None):
     return PolicyDecisionRequest(
         request_id="req-policy-1",
         input_ids=["input-1"],
+        evidence_codes=list(evidence_codes or []),
         inputs=[PolicyInputEvidence(input_id="input-1", content_scanned=scanned)],
         rules=list(rules),
         ml=ml or PolicyMlEvidence(),
@@ -48,11 +49,17 @@ def test_policy_action_priority_matrix(actions, expected):
 
 
 @pytest.mark.parametrize("scan_case", ["unavailable", "content_not_scanned", "file_reference"])
-def test_unscanned_inputs_fail_closed(scan_case):
-    decision = PolicyOrchestrator().decide(_request(scanned=False))
+def test_unscanned_inputs_warn_with_content_not_scanned_notice(scan_case):
+    decision = PolicyOrchestrator().decide(_request(scanned=False, evidence_codes=["CONTENT_NOT_SCANNED"]))
     assert scan_case
-    assert decision.action == "block"
+    assert decision.action == "warn"
     assert decision.reason_code == "CONTENT_NOT_SCANNED"
+
+
+def test_parser_or_ocr_failure_warns_without_becoming_allow_or_block():
+    decision = PolicyOrchestrator().decide(_request(scanned=False, evidence_codes=["PARSER_OR_OCR_FAILED"]))
+    assert decision.action == "warn"
+    assert decision.reason_code == "PARSER_OR_OCR_FAILED"
 
 
 def test_mask_is_preserved_only_when_origin_supports_masking():
@@ -79,9 +86,16 @@ def test_classifier_candidate_upgrades_allow_to_warn_but_disabled_classifier_doe
 
 
 @pytest.mark.parametrize("failure", ["classifier_failed", "verifier_failed"])
-def test_ml_failures_fail_closed(failure):
+def test_ml_failures_fall_back_to_lexical_and_parser_status(failure):
     ml = PolicyMlEvidence(**{failure: True})
-    assert PolicyOrchestrator().decide(_request(ml=ml)).action == "block"
+    assert PolicyOrchestrator().decide(_request(ml=ml)).action == "allow"
+
+
+def test_verifier_failure_keeps_lr_candidate_warn_path():
+    ml = PolicyMlEvidence(classifier_enabled=True, classifier_has_candidates=True, verifier_failed=True)
+    decision = PolicyOrchestrator().decide(_request(ml=ml))
+    assert decision.action == "warn"
+    assert decision.reason_code == "RISK_CONTEXT_LR_ONLY"
 
 
 def test_verifier_summary_has_no_new_policy_meaning():
