@@ -50,9 +50,16 @@ async def request_validation_exception_handler(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list(),
+    allow_origin_regex=settings.cors_extension_origin_regex_value(),
     allow_credentials=True,
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-CSRF-Token"],
+    allow_headers=[
+        "Authorization",
+        "Content-Type",
+        "X-CSRF-Token",
+        "X-PromptGuard-Client",
+        "X-PromptGuard-Extension-Version",
+    ],
 )
 
 app.include_router(admin_users_router)

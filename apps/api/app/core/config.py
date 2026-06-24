@@ -14,6 +14,10 @@ class Settings(BaseSettings):
     dashboard_public_url: str = Field(default="http://localhost:8000/dashboard/", alias="PROMPTGUARD_DASHBOARD_PUBLIC_URL")
     dashboard_static_dir: str = Field(default="/opt/promptguard/dashboard", alias="PROMPTGUARD_DASHBOARD_STATIC_DIR")
     cors_origins: str = Field(default="http://localhost:8000", alias="PROMPTGUARD_CORS_ORIGINS")
+    cors_extension_origin_regex: str = Field(
+        default=r"^chrome-extension://[a-p]{32}$",
+        alias="PROMPTGUARD_CORS_EXTENSION_ORIGIN_REGEX",
+    )
 
     database_url: str = Field(default="", alias="DATABASE_URL")
     redis_url: str = Field(default="", alias="REDIS_URL")
@@ -85,6 +89,10 @@ class Settings(BaseSettings):
         if "*" in origins:
             raise ValueError("PROMPTGUARD_CORS_ORIGINS must not contain '*' when credentials are allowed")
         return origins
+
+    def cors_extension_origin_regex_value(self) -> str | None:
+        regex = self.cors_extension_origin_regex.strip()
+        return regex or None
 
     def classifier_manifest_path_value(self) -> Path | None:
         path = self.classifier_manifest_path.strip()
