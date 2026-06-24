@@ -61,6 +61,18 @@ class Settings(BaseSettings):
         default="/app/scripts/torch_context_worker.py",
         alias="PROMPTGUARD_TORCH_WORKER_SCRIPT_PATH",
     )
+    paddle_worker_payload_dir: str = Field(
+        default="/tmp/promptguard-paddle-payloads",
+        alias="PROMPTGUARD_PADDLE_WORKER_PAYLOAD_DIR",
+    )
+    paddle_worker_python_path: str = Field(
+        default="/opt/venvs/paddle/bin/python",
+        alias="PROMPTGUARD_PADDLE_WORKER_PYTHON_PATH",
+    )
+    paddle_worker_script_path: str = Field(
+        default="/app/scripts/paddle_ocr_worker.py",
+        alias="PROMPTGUARD_PADDLE_WORKER_SCRIPT_PATH",
+    )
     temp_file_encryption_key: str = Field(default="", alias="PROMPTGUARD_TEMP_FILE_ENCRYPTION_KEY")
     temp_file_dir: str = Field(default=".promptguard-temp", alias="PROMPTGUARD_TEMP_FILE_DIR")
     temp_file_ttl_seconds: int = Field(default=900, gt=0, alias="PROMPTGUARD_TEMP_FILE_TTL_SECONDS")

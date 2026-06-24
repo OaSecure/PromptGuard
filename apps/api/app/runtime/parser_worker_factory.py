@@ -1,4 +1,5 @@
-from app.infrastructure.ocr.paddle_real_adapter import PaddleOcrLazyRuntimeConfig, PaddleOcrLazyRuntimeSkeleton
+from pathlib import Path
+
 from app.infrastructure.ocr.paddle_runtime import PaddleOcrRuntimeConfig, compose_paddle_ocr_engine
 from app.infrastructure.pdf.pdfium_renderer import (
     InMemoryRenderedImageStore,
@@ -22,6 +23,12 @@ from app.parser.registry import InMemoryParserAdapterRegistry, ParserAdapterRegi
 from app.parser.runner import FileParserRunner
 from app.parser.temp_file_resolver import TemporaryFileResolver
 from app.ports.clock import ClockPort
+from app.runtime.paddle_worker_client import (
+    PaddleOcrSubprocessRuntime,
+    PaddleWorkerClient,
+    PaddleWorkerClientConfig,
+)
+from app.runtime.paddle_worker_payload import PaddleWorkerPayloadStore
 from app.runtime.parser_worker import ParserWorkerPool
 
 
@@ -38,6 +45,9 @@ def build_parser_worker_pool(
     max_workers: int,
     max_queue_size: int,
     clock: ClockPort | None = None,
+    paddle_worker_python_path: str = "/opt/venvs/paddle/bin/python",
+    paddle_worker_script_path: str = "/app/scripts/paddle_ocr_worker.py",
+    paddle_worker_payload_dir: str = "/tmp/promptguard-paddle-payloads",
 ) -> ParserWorkerPool:
     clock = clock or SystemClock()
     content_source = TemporaryStorageContentSource(storage, clock)
@@ -46,12 +56,18 @@ def build_parser_worker_pool(
     def pdf_renderer_factory(source: RuntimePdfSourcePort) -> PdfiumRenderer:
         return PdfiumRenderer(source, rendered_images)
 
-    paddle_runtime = PaddleOcrLazyRuntimeSkeleton(
-        PaddleOcrLazyRuntimeConfig(enabled=True),
-        image_resolver=lambda handle: (
-            rendered_images.resolve_for_ocr(handle)
-            if handle.startswith("rendered-image-") else handle
+    def image_resolver(handle: str):
+        return rendered_images.resolve_for_ocr(handle) if handle.startswith("rendered-image-") else handle
+    paddle_runtime = PaddleOcrSubprocessRuntime(
+        PaddleWorkerClient(
+            PaddleWorkerClientConfig(
+                python_path=Path(paddle_worker_python_path),
+                script_path=Path(paddle_worker_script_path),
+                timeout_ms=60_000,
+            ),
+            payload_store=PaddleWorkerPayloadStore(Path(paddle_worker_payload_dir)),
         ),
+        image_resolver=image_resolver,
     )
     paddle_engine = compose_paddle_ocr_engine(
         PaddleOcrRuntimeConfig(enabled=True),

@@ -102,6 +102,14 @@ def test_compose_mounts_model_artifacts_read_only_and_documents_manifest_paths()
         in compose_text
     )
     assert (
+        "PROMPTGUARD_PADDLE_WORKER_PYTHON_PATH: ${PROMPTGUARD_PADDLE_WORKER_PYTHON_PATH:-/opt/venvs/paddle/bin/python}"
+        in compose_text
+    )
+    assert (
+        "PROMPTGUARD_PADDLE_WORKER_SCRIPT_PATH: ${PROMPTGUARD_PADDLE_WORKER_SCRIPT_PATH:-/app/scripts/paddle_ocr_worker.py}"
+        in compose_text
+    )
+    assert (
         "PROMPTGUARD_TEMP_FILE_ENCRYPTION_KEY: ${PROMPTGUARD_TEMP_FILE_ENCRYPTION_KEY:-}"
         in compose_text
     )
@@ -119,6 +127,9 @@ def test_compose_mounts_model_artifacts_read_only_and_documents_manifest_paths()
     assert "PROMPTGUARD_TORCH_WORKER_PAYLOAD_DIR=/tmp/promptguard-torch-payloads" in env_example_text
     assert "PROMPTGUARD_TORCH_WORKER_PYTHON_PATH=/opt/venvs/torch/bin/python" in env_example_text
     assert "PROMPTGUARD_TORCH_WORKER_SCRIPT_PATH=/app/scripts/torch_context_worker.py" in env_example_text
+    assert "PROMPTGUARD_PADDLE_WORKER_PAYLOAD_DIR=/tmp/promptguard-paddle-payloads" in env_example_text
+    assert "PROMPTGUARD_PADDLE_WORKER_PYTHON_PATH=/opt/venvs/paddle/bin/python" in env_example_text
+    assert "PROMPTGUARD_PADDLE_WORKER_SCRIPT_PATH=/app/scripts/paddle_ocr_worker.py" in env_example_text
 
 
 def test_compose_builds_single_api_image_with_split_worker_virtualenvs() -> None:
