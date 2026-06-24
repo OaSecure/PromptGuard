@@ -180,18 +180,14 @@ export function startPromptPreflightController(options: PromptPreflightControlle
               onClick: () => {
                 const result = applyMaskedPrompt(input, response.masked_prompt);
                 if (result.applied) {
-                  if (response.requires_user_confirmation) {
-                    overlay.show({
-                      decision: "warn",
-                      message: "PromptGuard applied the mask. Review and confirm before sending.",
-                      actions: [
-                        { label: "Continue", variant: "primary", onClick: () => replay(attempt) },
-                        { label: "Cancel", variant: "secondary", onClick: overlay.hide }
-                      ]
-                    });
-                  } else {
-                    replay(attempt);
-                  }
+                  overlay.show({
+                    decision: "warn",
+                    message: "PromptGuard applied the mask. Review the prompt and send it again.",
+                    actions: [
+                      { label: "Review masked prompt", variant: "primary", onClick: overlay.hide },
+                      { label: "Cancel", variant: "secondary", onClick: overlay.hide }
+                    ]
+                  });
                 } else {
                   showFailClosed("Masked replacement could not be applied.", () => void handleAttempt(attempt));
                 }

@@ -244,25 +244,35 @@ describe("prompt preflight controller", () => {
     blockController.disconnect();
   });
 
-  it("applies Mask and sends masked text once without extra confirmation", async () => {
+  it("applies Mask without automatic replay and requires a new send attempt", async () => {
     const page = setupComposer("mask case");
+    let analyzeCount = 0;
     const controller = startPromptPreflightController({
       config: DEFAULT_CONFIG,
       getContext: () => context,
-      sendAnalyze: async () => responseFor("Mask", "[masked]")
+      sendAnalyze: async () => {
+        analyzeCount += 1;
+        return analyzeCount === 1 ? responseFor("Mask", "[masked]") : responseFor("Allow");
+      }
     });
 
     page.button.click();
     await waitFor(() => overlayDecision() === "mask");
     clickOverlayAction("apply-mask");
-    await waitFor(() => page.submits() === 1);
+    await waitFor(() => overlayDecision() === "warn");
 
     expect(page.textarea.value).toBe("[masked]");
+    expect(page.submits()).toBe(0);
+
+    clickOverlayAction("review-masked-prompt");
+    page.button.click();
+    await waitFor(() => page.submits() === 1);
+
     expect(page.submits()).toBe(1);
     controller.disconnect();
   });
 
-  it("applies Mask, then requires explicit confirmation before replaying masked text when requested", async () => {
+  it("does not replay masked text from the Mask overlay continue path", async () => {
     const page = setupComposer("contact member@example.com");
     const controller = startPromptPreflightController({
       config: DEFAULT_CONFIG,
@@ -278,11 +288,10 @@ describe("prompt preflight controller", () => {
     expect(page.textarea.value).toBe("contact [masked-email]");
     expect(page.submits()).toBe(0);
 
-    clickOverlayAction("continue");
-    await waitFor(() => page.submits() === 1);
+    clickOverlayAction("review-masked-prompt");
 
     expect(page.textarea.value).toBe("contact [masked-email]");
-    expect(page.submits()).toBe(1);
+    expect(page.submits()).toBe(0);
     controller.disconnect();
   });
 
