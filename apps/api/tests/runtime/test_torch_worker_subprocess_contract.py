@@ -1,3 +1,4 @@
+import importlib.util
 import json
 import os
 import subprocess
@@ -227,7 +228,7 @@ def test_client_payload_ref_is_deleted_after_worker_failure(tmp_path):
     assert "PRIVATE" not in repr(result)
 
 
-def test_context_worker_reads_payload_ref_without_echoing_raw_text(tmp_path):
+def test_context_worker_payload_ref_failure_does_not_echo_raw_text(tmp_path):
     payload_store = TorchWorkerPayloadStore(tmp_path)
     payload_ref = payload_store.write(
         {
@@ -252,13 +253,152 @@ def test_context_worker_reads_payload_ref_without_echoing_raw_text(tmp_path):
         env={**os.environ, "PYTHONPATH": str(API_ROOT), "PROMPTGUARD_TORCH_WORKER_PAYLOAD_DIR": str(tmp_path)},
     )
 
-    assert completed.returncode == 0
+    assert completed.returncode == 1
     response = json.loads(completed.stdout)
     assert response == {
-        "metadata": {"atom_count": 1, "segment_count": 1, "worker": "torch"},
-        "ok": True,
+        "error_code": "TORCH_WORKER_CONTEXT_CONFIG_UNAVAILABLE",
+        "ok": False,
         "request_id": "req-1",
         "task": "context_pipeline",
     }
     assert "PRIVATE_RAW_CONTEXT" not in completed.stdout
     assert "PRIVATE_RAW_CONTEXT" not in completed.stderr
+
+
+def test_context_pipeline_orchestrates_real_model_steps_with_sanitized_summary(monkeypatch):
+    worker = _load_worker_module()
+    calls: list[str] = []
+
+    monkeypatch.setenv("PROMPTGUARD_CLASSIFIER_MANIFEST_PATH", "/models/context_manifest.json")
+    monkeypatch.setenv("PROMPTGUARD_VERIFIER_MANIFEST_PATH", "/models/context_manifest.json")
+    monkeypatch.setattr(worker, "build_classifier_service_from_manifest", lambda _path: _bundle("classifier", calls))
+    monkeypatch.setattr(worker, "build_verifier_service_from_manifest", lambda _path: _bundle("verifier", calls))
+    monkeypatch.setattr(worker, "AtomEmbeddingModelLoader", lambda backend_factory: SimpleNamespace(backend_factory=backend_factory))
+    monkeypatch.setattr(worker, "Qwen3EmbeddingBackend", lambda *args, **kwargs: SimpleNamespace())
+    monkeypatch.setattr(worker, "embed_atoms", lambda request, loader: _embedding_result(request, calls))
+    monkeypatch.setattr(worker, "build_segment_embeddings", lambda request: _segment_embedding_result(request, calls))
+
+    result = worker._execute_context_pipeline(
+        {
+            "input_id": "input-1",
+            "atoms": [{"atom_id": "atom-1", "block_id": "block-1", "text": "PRIVATE_RAW_CONTEXT", "ordinal": 0}],
+            "segments": [{"segment_id": "segment-1", "atom_ids": ["atom-1"], "text": "PRIVATE_RAW_CONTEXT", "ordinal": 0}],
+        },
+        request_id="req-1",
+    )
+
+    serialized = json.dumps(result, ensure_ascii=False)
+    assert result["ok"] is True
+    assert result["metadata"]["worker"] == "torch"
+    assert result["metadata"]["embedding"]["embedding_count"] == 1
+    assert result["metadata"]["classification"]["candidate_count"] == 1
+    assert result["metadata"]["verification"]["accepted_count"] == 1
+    assert calls == ["classifier_builder", "verifier_builder", "embed", "segment_embedding", "classify", "verify"]
+    assert "PRIVATE_RAW_CONTEXT" not in serialized
+    assert "0.91" not in serialized
+    assert "0.42" not in serialized
+
+
+def _load_worker_module():
+    spec = importlib.util.spec_from_file_location("torch_context_worker_under_test", WORKER_SCRIPT)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _bundle(kind: str, calls: list[str]):
+    from app.ml.classifier.models import (
+        ClassifierArtifactRef,
+        SegmentClassificationCandidate,
+        SegmentClassificationResult,
+    )
+    from app.ml.verifier.models import RobertaVerificationEvidence, RobertaVerificationResult, VerifierArtifactRef
+
+    calls.append(f"{kind}_builder")
+    if kind == "classifier":
+        artifact = ClassifierArtifactRef(
+            artifact_id="classifier-artifact",
+            manifest_version="manifest-v1",
+            runtime_version="classifier-runtime-v1",
+            target_labels=["credential_risk"],
+            candidate_threshold=0.5,
+            embedding_model_version="Qwen/Qwen3-Embedding-0.6B",
+        )
+
+        class ClassifierService:
+            def classify(self, _request):
+                calls.append("classify")
+                return SegmentClassificationResult(
+                    input_id="input-1",
+                    candidates=[
+                        SegmentClassificationCandidate(
+                            segment_id="segment-1",
+                            label="credential_risk",
+                            score=0.91,
+                            threshold=0.5,
+                            artifact_id="classifier-artifact",
+                            runtime_version="classifier-runtime-v1",
+                        )
+                    ],
+                )
+
+        return SimpleNamespace(service=ClassifierService(), artifact=artifact)
+
+    artifact = VerifierArtifactRef(
+        artifact_id="verifier-artifact",
+        model_version="verifier-model-v1",
+        runtime_version="verifier-runtime-v1",
+    )
+
+    class VerifierService:
+        def verify(self, _request):
+            calls.append("verify")
+            return RobertaVerificationResult(
+                input_id="input-1",
+                verifications=[
+                    RobertaVerificationEvidence(
+                        segment_id="segment-1",
+                        candidate_label="credential_risk",
+                        verifier_status="confirmed",
+                        accepted=True,
+                        confidence=0.91,
+                        verifier_model_version="verifier-model-v1",
+                    )
+                ],
+            )
+
+    return SimpleNamespace(service=VerifierService(), artifact=artifact)
+
+
+def _embedding_result(request, calls: list[str]):
+    from app.ml.embedding.models import AtomEmbedding, AtomEmbeddingResult
+
+    calls.append("embed")
+    return AtomEmbeddingResult(
+        input_id=request.input_id,
+        embeddings=[AtomEmbedding(atom_id="atom-1", vector=[0.42, 0.24])],
+        embedding_model_version="Qwen/Qwen3-Embedding-0.6B",
+        dimension=2,
+        normalized=True,
+    )
+
+
+def _segment_embedding_result(request, calls: list[str]):
+    from app.ml.segment_embedding.models import SegmentEmbedding, SegmentEmbeddingBuildResult
+
+    calls.append("segment_embedding")
+    return SegmentEmbeddingBuildResult(
+        input_id=request.input_id,
+        segment_embeddings=[
+            SegmentEmbedding(
+                segment_id="segment-1",
+                vector=[0.42, 0.24],
+                embedding_model_version="Qwen/Qwen3-Embedding-0.6B",
+                dimension=2,
+                pooling="mean",
+                normalized=True,
+            )
+        ],
+    )
