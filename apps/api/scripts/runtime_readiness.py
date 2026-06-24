@@ -18,10 +18,24 @@ from app.runtime.local_readiness import LocalRuntimeReadinessProbe  # noqa: E402
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Emit metadata-only local runtime readiness JSON.")
     parser.add_argument("--include-ocr", action="store_true", help="Include local OCR dependency readiness checks.")
+    parser.add_argument(
+        "--target",
+        choices=("torch", "ocr", "all"),
+        default=None,
+        help="Check one split worker runtime instead of the legacy combined runtime.",
+    )
     args = parser.parse_args(argv)
+    include_torch = args.target in (None, "torch", "all")
+    include_ocr = args.include_ocr or args.target in ("ocr", "all")
+    if args.target == "ocr":
+        include_torch = False
 
     with _suppress_probe_output():
-        report = LocalRuntimeReadinessProbe(expected_cuda=True, include_ocr=args.include_ocr).check()
+        report = LocalRuntimeReadinessProbe(
+            expected_cuda=True,
+            include_torch=include_torch,
+            include_ocr=include_ocr,
+        ).check()
     print(json.dumps(report.model_dump(), sort_keys=True))
     return 0 if report.ready else 1
 

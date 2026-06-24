@@ -3,13 +3,14 @@
   "scope": "local_runtime_readiness",
   "reviewed_at": "2026-06-21",
   "status": "runtime-ready",
-  "dependency_overlay_enabled": true,
+  "dependency_overlay_enabled": false,
   "default_runtime_enabled": true,
   "runtime_profile": {
-    "dependency_overlay": "apps/api/requirements-ocr-gpu.txt",
-    "python": "CPython 3.11 local venv",
+    "dependency_file": "apps/api/requirements-paddle-gpu.txt",
+    "worker_venv": "/opt/venvs/paddle",
+    "python": "CPython 3.13 Docker runtime",
     "cuda_required": true,
-    "local_runtime_probe": "apps/api/scripts/runtime_readiness.py --include-ocr"
+    "local_runtime_probe": "apps/api/scripts/runtime_readiness.py --target ocr"
   },
   "packages": [
     {
@@ -27,7 +28,7 @@
         "aiohttp>=3.8.0",
         "typing-extensions>=4.12"
       ],
-      "transitive_dependency_status": "local-runtime-overlay",
+      "transitive_dependency_status": "paddle-worker-requirements",
       "wheel_artifacts": [
         {
           "filename": "paddleocr-3.7.0-py3-none-any.whl",
@@ -38,9 +39,9 @@
     },
     {
       "name": "paddlepaddle-gpu",
-      "version": "3.2.0",
+      "version": "3.3.1",
       "cpu_only": false,
-      "package_source": "https://www.paddlepaddle.org.cn/packages/stable/cu118/",
+      "package_source": "https://www.paddlepaddle.org.cn/packages/stable/cu126/",
       "license_id": "Apache-2.0",
       "license_evidence_url": "https://github.com/PaddlePaddle/Paddle/blob/v3.3.1/LICENSE",
       "requires_python": "CPython 3.9-3.13 wheels",
@@ -50,7 +51,7 @@
         "macosx_11_0_arm64"
       ],
       "unsupported_project_runtime": "CPython 3.14",
-      "transitive_dependency_status": "local-runtime-overlay",
+      "transitive_dependency_status": "paddle-worker-requirements",
       "wheel_artifacts": []
     }
   ],
@@ -172,16 +173,16 @@
   ],
   "primary_stack_decision": "runtime-ready",
   "transitive_dependency_review": {
-    "status": "local-runtime-overlay",
+    "status": "paddle-worker-requirements",
     "resolver_probe": {
-      "environment": "CPython 3.11 / Windows amd64 / CUDA local venv",
+      "environment": "CPython 3.13 / Linux amd64 / Docker CUDA runtime / /opt/venvs/paddle",
       "resolved_paddlex_version": "3.7.1",
-      "result": "resolution-succeeded-for-local-runtime-overlay",
+      "result": "resolution-succeeded-for-paddle-worker-requirements",
       "resolved_distribution_count": 73
     },
     "root_requirements": [
       "paddleocr==3.7.0",
-      "paddlepaddle-gpu==3.2.0",
+      "paddlepaddle-gpu==3.3.1",
       "paddlex[ocr-core]>=3.7.0,<3.8.0"
     ],
     "mandatory_review_scope": [
@@ -218,8 +219,8 @@
       "macOS arm64"
     ],
     "unsupported_python": ["3.14"],
-    "impact": "The local venv uses CPython 3.11 with CUDA-enabled Paddle dependencies. CI remains lightweight and does not need to run GPU OCR.",
-    "required_resolution": "use the project OCR GPU overlay inside the local runtime environment"
+    "impact": "The Docker runtime uses a dedicated Paddle worker virtual environment with CUDA-enabled Paddle dependencies. CI remains lightweight and does not need to run GPU OCR.",
+    "required_resolution": "install PaddleOCR GPU dependencies in the Paddle worker virtual environment"
   },
   "blockers": [],
   "evidence": {

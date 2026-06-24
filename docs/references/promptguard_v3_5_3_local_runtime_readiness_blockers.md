@@ -2,11 +2,14 @@
 
 ## Current Local Runtime Evidence
 
-- Python runtime: `promptguard_publish/.venv`
-- Torch CUDA: available, `torch 2.9.1+cu128`, device `NVIDIA GeForce RTX 2080`
-- PaddleOCR: installed and CUDA-capable through `apps/api/requirements-ocr-gpu.txt`
+- API Python runtime: `promptguard_publish/.venv-api`
+- Torch worker Python runtime: `promptguard_publish/.venv-torch`
+- PaddleOCR worker Python runtime: `promptguard_publish/.venv-paddle`
+- Torch CUDA: available, `torch 2.9.1+cu126`, device `NVIDIA GeForce RTX 2080`
+- PaddleOCR: installed and CUDA-capable through `apps/api/requirements-paddle-gpu.txt`
 - Runtime probe command:
-  - `python apps/api/scripts/runtime_readiness.py --include-ocr`
+  - `python apps/api/scripts/runtime_readiness.py --target torch`
+  - `python apps/api/scripts/runtime_readiness.py --target ocr`
 - Runtime probe result:
   - `torch.cuda_available=true`
   - `paddleocr.cuda_available=true`
@@ -37,7 +40,7 @@ One of these must become true before Tesseract OCR can be claimed ready:
 - Install Tesseract OCR manually or through an installer path that completes without user cancellation.
 - Ensure `kor.traineddata` is present in the installed `tessdata` directory.
 - Make `tesseract.exe` discoverable through `PATH`, or set `PROMPTGUARD_TESSERACT_BINARY_PATH` to the absolute executable path.
-- Re-run `python apps/api/scripts/runtime_readiness.py --include-ocr`.
+- Re-run `python apps/api/scripts/runtime_readiness.py --target ocr`.
 
 Completion evidence:
 

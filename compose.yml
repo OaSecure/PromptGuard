@@ -10,6 +10,10 @@ services:
       PROMPTGUARD_DASHBOARD_PUBLIC_URL: ${PROMPTGUARD_DASHBOARD_PUBLIC_URL:-http://localhost:3000}
       PROMPTGUARD_CORS_ORIGINS: ${PROMPTGUARD_CORS_ORIGINS:-http://localhost:3000,chrome-extension://placeholder}
       PROMPTGUARD_INITIAL_ADMIN_PASSWORD: ${PROMPTGUARD_INITIAL_ADMIN_PASSWORD:-1234}
+      PROMPTGUARD_TEMP_FILE_ENCRYPTION_KEY: ${PROMPTGUARD_TEMP_FILE_ENCRYPTION_KEY:-}
+      PROMPTGUARD_TEMP_FILE_DIR: ${PROMPTGUARD_TEMP_FILE_DIR:-.promptguard-temp}
+      PROMPTGUARD_TEMP_FILE_TTL_SECONDS: ${PROMPTGUARD_TEMP_FILE_TTL_SECONDS:-900}
+      PROMPTGUARD_TEMP_FILE_MAX_BYTES: ${PROMPTGUARD_TEMP_FILE_MAX_BYTES:-1048576}
       DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://promptguard:promptguard_dev_password@postgres:5432/promptguard}
       REDIS_URL: ${REDIS_URL:-}
       ACCESS_TOKEN_SECRET: ${ACCESS_TOKEN_SECRET:-change-me-access-token-secret}
@@ -28,6 +32,7 @@ services:
       PROMPTGUARD_VERIFIER_MANIFEST_PATH: ${PROMPTGUARD_VERIFIER_MANIFEST_PATH:-}
     ports:
       - "8000:8000"
+    gpus: all
     depends_on:
       postgres:
         condition: service_healthy

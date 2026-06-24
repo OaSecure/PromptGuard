@@ -7,15 +7,25 @@ WORKDIR /app
 
 RUN apt-get update \
     && apt-get install --yes --no-install-recommends \
+        libglib2.0-0 \
+        libgl1 \
         tesseract-ocr \
         tesseract-ocr-kor \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements.txt requirements-paddle-gpu.txt requirements-torch-gpu.txt ./
+RUN python -m venv /opt/venvs/api \
+    && /opt/venvs/api/bin/python -m pip install --no-cache-dir --upgrade pip setuptools wheel \
+    && /opt/venvs/api/bin/python -m pip install --no-cache-dir -r requirements.txt \
+    && python -m venv /opt/venvs/paddle \
+    && /opt/venvs/paddle/bin/python -m pip install --no-cache-dir --upgrade pip setuptools wheel \
+    && /opt/venvs/paddle/bin/python -m pip install --no-cache-dir -r requirements-paddle-gpu.txt \
+    && python -m venv /opt/venvs/torch \
+    && /opt/venvs/torch/bin/python -m pip install --no-cache-dir --upgrade pip setuptools wheel \
+    && /opt/venvs/torch/bin/python -m pip install --no-cache-dir -r requirements-torch-gpu.txt
 
 COPY . .
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["/opt/venvs/api/bin/uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
