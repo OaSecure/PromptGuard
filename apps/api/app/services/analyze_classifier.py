@@ -68,7 +68,7 @@ class AnalyzeVerifierConfig:
 
 
 def evaluate_analyze_classifier(
-    text_inputs: list[tuple[int, object]],
+    text_inputs: list[tuple[int, Any]],
     provider_result: ClassifierRuntimeProviderResult,
     embedding_loader: AtomEmbeddingModelLoader | None,
     *,

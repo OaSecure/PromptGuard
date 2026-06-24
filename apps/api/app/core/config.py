@@ -53,6 +53,14 @@ class Settings(BaseSettings):
         default="/tmp/promptguard-torch-payloads",
         alias="PROMPTGUARD_TORCH_WORKER_PAYLOAD_DIR",
     )
+    torch_worker_python_path: str = Field(
+        default="/opt/venvs/torch/bin/python",
+        alias="PROMPTGUARD_TORCH_WORKER_PYTHON_PATH",
+    )
+    torch_worker_script_path: str = Field(
+        default="/app/scripts/torch_context_worker.py",
+        alias="PROMPTGUARD_TORCH_WORKER_SCRIPT_PATH",
+    )
     temp_file_encryption_key: str = Field(default="", alias="PROMPTGUARD_TEMP_FILE_ENCRYPTION_KEY")
     temp_file_dir: str = Field(default=".promptguard-temp", alias="PROMPTGUARD_TEMP_FILE_DIR")
     temp_file_ttl_seconds: int = Field(default=900, gt=0, alias="PROMPTGUARD_TEMP_FILE_TTL_SECONDS")

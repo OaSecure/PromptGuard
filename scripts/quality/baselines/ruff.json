@@ -175,14 +175,6 @@
       "count": 1
     },
     {
-      "fingerprint": "ruff|apps/api/app/routes/analyze.py|F401|`datetime.datetime` imported but unused|from datetime import datetime, timedelta",
-      "count": 1
-    },
-    {
-      "fingerprint": "ruff|apps/api/app/routes/analyze.py|I001|Import block is un-sorted or un-formatted|import json",
-      "count": 1
-    },
-    {
       "fingerprint": "ruff|apps/api/app/routes/auth.py|I001|Import block is un-sorted or un-formatted|import uuid",
       "count": 1
     },
@@ -487,18 +479,6 @@
       "count": 1
     },
     {
-      "fingerprint": "ruff|apps/api/tests/test_analyze_classifier_integration.py|I001|Import block is un-sorted or un-formatted|from apps.api.tests.test_analyze import (",
-      "count": 1
-    },
-    {
-      "fingerprint": "ruff|apps/api/tests/test_analyze_classifier_integration.py|I001|Import block is un-sorted or un-formatted|from tests.test_analyze import (",
-      "count": 1
-    },
-    {
-      "fingerprint": "ruff|apps/api/tests/test_analyze_classifier_integration.py|I001|Import block is un-sorted or un-formatted|import json",
-      "count": 1
-    },
-    {
       "fingerprint": "ruff|apps/api/tests/test_auth_routes.py|I001|Import block is un-sorted or un-formatted|import uuid",
       "count": 1
     },
@@ -548,10 +528,6 @@
     },
     {
       "fingerprint": "ruff|apps/api/tests/test_health.py|I001|Import block is un-sorted or un-formatted|from types import SimpleNamespace",
-      "count": 1
-    },
-    {
-      "fingerprint": "ruff|apps/api/tests/test_migration_runner.py|I001|Import block is un-sorted or un-formatted|import json",
       "count": 1
     },
     {

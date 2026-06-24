@@ -2,8 +2,9 @@
 import json
 import re
 import uuid
-from datetime import datetime, timedelta
+from datetime import timedelta
 from functools import lru_cache
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Literal
 
@@ -19,6 +20,8 @@ from app.application.analyze.policy_adapter import build_policy_request, get_pol
 from app.atoms.models import ParsedDocument
 from app.core.config import Settings, get_settings
 from app.core.tokens import utc_now
+from app.events.writer import SqlAlchemyEventWriter
+from app.events.writer import load_idempotency_event_id as load_idempotency_key
 from app.interfaces.http.analyze_request import LegacyAnalyzeRequest, adapt_legacy_analyze_request
 from app.interfaces.http.response_adapter import AnalyzeInputResult, AnalyzeResponse, build_analyze_response
 from app.masking.placeholder import apply_placeholders
@@ -27,18 +30,20 @@ from app.ml.embedding import create_qwen3_backend
 from app.ml.embedding.loader import AtomEmbeddingModelLoader
 from app.ml.gpu_capacity import GpuWorkerCapacityPolicy, TorchCudaGpuCapacityProbe, resolve_gpu_worker_capacity
 from app.ml.verifier import VerifierServiceBuildError, build_verifier_service_from_manifest
+from app.models.auth import User
+from app.models.filters import FilterRule
 from app.parser.models import FileParserResult, TempFileAccessContext
+from app.ports.policy import PolicyOrchestratorPort
+from app.privacy import serialize_event_write
+from app.routes.auth import get_db_session, require_active_user
+from app.routes.temp_files import get_temp_storage
 from app.runtime.ml_inference_queue import MlInferenceQueue
 from app.runtime.parser_worker import ParserWorkerPool
 from app.runtime.parser_worker_factory import build_parser_worker_pool
-from app.models.auth import User
-from app.models.filters import FilterRule
-from app.events.writer import SqlAlchemyEventWriter, load_idempotency_event_id as load_idempotency_key
-from app.privacy import serialize_event_write
-from app.ports.policy import PolicyOrchestratorPort
-from app.routes.auth import get_db_session, require_active_user
-from app.routes.temp_files import get_temp_storage
+from app.runtime.torch_worker_client import TorchWorkerClient, TorchWorkerClientConfig
+from app.runtime.torch_worker_payload import TorchWorkerPayloadStore
 from app.services.analyze_classifier import AnalyzeClassifierOutcome, AnalyzeVerifierConfig, evaluate_analyze_classifier
+from app.services.analyze_torch_worker import AnalyzeTorchWorker, build_analyze_torch_worker
 from app.services.filter_rules import (
     RuleMatch,
     detections_for_masking,
@@ -330,6 +335,11 @@ def duplicate_request_error() -> HTTPException:
     )
 
 
+def raise_if_duplicate_request(existing_idempotency_key: object | None) -> None:
+    if existing_idempotency_key is not None:
+        raise duplicate_request_error()
+
+
 def is_idempotency_conflict(error: IntegrityError) -> bool:
     message = str(error).casefold()
     return "idempotency_keys" in message or "pk_idempotency_keys" in message
@@ -437,6 +447,22 @@ def get_parser_worker_pool(settings: Settings = Depends(get_settings), storage=D
     )
 
 
+def get_analyze_torch_worker(settings: Settings = Depends(get_settings)) -> AnalyzeTorchWorker | None:
+    if not settings.classifier_runtime_enabled or not settings.verifier_runtime_enabled:
+        return None
+    if settings.classifier_manifest_path_value() is None or settings.verifier_manifest_path_value() is None:
+        return None
+    client = TorchWorkerClient(
+        TorchWorkerClientConfig(
+            python_path=Path(settings.torch_worker_python_path),
+            script_path=Path(settings.torch_worker_script_path),
+            timeout_ms=settings.ml_inference_queue_timeout_ms,
+        ),
+        payload_store=TorchWorkerPayloadStore(Path(settings.torch_worker_payload_dir)),
+    )
+    return build_analyze_torch_worker(client)
+
+
 def parser_results_for_payload(
     payload: LegacyAnalyzeRequest,
     *,
@@ -509,6 +535,7 @@ async def analyze_prompt(
     verifier_config: AnalyzeVerifierConfig | None = Depends(get_analyze_verifier_config),
     inference_queue: MlInferenceQueue | None = Depends(get_ml_inference_queue),
     parser_worker_pool: ParserWorkerPool | None = Depends(get_parser_worker_pool),
+    analyze_torch_worker: AnalyzeTorchWorker | None = Depends(get_analyze_torch_worker),
     settings: Settings = Depends(get_settings),
     policy_orchestrator: PolicyOrchestratorPort = Depends(get_policy_orchestrator),
 ) -> AnalyzeResponse:
@@ -518,8 +545,7 @@ async def analyze_prompt(
     event_id = uuid.uuid4()
     checked_at = utc_now()
     existing_idempotency_key = await load_idempotency_key(session, current_user.login_id, payload.client_request_id)
-    if existing_idempotency_key is not None:
-        raise duplicate_request_error()
+    raise_if_duplicate_request(existing_idempotency_key)
 
     rules = await load_active_filter_rules(session)
     text_inputs = included_text_inputs(payload)
@@ -534,10 +560,12 @@ async def analyze_prompt(
     matches = [match for _index, _item, item_matches in matched_inputs for match in item_matches]
     detection_target = first_composer_input([(index, item) for index, item, item_matches in matched_inputs if item_matches])
     risk_score = score_for_matches(matches)
-    classifier_outcome = (
-        AnalyzeClassifierOutcome(enabled=False)
-        if classifier_provider.failure is not None and classifier_provider.failure.code == "CLASSIFIER_RUNTIME_DISABLED"
-        else evaluate_analyze_classifier(
+    if classifier_provider.failure is not None and classifier_provider.failure.code == "CLASSIFIER_RUNTIME_DISABLED":
+        classifier_outcome = AnalyzeClassifierOutcome(enabled=False)
+    elif analyze_torch_worker is not None:
+        classifier_outcome = analyze_torch_worker.evaluate(text_inputs)
+    else:
+        classifier_outcome = evaluate_analyze_classifier(
             text_inputs,
             classifier_provider,
             embedding_loader,
@@ -545,7 +573,6 @@ async def analyze_prompt(
             inference_queue=inference_queue,
             inference_timeout_ms=settings.ml_inference_queue_timeout_ms,
         )
-    )
     detection_input_indexes = {index for index, _item, item_matches in matched_inputs if item_matches}
     input_results = input_results_for_payload(payload, detection_input_indexes, parser_results)
     policy_request = build_policy_request(request_id, payload.inputs, matched_inputs, classifier_outcome, input_results=input_results)
