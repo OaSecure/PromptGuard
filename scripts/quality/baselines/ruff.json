@@ -483,10 +483,6 @@
       "count": 1
     },
     {
-      "fingerprint": "ruff|apps/api/tests/test_cors.py|F401|`fastapi.FastAPI` imported but unused|from fastapi import FastAPI",
-      "count": 1
-    },
-    {
       "fingerprint": "ruff|apps/api/tests/test_cors.py|I001|Import block is un-sorted or un-formatted|import pytest",
       "count": 1
     },
