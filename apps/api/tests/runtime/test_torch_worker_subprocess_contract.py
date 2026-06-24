@@ -18,6 +18,9 @@ from app.runtime.torch_worker_protocol import (
     validate_worker_request,
 )
 
+API_ROOT = Path(__file__).resolve().parents[2]
+WORKER_SCRIPT = API_ROOT / "scripts" / "torch_context_worker.py"
+
 
 def test_worker_request_rejects_raw_text_and_vector_fields():
     forbidden_payloads = [
@@ -241,12 +244,12 @@ def test_context_worker_reads_payload_ref_without_echoing_raw_text(tmp_path):
     }
 
     completed = subprocess.run(
-        [sys.executable, "apps/api/scripts/torch_context_worker.py"],
+        [sys.executable, str(WORKER_SCRIPT)],
         input=json.dumps(request),
         text=True,
         capture_output=True,
         check=False,
-        env={**os.environ, "PYTHONPATH": "apps/api", "PROMPTGUARD_TORCH_WORKER_PAYLOAD_DIR": str(tmp_path)},
+        env={**os.environ, "PYTHONPATH": str(API_ROOT), "PROMPTGUARD_TORCH_WORKER_PAYLOAD_DIR": str(tmp_path)},
     )
 
     assert completed.returncode == 0
