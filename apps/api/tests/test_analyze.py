@@ -581,6 +581,31 @@ def test_analyze_masks_rrn_and_card_as_high_risk() -> None:
     assert {item.type for item in detection_rows} == {"RRN", "CARD"}
 
 
+def test_analyze_masks_korean_bank_account_without_treating_payroll_amounts_as_pii() -> None:
+    user = _user()
+    client, fake_session = _client(user)
+    text = "급여명세 행: 직원 한서윤, 사번 E-7742, 실지급액 ₩3,418,200, 공제액 ₩418,900, 계좌 국민은행 482719-02-774182. 급여 금액과 계좌를 분리해"
+
+    response = client.post(
+        "/prompts/analyze",
+        headers=_bearer_header(user.id),
+        json=_analyze_payload(_text_input("in_1", text)),
+    )
+
+    body = response.json()
+    detection_rows = [item for item in fake_session.added if isinstance(item, EventDetection)]
+
+    assert response.status_code == 200
+    assert body["action"] == "Mask"
+    assert {item["type"] for item in body["detections"]} == {"BANK_ACCOUNT"}
+    assert {item.type for item in detection_rows} == {"BANK_ACCOUNT"}
+    assert "₩3,418,200" in body["masked_prompt"]
+    assert "₩418,900" in body["masked_prompt"]
+    assert "[BANK_ACCOUNT_1]" in body["masked_prompt"]
+    assert "[PAYROLL_AMOUNT_1]" not in body["masked_prompt"]
+    assert "[CARD_1]" not in body["masked_prompt"]
+
+
 def test_analyze_accepts_content_unavailable_metadata_without_text_body() -> None:
     user = _user()
     client, fake_session = _client(user)
@@ -725,6 +750,25 @@ def test_analyze_respects_disabled_built_in_filter_rule() -> None:
     assert body["action"] == "Allow"
     assert body["detections"] == []
     assert detection_rows == []
+
+
+def test_analyze_merges_default_built_in_detectors_with_stored_custom_rules() -> None:
+    user = _user()
+    custom_rule = _filter_rule(keyword="Project Hermes", placeholder="INTERNAL_PROJECT")
+    client, fake_session = _client(user, rules=[custom_rule])
+
+    response = client.post(
+        "/prompts/analyze",
+        headers=_bearer_header(user.id),
+        json=_analyze_payload(_text_input("in_1", "Project Hermes contact admin@example.com")),
+    )
+
+    body = response.json()
+    detection_rows = [item for item in fake_session.added if isinstance(item, EventDetection)]
+
+    assert response.status_code == 200
+    assert {item["type"] for item in body["detections"]} == {"INTERNAL_PROJECT", "EMAIL"}
+    assert {item.type for item in detection_rows} == {"INTERNAL_PROJECT", "EMAIL"}
 
 
 def test_analyze_records_custom_keyword_filter_metadata_without_raw_value() -> None:
