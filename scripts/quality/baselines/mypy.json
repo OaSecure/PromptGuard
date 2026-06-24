@@ -151,10 +151,6 @@
       "count": 1
     },
     {
-      "fingerprint": "mypy|apps/api/app/routes/analyze.py|arg-type|Argument 1 to \"evaluate_analyze_classifier\" has incompatible type \"list[tuple[int, AnalyzeInput]]\"; expected \"list[tuple[int, object]]\"|",
-      "count": 1
-    },
-    {
       "fingerprint": "mypy|apps/api/app/routes/analyze.py|arg-type|Argument 1 to \"included_text_inputs\" has incompatible type \"LegacyAnalyzeRequest\"; expected \"AnalyzeRequest\"|",
       "count": 1
     },

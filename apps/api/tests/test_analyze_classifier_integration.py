@@ -5,11 +5,6 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from fastapi import FastAPI
-from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
-from fastapi.testclient import TestClient
-
 from app.atoms.models import PipelineFailure
 from app.ml.classifier.factory import (
     BuiltClassifierService,
@@ -30,34 +25,38 @@ from app.ml.verifier import (
     RobertaVerifierService,
     VerifierArtifactRef,
 )
-from app.runtime.ml_inference_queue import MlInferenceQueue
-from app.scanner import LexicalRule
 from app.routes import analyze as analyze_route
 from app.routes.auth import get_db_session
+from app.runtime.ml_inference_queue import MlInferenceQueue
+from app.scanner import LexicalRule
 from app.services import analyze_classifier as analyze_classifier_service
 from app.services.analyze_classifier import AnalyzeVerifierConfig, evaluate_analyze_classifier
+from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from fastapi.testclient import TestClient
 
 try:
     from apps.api.tests.test_analyze import (
-        _FakeSession,
         _analyze_payload,
         _bearer_header,
+        _FakeSession,
         _filter_rule,
         _text_input,
         _user,
     )
 except ModuleNotFoundError:
     from tests.test_analyze import (
-        _FakeSession,
         _analyze_payload,
         _bearer_header,
+        _FakeSession,
         _filter_rule,
         _text_input,
         _user,
     )
 
 
-def _client(user=None, rules=None, provider=None, verifier_config=None, inference_queue=None) -> tuple[TestClient, _FakeSession]:
+def _client(user=None, rules=None, provider=None, verifier_config=None, inference_queue=None, torch_worker=None) -> tuple[TestClient, _FakeSession]:
     app = FastAPI()
     app.include_router(analyze_route.router)
     fake_session = _FakeSession(user, rules)
@@ -90,6 +89,9 @@ def _client(user=None, rules=None, provider=None, verifier_config=None, inferenc
     inference_queue_dependency = getattr(analyze_route, "get_ml_inference_queue", None)
     if inference_queue_dependency is not None:
         app.dependency_overrides[inference_queue_dependency] = lambda: inference_queue
+    torch_worker_dependency = getattr(analyze_route, "get_analyze_torch_worker", None)
+    if torch_worker_dependency is not None:
+        app.dependency_overrides[torch_worker_dependency] = lambda: torch_worker
     return TestClient(app), fake_session
 
 
@@ -625,6 +627,38 @@ def test_analyze_route_passes_verifier_config_and_queue_to_classifier_helper(mon
     assert seen["inference_queue"] is inference_queue
     assert "masked_prompt" not in response.json()
     inference_queue.shutdown()
+
+
+def test_analyze_route_prefers_torch_worker_context_pipeline(monkeypatch) -> None:
+    seen = {}
+
+    def fail_if_in_process_classifier_runs(*_args, **_kwargs):
+        raise AssertionError("worker-backed analyze route must not call in-process classifier path")
+
+    class RecordingWorker:
+        def evaluate(self, text_inputs):
+            seen["input_count"] = len(text_inputs)
+            return SimpleNamespace(enabled=True, has_candidates=True, failure=None, verifier_summaries=[])
+
+    monkeypatch.setattr(analyze_route, "evaluate_analyze_classifier", fail_if_in_process_classifier_runs, raising=False)
+    user = _user()
+    client, fake_session = _client(
+        user,
+        rules=[],
+        provider=_enabled_provider(),
+        torch_worker=RecordingWorker(),
+    )
+
+    response = client.post(
+        "/prompts/analyze",
+        json=_analyze_payload(_text_input("in_1", "plain implementation note")),
+        headers=_bearer_header(user.id),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["action"] == "Warn"
+    assert seen == {"input_count": 1}
+    assert "plain implementation note" not in _stored_payload(fake_session)
 
 
 def test_classifier_candidate_escalates_allow_to_warn_without_raw_leakage(monkeypatch) -> None:
