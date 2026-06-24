@@ -9,6 +9,7 @@ from app.routes.analyze import router as analyze_router
 from app.routes.auth import router as auth_router
 from app.routes.dashboard_filters import router as dashboard_filters_router
 from app.routes.dashboard_overview import router as dashboard_overview_router
+from app.routes.dashboard_policy_settings import router as dashboard_policy_settings_router
 from app.routes.dashboard_session import router as dashboard_session_router
 from app.routes.dashboard_status import router as dashboard_status_router
 from app.routes.events import router as events_router
@@ -57,6 +58,7 @@ app.include_router(analyze_router)
 app.include_router(auth_router)
 app.include_router(dashboard_filters_router)
 app.include_router(dashboard_overview_router)
+app.include_router(dashboard_policy_settings_router)
 app.include_router(dashboard_session_router)
 app.include_router(dashboard_status_router)
 app.include_router(events_router)
