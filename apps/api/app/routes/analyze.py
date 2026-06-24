@@ -311,11 +311,10 @@ def policy_evidence_codes_for_payload(
     codes: list[ReasonCode] = []
     for index, item in enumerate(payload.inputs):
         parser_result = parser_results.get(index)
-        if parser_result is not None and parser_result.failure is not None:
+        if _parser_failed(parser_result):
             _append_once(codes, "PARSER_OR_OCR_FAILED")
             continue
-        if parser_result is not None and parser_result.parser_status in {"failed", "timeout", "too_large", "encrypted"}:
-            _append_once(codes, "PARSER_OR_OCR_FAILED")
+        if _parser_scanned(parser_result):
             continue
         if item.kind == "unsupported_attachment" or item.content_unavailable_reason == "unsupported":
             _append_once(codes, "UNSUPPORTED_FILE")
@@ -323,6 +322,16 @@ def policy_evidence_codes_for_payload(
         if not item.content_included:
             _append_once(codes, "CONTENT_NOT_SCANNED")
     return codes
+
+
+def _parser_failed(parser_result: FileParserResult | None) -> bool:
+    if parser_result is None:
+        return False
+    return parser_result.failure is not None or parser_result.parser_status in {"failed", "timeout", "too_large", "encrypted"}
+
+
+def _parser_scanned(parser_result: FileParserResult | None) -> bool:
+    return parser_result is not None and parser_result.parser_status == "parsed" and parser_result.document is not None
 
 
 def _append_once(codes: list[ReasonCode], code: ReasonCode) -> None:

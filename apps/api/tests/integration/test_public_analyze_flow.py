@@ -124,6 +124,10 @@ def test_file_reference_routes_through_parser_worker_without_persisting_runtime_
     assert response.status_code == 200
     assert body["action"] == "Block"
     assert body["input_results"][0]["content_scanned"] is True
+    assert body["input_results"][0]["decision_basis"] == "detection"
+    assert body["content_unavailable_inputs"] == []
+    assert body["user_message"] == "Sensitive or governed content was detected and should not be sent."
+    assert "masked_prompt" not in body
     assert body["detections"][0]["kind"] == "file_reference"
     assert parser_pool.payloads[0].file_ref == opaque_ref
     assert parser_pool.payloads[0].access_context.temp_scope_id == temp_scope_id
@@ -174,6 +178,9 @@ def test_file_reference_default_parser_pool_reads_temp_storage_without_raw_persi
     persisted = json.dumps([getattr(row, "__dict__", {}) for row in session.added], default=str, ensure_ascii=False)
     assert response.status_code == 200
     assert body["input_results"][0]["content_scanned"] is True
+    assert body["content_unavailable_inputs"] == []
+    assert body["user_message"] == "Sensitive or governed content was detected and should not be sent."
+    assert "masked_prompt" not in body
     assert body["detections"][0]["kind"] == "file_reference"
     assert runtime_text not in json.dumps(body, ensure_ascii=False)
     assert runtime_text not in persisted

@@ -82,7 +82,8 @@ def build_analyze_response(
     risk_score: int, risk_level: str, payload: Any, matched_inputs: list[tuple[int, Any, list[Any]]],
     input_results: list[AnalyzeInputResult], masked_prompt: str | None, masked_source: str | None,
 ) -> AnalyzeResponse:
-    has_unavailable = any(not item.content_included for item in payload.inputs)
+    unavailable_inputs = _content_unavailable(input_results)
+    has_unavailable = bool(unavailable_inputs)
     matches = [match for _index, _item, item_matches in matched_inputs for match in item_matches]
     usable_mask = masked_prompt if action == "MASK" and masked_source in {"composer", "converted_paste"} else None
     return AnalyzeResponse(
@@ -97,7 +98,7 @@ def build_analyze_response(
         requires_user_confirmation=_requires_confirmation(action, matches),
         detections=_response_detections(matched_inputs),
         input_results=input_results,
-        content_unavailable_inputs=_content_unavailable(payload),
+        content_unavailable_inputs=unavailable_inputs,
         business_context_matches=_business_context_matches(matched_inputs),
         client_request_id=payload.client_request_id,
         filter_config_revision=payload.filter_config_revision,
@@ -136,13 +137,13 @@ def _response_detections(matched_inputs: list[tuple[int, Any, list[Any]]]) -> li
     ) for index, item, matches in matched_inputs for match in matches]
 
 
-def _content_unavailable(payload: Any) -> list[ContentUnavailableInput]:
+def _content_unavailable(input_results: list[AnalyzeInputResult]) -> list[ContentUnavailableInput]:
     result = []
-    for index, item in enumerate(payload.inputs):
-        if item.content_included:
+    for item in input_results:
+        if item.content_scanned or item.decision_basis not in {"content_unavailable", "metadata_only"}:
             continue
         reason = item.content_unavailable_reason or ("metadata_only" if item.kind == "attachment_metadata" else "unavailable")
-        result.append(ContentUnavailableInput(input_id=item.input_id, input_index=index, kind=item.kind,
+        result.append(ContentUnavailableInput(input_id=item.input_id, input_index=item.input_index, kind=item.kind,
                                               source=item.source, reason=reason, limit_exceeded=item.limit_exceeded))
     return result
 
