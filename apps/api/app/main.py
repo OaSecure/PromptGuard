@@ -13,6 +13,7 @@ from app.routes.dashboard_policy_settings import router as dashboard_policy_sett
 from app.routes.dashboard_session import router as dashboard_session_router
 from app.routes.dashboard_status import router as dashboard_status_router
 from app.routes.events import router as events_router
+from app.routes.extension_config import router as extension_config_router
 from app.routes.filters import router as filters_router
 from app.routes.health import router as health_router
 from app.routes.setup import router as setup_router
@@ -62,6 +63,7 @@ app.include_router(dashboard_policy_settings_router)
 app.include_router(dashboard_session_router)
 app.include_router(dashboard_status_router)
 app.include_router(events_router)
+app.include_router(extension_config_router)
 app.include_router(filters_router)
 app.include_router(health_router)
 app.include_router(setup_router)
