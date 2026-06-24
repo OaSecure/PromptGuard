@@ -6,6 +6,8 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+from app.runtime import resident_worker_process
+from app.runtime.resident_worker_process import ResidentWorkerProcess
 from app.runtime.torch_worker_client import (
     TorchWorkerClient,
     TorchWorkerClientConfig,
@@ -102,6 +104,150 @@ def test_client_invokes_configured_torch_python_with_metadata_only_payload():
         error_code=None,
     )
     assert calls == [["/opt/venvs/torch/bin/python", "/app/scripts/torch_context_worker.py"]]
+
+
+def test_default_client_uses_resident_torch_worker_process(monkeypatch):
+    processes = []
+
+    class FakeProcess:
+        def __init__(self, command, **kwargs):
+            self.command = list(command)
+            self.kwargs = kwargs
+            self.stdin = _ResidentInput(self)
+            self.stdout = _ResidentOutput(self)
+            self.returncode = None
+            self.requests = []
+            processes.append(self)
+
+        def poll(self):
+            return self.returncode
+
+        def terminate(self):
+            self.returncode = 0
+
+        def wait(self, timeout=None):
+            return self.returncode
+
+        def kill(self):
+            self.returncode = -9
+
+    monkeypatch.setattr(resident_worker_process.subprocess, "Popen", FakeProcess)
+    client = TorchWorkerClient(
+        TorchWorkerClientConfig(
+            python_path=Path("/opt/venvs/torch/bin/python"),
+            script_path=Path("/app/scripts/torch_context_worker.py"),
+            timeout_ms=500,
+        )
+    )
+
+    first = client.execute(TorchWorkerRequest(task="context_smoke", request_id="req-1"))
+    second = client.execute(TorchWorkerRequest(task="context_smoke", request_id="req-2"))
+    snapshot = client.status_snapshot()
+    client.close()
+
+    assert first.ok is True
+    assert second.ok is True
+    assert snapshot is not None
+    assert snapshot.process_running is True
+    assert snapshot.warm is True
+    assert snapshot.requests_total == 2
+    assert snapshot.succeeded_total == 2
+    assert snapshot.in_flight_or_queued == 0
+    assert snapshot.last_failure_code is None
+    assert len(processes) == 1
+    assert processes[0].command == [
+        "/opt/venvs/torch/bin/python",
+        "/app/scripts/torch_context_worker.py",
+        "--serve",
+    ]
+    assert [request["request_id"] for request in processes[0].requests] == ["req-1", "req-2"]
+
+
+def test_resident_worker_process_rejects_when_queue_is_full():
+    worker = ResidentWorkerProcess(
+        ["/opt/venvs/torch/bin/python", "/app/scripts/torch_context_worker.py", "--serve"],
+        env_factory=lambda: {},
+        timeout_seconds=1,
+        max_pending_requests=1,
+    )
+    assert worker._slots.acquire(blocking=False) is True
+
+    try:
+        result = worker.request(json.dumps({"ok": True}))
+        snapshot = worker.snapshot()
+    finally:
+        worker._slots.release()
+        worker.close()
+
+    assert result is None
+    assert snapshot.requests_total == 0
+    assert snapshot.failed_total == 1
+    assert snapshot.last_failure_code == "WORKER_QUEUE_FULL"
+
+
+def test_torch_client_maps_resident_queue_full_to_fail_closed_code():
+    client = TorchWorkerClient(
+        TorchWorkerClientConfig(
+            python_path=Path("/opt/venvs/torch/bin/python"),
+            script_path=Path("/app/scripts/torch_context_worker.py"),
+            timeout_ms=500,
+        )
+    )
+    client._resident = SimpleNamespace(
+        request=lambda _payload: None,
+        snapshot=lambda: SimpleNamespace(last_failure_code="WORKER_QUEUE_FULL"),
+    )
+
+    result = client.execute(TorchWorkerRequest(task="context_smoke", request_id="req-1"))
+
+    assert result.ok is False
+    assert result.error_code == "TORCH_WORKER_QUEUE_FULL"
+
+
+def test_torch_worker_readiness_probe_warms_resident_process(monkeypatch):
+    processes = []
+
+    class FakeProcess:
+        def __init__(self, command, **kwargs):
+            self.command = list(command)
+            self.kwargs = kwargs
+            self.stdin = _ResidentInput(self)
+            self.stdout = _ResidentOutput(self)
+            self.returncode = None
+            self.requests = []
+            processes.append(self)
+
+        def poll(self):
+            return self.returncode
+
+        def terminate(self):
+            self.returncode = 0
+
+        def wait(self, timeout=None):
+            return self.returncode
+
+        def kill(self):
+            self.returncode = -9
+
+    monkeypatch.setattr(resident_worker_process.subprocess, "Popen", FakeProcess)
+    client = TorchWorkerClient(
+        TorchWorkerClientConfig(
+            python_path=Path("/opt/venvs/torch/bin/python"),
+            script_path=Path("/app/scripts/torch_context_worker.py"),
+            timeout_ms=500,
+        )
+    )
+
+    result = client.readiness_probe()
+    snapshot = client.status_snapshot()
+    client.close()
+
+    assert result.ok is True
+    assert snapshot is not None
+    assert snapshot.process_running is True
+    assert snapshot.warm is True
+    assert snapshot.requests_total == 1
+    assert processes[0].requests[0]["task"] == "context_smoke"
 
 
 def test_client_timeout_is_fail_closed_without_private_values():
@@ -302,10 +448,58 @@ def test_context_pipeline_orchestrates_real_model_steps_with_sanitized_summary(m
     assert result["metadata"]["embedding"]["embedding_count"] == 1
     assert result["metadata"]["classification"]["candidate_count"] == 1
     assert result["metadata"]["verification"]["accepted_count"] == 1
+    assert result["metadata"]["runtime"] == {
+        "load_generation": 1,
+        "classifier_cached": True,
+        "verifier_cached": True,
+        "embedding_loader_cached": True,
+    }
     assert calls == ["classifier_builder", "verifier_builder", "embed", "segment_embedding", "classify", "verify"]
     assert "PRIVATE_RAW_CONTEXT" not in serialized
     assert "0.91" not in serialized
     assert "0.42" not in serialized
+    worker._reset_context_pipeline_runtime_for_tests()
+
+
+def test_context_pipeline_reuses_model_runtime_for_same_manifest(monkeypatch):
+    worker = _load_worker_module()
+    calls: list[str] = []
+    loader_count = 0
+
+    def loader_factory(backend_factory):
+        nonlocal loader_count
+        loader_count += 1
+        return SimpleNamespace(backend_factory=backend_factory)
+
+    monkeypatch.setenv("PROMPTGUARD_CLASSIFIER_MANIFEST_PATH", "/models/context_manifest.json")
+    monkeypatch.setenv("PROMPTGUARD_VERIFIER_MANIFEST_PATH", "/models/context_manifest.json")
+    monkeypatch.setattr(worker, "build_classifier_service_from_manifest", lambda _path: _bundle("classifier", calls))
+    monkeypatch.setattr(worker, "build_verifier_service_from_manifest", lambda _path: _bundle("verifier", calls))
+    monkeypatch.setattr(worker, "AtomEmbeddingModelLoader", loader_factory)
+    monkeypatch.setattr(worker, "Qwen3EmbeddingBackend", lambda *args, **kwargs: SimpleNamespace())
+    monkeypatch.setattr(worker, "embed_atoms", lambda request, loader: _embedding_result(request, calls))
+    monkeypatch.setattr(worker, "build_segment_embeddings", lambda request: _segment_embedding_result(request, calls))
+    payload = {
+        "input_id": "input-1",
+        "atoms": [{"atom_id": "atom-1", "block_id": "block-1", "text": "PRIVATE_RAW_CONTEXT", "ordinal": 0}],
+        "segments": [{"segment_id": "segment-1", "atom_ids": ["atom-1"], "text": "PRIVATE_RAW_CONTEXT", "ordinal": 0}],
+    }
+
+    first = worker._execute_context_pipeline(payload, request_id="req-1")
+    second = worker._execute_context_pipeline(payload, request_id="req-2")
+
+    assert first["ok"] is True
+    assert second["ok"] is True
+    assert first["metadata"]["runtime"]["load_generation"] == 1
+    assert second["metadata"]["runtime"]["load_generation"] == 1
+    assert calls.count("classifier_builder") == 1
+    assert calls.count("verifier_builder") == 1
+    assert loader_count == 1
+    assert calls.count("embed") == 2
+    assert calls.count("classify") == 2
+    assert calls.count("verify") == 2
+    assert second["metadata"]["queue"]["submitted_total"] == 6
+    worker._reset_context_pipeline_runtime_for_tests()
 
 
 def test_analyze_torch_worker_runs_subprocess_calls_through_shared_queue():
@@ -455,3 +649,33 @@ def _segment_embedding_result(request, calls: list[str]):
             )
         ],
     )
+
+
+class _ResidentInput:
+    def __init__(self, process) -> None:
+        self.process = process
+
+    def write(self, value: str) -> None:
+        self.process.requests.append(json.loads(value))
+
+    def flush(self) -> None:
+        pass
+
+    def close(self) -> None:
+        pass
+
+
+class _ResidentOutput:
+    def __init__(self, process) -> None:
+        self.process = process
+
+    def readline(self) -> str:
+        request = self.process.requests[-1]
+        return json.dumps(
+            {
+                "ok": True,
+                "task": request["task"],
+                "request_id": request["request_id"],
+                "metadata": {"worker": "torch"},
+            }
+        ) + "\n"

@@ -3925,6 +3925,8 @@ Application startup부터 shutdown까지 유지된다.
 * parser pool 관리
 * Qwen3 singleton embedding worker 관리
 * RoBERTa verifier worker 관리
+* PaddleOCR resident parser worker 관리
+* Torch/LR+FT resident verifier worker 관리
 * bounded queue 관리
 * timeout/retry/backpressure 적용
 * model readiness check
@@ -3965,9 +3967,22 @@ WorkerRuntimeState(parser_pool_ready, embedding_worker_ready, roberta_verifier_r
 
 * Qwen3 model is not loaded per request.
 * RoBERTa model is not loaded per request.
+* Torch/LR+FT model is not loaded per request.
+* PaddleOCR model is not loaded per request.
 * verifier queue is bounded.
 * worker queue payload is memory-only.
 * queue timeout is represented as structured failure/result.
+
+#### Split dependency runtime rules
+
+* FastAPI route/service code must not import PaddleOCR or Torch heavy runtime dependencies on normal request paths.
+* PaddleOCR and Torch/LR+FT dependencies may live in separate runtime environments or subprocess entrypoints.
+* The API process calls resident worker clients that keep subprocess workers alive from startup until shutdown.
+* Resident workers communicate with the API through a bounded request/response queue or equivalent line-delimited structured IPC.
+* Per-request one-shot subprocess execution is not the default production path; it is allowed only for fallback, diagnostics, or isolated tests.
+* Worker startup must warm required models once, expose readiness, and fail readiness when required model load fails.
+* Worker results must return structured timeout/crash/model-load failure codes without raw prompt, file bytes, OCR text, queue dumps, or model input dumps in logs.
+* Multi-user and multi-input concurrency must be handled through bounded queues, backpressure, timeout, and graceful cancellation rather than unbounded subprocess spawning.
 
 #### Boundary rules
 
@@ -3976,6 +3991,8 @@ WorkerRuntimeState(parser_pool_ready, embedding_worker_ready, roberta_verifier_r
 | ParserWorkerPool | `ParserWorkerPayload` | `FileParserResult` | parser timeout | worker crash only | no ML model | file bytes, raw text, file name | parser workers alive | parser failure to policy |
 | EmbeddingWorker | `AtomEmbeddingRequest` | `AtomEmbeddingResult` | embedding timeout | smaller batch once | Qwen3 singleton | atom text, vectors | model loaded | lexical-only fallback |
 | RobertaVerifierWorker | `RobertaVerificationRequest` | `RobertaVerificationResult` | verifier timeout | no default request retry | RoBERTa singleton | segment text, queue dump | model loaded + queue accepts | LR+lexical fallback |
+| TorchMlWorker | `MlClassificationRequest` | `MlClassificationResult` | classifier timeout | no default request retry | Torch/LR+FT singleton | segment text, model input dump | model loaded + queue accepts | rule-only or LR-only fallback by policy |
+| PaddleOcrWorker | `OcrParseRequest` | `OcrParseResult` | OCR timeout | worker crash only | PaddleOCR singleton | image bytes, OCR text, file name | model loaded + queue accepts | parser/OCR failure to policy |
 | TtlCleanupWorker | temp file refs | cleanup status | cleanup interval | next interval | no model | file name if raw | cleanup loop alive | next cycle retry |
 
 #### Failure handling
@@ -3985,6 +4002,8 @@ WorkerRuntimeState(parser_pool_ready, embedding_worker_ready, roberta_verifier_r
 | embedding queue full | backpressure, timeout if not accepted |
 | verifier queue full | timeout/failed verifier result |
 | parser worker crash | restart, request failure status |
+| Torch worker crash | restart, structured classifier failure status |
+| PaddleOCR worker crash | restart, structured OCR failure status |
 | model load failure | readiness false, degraded/fail-closed by policy |
 | cleanup failure | retry next interval |
 | shutdown | drain or cancel with structured failure |

@@ -4,7 +4,6 @@ import re
 import uuid
 from datetime import timedelta
 from functools import lru_cache
-from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Literal
 
@@ -41,8 +40,7 @@ from app.routes.temp_files import get_temp_storage
 from app.runtime.ml_inference_queue import MlInferenceQueue
 from app.runtime.parser_worker import ParserWorkerPool
 from app.runtime.parser_worker_factory import build_parser_worker_pool
-from app.runtime.torch_worker_client import TorchWorkerClient, TorchWorkerClientConfig
-from app.runtime.torch_worker_payload import TorchWorkerPayloadStore
+from app.runtime.worker_clients import cached_torch_worker_client
 from app.services.analyze_classifier import AnalyzeClassifierOutcome, AnalyzeVerifierConfig, evaluate_analyze_classifier
 from app.services.analyze_torch_worker import AnalyzeTorchWorker, build_analyze_torch_worker
 from app.services.filter_rules import (
@@ -500,13 +498,12 @@ def get_analyze_torch_worker(
         return None
     if settings.classifier_manifest_path_value() is None or settings.verifier_manifest_path_value() is None:
         return None
-    client = TorchWorkerClient(
-        TorchWorkerClientConfig(
-            python_path=Path(settings.torch_worker_python_path),
-            script_path=Path(settings.torch_worker_script_path),
-            timeout_ms=settings.ml_inference_queue_timeout_ms,
-        ),
-        payload_store=TorchWorkerPayloadStore(Path(settings.torch_worker_payload_dir)),
+    client = cached_torch_worker_client(
+        settings.torch_worker_python_path,
+        settings.torch_worker_script_path,
+        settings.torch_worker_payload_dir,
+        settings.ml_inference_queue_timeout_ms,
+        settings.ml_inference_queue_max_queue_size,
     )
     return build_analyze_torch_worker(
         client,

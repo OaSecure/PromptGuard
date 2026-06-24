@@ -79,6 +79,8 @@ class Settings(BaseSettings):
         default="/app/scripts/paddle_ocr_worker.py",
         alias="PROMPTGUARD_PADDLE_WORKER_SCRIPT_PATH",
     )
+    worker_readiness_required: bool = Field(default=True, alias="PROMPTGUARD_WORKER_READINESS_REQUIRED")
+    worker_readiness_timeout_ms: int = Field(default=15_000, alias="PROMPTGUARD_WORKER_READINESS_TIMEOUT_MS")
     temp_file_encryption_key: str = Field(default="", alias="PROMPTGUARD_TEMP_FILE_ENCRYPTION_KEY")
     temp_file_dir: str = Field(default=".promptguard-temp", alias="PROMPTGUARD_TEMP_FILE_DIR")
     temp_file_ttl_seconds: int = Field(default=900, gt=0, alias="PROMPTGUARD_TEMP_FILE_TTL_SECONDS")

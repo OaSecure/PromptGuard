@@ -1,8 +1,10 @@
+import importlib.util
 import json
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
+from app.runtime import resident_worker_process
 from app.runtime.paddle_worker_client import (
     PaddleOcrSubprocessRuntime,
     PaddleWorkerClient,
@@ -10,12 +12,15 @@ from app.runtime.paddle_worker_client import (
     PaddleWorkerRequest,
     PaddleWorkerResult,
 )
-from app.runtime.paddle_worker_payload import PaddleWorkerPayloadStore
+from app.runtime.paddle_worker_payload import PaddleWorkerPayloadStore, encode_bytes
 from app.runtime.paddle_worker_protocol import (
     PADDLE_WORKER_PROTOCOL_VERSION,
     build_paddle_worker_error,
     validate_paddle_worker_request,
 )
+
+API_ROOT = Path(__file__).resolve().parents[2]
+WORKER_SCRIPT = API_ROOT / "scripts" / "paddle_ocr_worker.py"
 
 
 def test_paddle_worker_request_rejects_raw_text_filename_path_and_url_fields():
@@ -89,6 +94,128 @@ def test_client_invokes_configured_paddle_python_with_metadata_only_payload():
         error_code=None,
     )
     assert calls == [["/opt/venvs/paddle/bin/python", "/app/scripts/paddle_ocr_worker.py"]]
+
+
+def test_default_client_uses_resident_paddle_worker_process(monkeypatch):
+    processes = []
+
+    class FakeProcess:
+        def __init__(self, command, **kwargs):
+            self.command = list(command)
+            self.kwargs = kwargs
+            self.stdin = _ResidentInput(self)
+            self.stdout = _ResidentOutput(self)
+            self.returncode = None
+            self.requests = []
+            processes.append(self)
+
+        def poll(self):
+            return self.returncode
+
+        def terminate(self):
+            self.returncode = 0
+
+        def wait(self, timeout=None):
+            return self.returncode
+
+        def kill(self):
+            self.returncode = -9
+
+    monkeypatch.setattr(resident_worker_process.subprocess, "Popen", FakeProcess)
+    client = PaddleWorkerClient(
+        PaddleWorkerClientConfig(
+            python_path=Path("/opt/venvs/paddle/bin/python"),
+            script_path=Path("/app/scripts/paddle_ocr_worker.py"),
+            timeout_ms=500,
+        )
+    )
+
+    first = client.execute(PaddleWorkerRequest(task="ocr_image", request_id="req-1", metadata={"page": 1}))
+    second = client.execute(PaddleWorkerRequest(task="ocr_image", request_id="req-2", metadata={"page": 2}))
+    snapshot = client.status_snapshot()
+    client.close()
+
+    assert first.ok is True
+    assert second.ok is True
+    assert snapshot is not None
+    assert snapshot.process_running is True
+    assert snapshot.warm is True
+    assert snapshot.requests_total == 2
+    assert snapshot.succeeded_total == 2
+    assert snapshot.in_flight_or_queued == 0
+    assert snapshot.last_failure_code is None
+    assert len(processes) == 1
+    assert processes[0].command == [
+        "/opt/venvs/paddle/bin/python",
+        "/app/scripts/paddle_ocr_worker.py",
+        "--serve",
+    ]
+    assert [request["request_id"] for request in processes[0].requests] == ["req-1", "req-2"]
+
+
+def test_paddle_worker_readiness_probe_uses_metadata_only_smoke(monkeypatch):
+    processes = []
+
+    class FakeProcess:
+        def __init__(self, command, **kwargs):
+            self.command = list(command)
+            self.kwargs = kwargs
+            self.stdin = _ResidentInput(self)
+            self.stdout = _ResidentOutput(self)
+            self.returncode = None
+            self.requests = []
+            processes.append(self)
+
+        def poll(self):
+            return self.returncode
+
+        def terminate(self):
+            self.returncode = 0
+
+        def wait(self, timeout=None):
+            return self.returncode
+
+        def kill(self):
+            self.returncode = -9
+
+    monkeypatch.setattr(resident_worker_process.subprocess, "Popen", FakeProcess)
+    client = PaddleWorkerClient(
+        PaddleWorkerClientConfig(
+            python_path=Path("/opt/venvs/paddle/bin/python"),
+            script_path=Path("/app/scripts/paddle_ocr_worker.py"),
+            timeout_ms=500,
+        )
+    )
+
+    result = client.readiness_probe()
+    snapshot = client.status_snapshot()
+    client.close()
+
+    assert result.ok is True
+    assert snapshot is not None
+    assert snapshot.process_running is True
+    assert snapshot.warm is True
+    assert snapshot.requests_total == 1
+    assert processes[0].requests[0]["task"] == "ocr_smoke"
+
+
+def test_paddle_client_maps_resident_queue_full_to_fail_closed_code():
+    client = PaddleWorkerClient(
+        PaddleWorkerClientConfig(
+            python_path=Path("/opt/venvs/paddle/bin/python"),
+            script_path=Path("/app/scripts/paddle_ocr_worker.py"),
+            timeout_ms=500,
+        )
+    )
+    client._resident = SimpleNamespace(
+        request=lambda _payload: None,
+        snapshot=lambda: SimpleNamespace(last_failure_code="WORKER_QUEUE_FULL"),
+    )
+
+    result = client.execute(PaddleWorkerRequest(task="ocr_smoke", request_id="req-1"))
+
+    assert result.ok is False
+    assert result.error_code == "PADDLE_WORKER_QUEUE_FULL"
 
 
 def test_client_payload_ref_keeps_image_bytes_out_of_control_json_and_deletes_payload(tmp_path):
@@ -202,3 +329,76 @@ def test_paddle_ocr_runtime_fails_closed_when_shared_queue_is_full(tmp_path):
 
     assert result.status == "failed"
     assert "PRIVATE_IMAGE_BYTES" not in repr(result)
+
+
+def test_paddle_worker_reuses_ocr_runtime_for_same_language(monkeypatch):
+    worker = _load_worker_module()
+    calls: list[str] = []
+
+    class FakePaddleOCR:
+        def __init__(self, *, lang):
+            calls.append(f"init:{lang}")
+            self.lang = lang
+
+        def predict(self, image):
+            calls.append(f"predict:{self.lang}:{Path(image).suffix}")
+            return {"safe": True}
+
+    monkeypatch.setattr(worker, "PaddleOCR", FakePaddleOCR)
+    monkeypatch.setattr(worker, "_extract_blocks", lambda raw_result, page: [{"text": f"safe-{page}", "confidence": 0.9}])
+    payload = {
+        "image_b64": encode_bytes(b"\x89PNG\r\n\x1a\nSAFE_IMAGE_BYTES"),
+        "suffix": ".png",
+        "page": 1,
+        "languages": ["kor"],
+    }
+
+    first = worker._execute_ocr_image(payload)
+    second = worker._execute_ocr_image({**payload, "page": 2})
+
+    assert first["ok"] is True
+    assert second["ok"] is True
+    assert first["metadata"]["runtime"] == {"load_generation": 1, "lang": "korean", "ocr_cached": True}
+    assert second["metadata"]["runtime"] == {"load_generation": 1, "lang": "korean", "ocr_cached": True}
+    assert calls == ["init:korean", "predict:korean:.png", "predict:korean:.png"]
+    assert second["metadata"]["queue"]["submitted_total"] == 2
+    worker._reset_paddle_runtime_for_tests()
+
+
+class _ResidentInput:
+    def __init__(self, process) -> None:
+        self.process = process
+
+    def write(self, value: str) -> None:
+        self.process.requests.append(json.loads(value))
+
+    def flush(self) -> None:
+        pass
+
+    def close(self) -> None:
+        pass
+
+
+class _ResidentOutput:
+    def __init__(self, process) -> None:
+        self.process = process
+
+    def readline(self) -> str:
+        request = self.process.requests[-1]
+        return json.dumps(
+            {
+                "ok": True,
+                "task": request["task"],
+                "request_id": request["request_id"],
+                "metadata": {"worker": "paddle", "blocks": []},
+            }
+        ) + "\n"
+
+
+def _load_worker_module():
+    spec = importlib.util.spec_from_file_location("paddle_ocr_worker_under_test", WORKER_SCRIPT)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module

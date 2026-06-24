@@ -1,5 +1,3 @@
-from pathlib import Path
-
 from app.infrastructure.ocr.paddle_runtime import PaddleOcrRuntimeConfig, compose_paddle_ocr_engine
 from app.infrastructure.pdf.pdfium_renderer import (
     InMemoryRenderedImageStore,
@@ -24,13 +22,9 @@ from app.parser.runner import FileParserRunner
 from app.parser.temp_file_resolver import TemporaryFileResolver
 from app.ports.clock import ClockPort
 from app.runtime.ml_inference_queue import MlInferenceQueue
-from app.runtime.paddle_worker_client import (
-    PaddleOcrSubprocessRuntime,
-    PaddleWorkerClient,
-    PaddleWorkerClientConfig,
-)
-from app.runtime.paddle_worker_payload import PaddleWorkerPayloadStore
+from app.runtime.paddle_worker_client import PaddleOcrSubprocessRuntime
 from app.runtime.parser_worker import ParserWorkerPool
+from app.runtime.worker_clients import cached_paddle_worker_client
 
 
 class SystemClock(ClockPort):
@@ -61,13 +55,12 @@ def build_parser_worker_pool(
     def image_resolver(handle: str):
         return rendered_images.resolve_for_ocr(handle) if handle.startswith("rendered-image-") else handle
     paddle_runtime = PaddleOcrSubprocessRuntime(
-        PaddleWorkerClient(
-            PaddleWorkerClientConfig(
-                python_path=Path(paddle_worker_python_path),
-                script_path=Path(paddle_worker_script_path),
-                timeout_ms=60_000,
-            ),
-            payload_store=PaddleWorkerPayloadStore(Path(paddle_worker_payload_dir)),
+        cached_paddle_worker_client(
+            paddle_worker_python_path,
+            paddle_worker_script_path,
+            paddle_worker_payload_dir,
+            60_000,
+            max_queue_size,
         ),
         image_resolver=image_resolver,
         inference_queue=paddle_inference_queue,

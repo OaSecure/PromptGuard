@@ -14,6 +14,7 @@ from app.runtime.paddle_worker_protocol import (
     loads_paddle_worker_json,
     validate_paddle_worker_request,
 )
+from app.runtime.resident_worker_process import ResidentWorkerProcess, ResidentWorkerSnapshot
 
 
 @dataclass(frozen=True)
@@ -21,6 +22,7 @@ class PaddleWorkerClientConfig:
     python_path: Path
     script_path: Path
     timeout_ms: int = 60_000
+    max_queue_size: int = 32
 
 
 @dataclass(frozen=True)
@@ -62,6 +64,7 @@ class PaddleWorkerClient:
         self._config = config
         self._runner = runner
         self._payload_store = payload_store
+        self._resident: ResidentWorkerProcess | None = None
 
     def execute(self, request: PaddleWorkerRequest, *, payload: dict[str, Any] | None = None) -> PaddleWorkerResult:
         payload_ref: str | None = None
@@ -87,6 +90,8 @@ class PaddleWorkerClient:
                 self._payload_store.delete(payload_ref)
 
     def _execute_control_payload(self, control_payload: dict[str, Any], request: PaddleWorkerRequest) -> PaddleWorkerResult:
+        if self._runner is subprocess.run:
+            return self._execute_resident_control_payload(control_payload, request)
         try:
             completed = self._runner(
                 [_path_arg(self._config.python_path), _path_arg(self._config.script_path)],
@@ -114,6 +119,47 @@ class PaddleWorkerClient:
             request_id=_optional_text(response.get("request_id")),
             metadata=metadata if isinstance(metadata, dict) else {},
         )
+
+    def _execute_resident_control_payload(self, control_payload: dict[str, Any], request: PaddleWorkerRequest) -> PaddleWorkerResult:
+        resident = self._resident_process()
+        response_text = resident.request(dumps_paddle_worker_json(control_payload))
+        if response_text is None:
+            if resident.snapshot().last_failure_code == "WORKER_QUEUE_FULL":
+                return _failure("PADDLE_WORKER_QUEUE_FULL", request)
+            return _failure("PADDLE_WORKER_TIMEOUT", request)
+        response = loads_paddle_worker_json(response_text or "")
+        if response is None:
+            return _failure("PADDLE_WORKER_INVALID_RESPONSE", request)
+        if response.get("ok") is not True:
+            return _failure(_safe_error_code(response.get("error_code")), request)
+        metadata = response.get("metadata", {})
+        return PaddleWorkerResult(
+            ok=True,
+            task=_optional_text(response.get("task")),
+            request_id=_optional_text(response.get("request_id")),
+            metadata=metadata if isinstance(metadata, dict) else {},
+        )
+
+    def close(self) -> None:
+        if self._resident is not None:
+            self._resident.close()
+            self._resident = None
+
+    def status_snapshot(self) -> ResidentWorkerSnapshot | None:
+        return self._resident.snapshot() if self._resident is not None else None
+
+    def readiness_probe(self) -> PaddleWorkerResult:
+        return self.execute(PaddleWorkerRequest(task="ocr_smoke", request_id="paddle-readiness"))
+
+    def _resident_process(self) -> ResidentWorkerProcess:
+        if self._resident is None:
+            self._resident = ResidentWorkerProcess(
+                [_path_arg(self._config.python_path), _path_arg(self._config.script_path), "--serve"],
+                env_factory=self._worker_env,
+                timeout_seconds=self._config.timeout_ms / 1000,
+                max_pending_requests=self._config.max_queue_size,
+            )
+        return self._resident
 
     def _worker_env(self) -> dict[str, str]:
         env = dict(os.environ)
