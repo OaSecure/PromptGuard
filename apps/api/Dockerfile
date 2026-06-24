@@ -13,14 +13,18 @@ RUN apt-get update \
         tesseract-ocr-kor \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt requirements-paddle-gpu.txt requirements-torch-gpu.txt ./
+COPY requirements.txt ./
 RUN python -m venv /opt/venvs/api \
     && /opt/venvs/api/bin/python -m pip install --no-cache-dir --upgrade pip setuptools wheel \
-    && /opt/venvs/api/bin/python -m pip install --no-cache-dir -r requirements.txt \
-    && python -m venv /opt/venvs/paddle \
+    && /opt/venvs/api/bin/python -m pip install --no-cache-dir -r requirements.txt
+
+COPY requirements-paddle-gpu.txt ./
+RUN python -m venv /opt/venvs/paddle \
     && /opt/venvs/paddle/bin/python -m pip install --no-cache-dir --upgrade pip setuptools wheel \
-    && /opt/venvs/paddle/bin/python -m pip install --no-cache-dir -r requirements-paddle-gpu.txt \
-    && python -m venv /opt/venvs/torch \
+    && /opt/venvs/paddle/bin/python -m pip install --no-cache-dir -r requirements-paddle-gpu.txt
+
+COPY requirements-torch-gpu.txt ./
+RUN python -m venv /opt/venvs/torch \
     && /opt/venvs/torch/bin/python -m pip install --no-cache-dir --upgrade pip setuptools wheel \
     && /opt/venvs/torch/bin/python -m pip install --no-cache-dir -r requirements-torch-gpu.txt
 

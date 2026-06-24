@@ -11,10 +11,6 @@
       "count": 1
     },
     {
-      "fingerprint": "ruff|apps/api/app/db/startup.py|F401|`sys` imported but unused|import sys",
-      "count": 1
-    },
-    {
       "fingerprint": "ruff|apps/api/app/detectors/pii.py|I001|Import block is un-sorted or un-formatted|import re",
       "count": 1
     },
@@ -216,10 +212,6 @@
     },
     {
       "fingerprint": "ruff|apps/api/app/routes/temp_files.py|E701|Multiple statements on one line (colon)|if total > settings.temp_file_max_bytes: raise HTTPException(status_code=413, detail=\"temporary file is too large\")",
-      "count": 1
-    },
-    {
-      "fingerprint": "ruff|apps/api/app/runtime/__init__.py|I001|Import block is un-sorted or un-formatted|from app.runtime.parser_worker import ParserWorkerPool",
       "count": 1
     },
     {

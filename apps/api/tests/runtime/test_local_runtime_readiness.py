@@ -243,6 +243,14 @@ def test_runtime_readiness_script_can_check_ocr_worker_target_without_torch(monk
     assert "torch" not in output
 
 
+def test_runtime_package_init_keeps_worker_dependencies_lazy():
+    runtime_init = Path(__file__).parents[2] / "app" / "runtime" / "__init__.py"
+    content = runtime_init.read_text(encoding="utf-8")
+
+    assert "parser_worker" not in content
+    assert "ml_inference_queue" not in content
+
+
 def test_runtime_readiness_script_keeps_probe_noise_out_of_stdout(monkeypatch, capfd):
     class NoisyProbe:
         def __init__(self, *, expected_cuda: bool, include_torch: bool, include_ocr: bool) -> None:
@@ -289,6 +297,7 @@ def test_cuda_requirements_pin_pytorch_cuda_index():
 
     assert "torch==" not in api_requirements
     assert "--extra-index-url https://download.pytorch.org/whl/cu126" in content
+    assert "pydantic==2.13.4" in content
     assert "torch==2.9.1+cu126" in content
     assert "sentence-transformers==5.4.1" in content
     assert "transformers==4.57.1" in content
@@ -322,4 +331,3 @@ def test_local_runtime_blocker_doc_records_tesseract_install_evidence():
     assert "PROMPTGUARD_TESSERACT_BINARY_PATH" in content
     assert "torch.cuda_available=true" in content
     assert "paddleocr.cuda_available=true" in content
-
