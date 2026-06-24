@@ -49,6 +49,10 @@ class Settings(BaseSettings):
     ml_inference_gpu_memory_per_worker_mb: int = Field(default=2048, alias="PROMPTGUARD_ML_INFERENCE_GPU_MEMORY_PER_WORKER_MB")
     verifier_runtime_enabled: bool = Field(default=False, alias="PROMPTGUARD_VERIFIER_RUNTIME_ENABLED")
     verifier_manifest_path: str = Field(default="", alias="PROMPTGUARD_VERIFIER_MANIFEST_PATH")
+    torch_worker_payload_dir: str = Field(
+        default="/tmp/promptguard-torch-payloads",
+        alias="PROMPTGUARD_TORCH_WORKER_PAYLOAD_DIR",
+    )
     temp_file_encryption_key: str = Field(default="", alias="PROMPTGUARD_TEMP_FILE_ENCRYPTION_KEY")
     temp_file_dir: str = Field(default=".promptguard-temp", alias="PROMPTGUARD_TEMP_FILE_DIR")
     temp_file_ttl_seconds: int = Field(default=900, gt=0, alias="PROMPTGUARD_TEMP_FILE_TTL_SECONDS")

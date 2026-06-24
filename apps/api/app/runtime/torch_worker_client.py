@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from app.runtime.torch_worker_payload import TorchWorkerPayloadStore
 from app.runtime.torch_worker_protocol import (
     TORCH_WORKER_PROTOCOL_VERSION,
     dumps_worker_json,
@@ -70,20 +71,47 @@ Runner = Callable[..., subprocess.CompletedProcess[str]]
 class TorchWorkerClient:
     """Invoke Torch tasks through a subprocess owned by the Torch venv."""
 
-    def __init__(self, config: TorchWorkerClientConfig, *, runner: Runner = subprocess.run) -> None:
+    def __init__(
+        self,
+        config: TorchWorkerClientConfig,
+        *,
+        runner: Runner = subprocess.run,
+        payload_store: TorchWorkerPayloadStore | None = None,
+    ) -> None:
         self._config = config
         self._runner = runner
+        self._payload_store = payload_store
 
-    def execute(self, request: TorchWorkerRequest) -> TorchWorkerResult:
+    def execute(self, request: TorchWorkerRequest, *, payload: dict[str, Any] | None = None) -> TorchWorkerResult:
         """Run a worker request and fail closed on validation, timeout, or malformed output."""
-        payload = request.to_payload()
-        validation = validate_worker_request(payload)
+        payload_ref: str | None = None
+        if payload is not None:
+            if self._payload_store is None:
+                return _failure("TORCH_WORKER_PAYLOAD_STORE_UNAVAILABLE", request)
+            payload_ref = self._payload_store.write(payload)
+            request = TorchWorkerRequest(
+                task=request.task,
+                request_id=request.request_id,
+                metadata={**request.metadata, "payload_ref": payload_ref},
+            )
+
+        control_payload = request.to_payload()
+        validation = validate_worker_request(control_payload)
         if not validation.ok:
+            if payload_ref is not None and self._payload_store is not None:
+                self._payload_store.delete(payload_ref)
             return _failure(validation.error_code or "TORCH_WORKER_REQUEST_INVALID", request)
+        try:
+            return self._execute_control_payload(control_payload, request)
+        finally:
+            if payload_ref is not None and self._payload_store is not None:
+                self._payload_store.delete(payload_ref)
+
+    def _execute_control_payload(self, control_payload: dict[str, Any], request: TorchWorkerRequest) -> TorchWorkerResult:
         try:
             completed = self._runner(
                 [_path_arg(self._config.python_path), _path_arg(self._config.script_path)],
-                input=dumps_worker_json(payload),
+                input=dumps_worker_json(control_payload),
                 text=True,
                 capture_output=True,
                 timeout=self._config.timeout_ms / 1000,
