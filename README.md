@@ -101,15 +101,23 @@ API health: http://localhost:8000/healthz
 API ready: http://localhost:8000/readyz
 ```
 
-포트를 바꾸려면 `.env`에서 `PROMPTGUARD_API_PORT`와 public URL 값을 함께 바꾼다.
+Chrome Extension에서 사용할 주소는 자동 추측하지 않는다. 서버를 띄우기 전에 `.env`에 Extension 사용자가 실제로 접속할 수 있는 API origin을 명시한다. Dashboard URL은 `/dashboard/`가 들어가지만, Extension API URL은 `/dashboard/` 같은 경로 없이 origin만 적는다.
 
 ```env
-PROMPTGUARD_API_PORT=18000
-PROMPTGUARD_API_PUBLIC_URL=http://localhost:18000
-PROMPTGUARD_DASHBOARD_PUBLIC_URL=http://localhost:18000/dashboard/
+PROMPTGUARD_API_PORT=8000
+PROMPTGUARD_EXTENSION_API_URL=http://192.168.0.25:8000
+PROMPTGUARD_DASHBOARD_PUBLIC_URL=http://192.168.0.25:8000/dashboard/
 ```
 
-Chrome Extension 사용자는 dashboard의 서버 상태 화면에 표시되는 API URL 후보 중 자신의 컴퓨터에서 접속 가능한 주소를 Extension 설정에 입력한다. 서버 관리자 PC의 `localhost`는 다른 사용자 컴퓨터에서는 통하지 않으므로, 같은 내부망 사용자는 서버 PC의 내부망 IP 주소를 사용하고 외부 사용자는 포트포워딩 또는 reverse proxy로 공개된 API origin을 사용한다.
+외부 도메인이나 포트포워딩을 사용할 때는 같은 방식으로 공개 주소를 적는다.
+
+```env
+PROMPTGUARD_API_PORT=8000
+PROMPTGUARD_EXTENSION_API_URL=https://promptguard.example.com
+PROMPTGUARD_DASHBOARD_PUBLIC_URL=https://promptguard.example.com/dashboard/
+```
+
+Dashboard의 서버 상태 화면은 `PROMPTGUARD_EXTENSION_API_URL`이 유효할 때만 복사 버튼을 보여준다. 값이 비어 있거나 `localhost`, `127.0.0.1`, Docker 내부 `172.16.0.0/12` 주소, PostgreSQL 포트 `5432`, `/dashboard/` 경로가 들어간 URL이면 설정 오류로 표시된다.
 
 ### API 로컬 CUDA 런타임 확인
 
@@ -245,15 +253,23 @@ API health: http://localhost:8000/healthz
 API ready: http://localhost:8000/readyz
 ```
 
-To change the public port, update `PROMPTGUARD_API_PORT` and the public URL values together:
+The Chrome Extension address is not guessed automatically. Before starting the server, set the API origin that extension user computers can actually reach. The Dashboard URL includes `/dashboard/`, but the Extension API URL is the origin only and must not include `/dashboard/` or another path.
 
 ```env
-PROMPTGUARD_API_PORT=18000
-PROMPTGUARD_API_PUBLIC_URL=http://localhost:18000
-PROMPTGUARD_DASHBOARD_PUBLIC_URL=http://localhost:18000/dashboard/
+PROMPTGUARD_API_PORT=8000
+PROMPTGUARD_EXTENSION_API_URL=http://192.168.0.25:8000
+PROMPTGUARD_DASHBOARD_PUBLIC_URL=http://192.168.0.25:8000/dashboard/
 ```
 
-Chrome Extension users should copy an API URL candidate from the dashboard Server Status screen only when that origin is reachable from their own computer. `localhost` on the server admin machine is not valid for other users; same-LAN users need the server machine's LAN IP, and external users need the port-forwarded or reverse-proxied API origin.
+For an external domain or port-forwarded deployment, set the public address instead:
+
+```env
+PROMPTGUARD_API_PORT=8000
+PROMPTGUARD_EXTENSION_API_URL=https://promptguard.example.com
+PROMPTGUARD_DASHBOARD_PUBLIC_URL=https://promptguard.example.com/dashboard/
+```
+
+The dashboard Server Status screen shows a copy button only when `PROMPTGUARD_EXTENSION_API_URL` is valid. Empty values, `localhost`, `127.0.0.1`, Docker-internal `172.16.0.0/12` addresses, PostgreSQL port `5432`, and URLs with `/dashboard/` paths are shown as configuration errors.
 
 ### API Local CUDA Runtime Check
 

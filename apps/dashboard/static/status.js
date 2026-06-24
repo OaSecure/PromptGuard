@@ -101,9 +101,23 @@ function renderExtensionSetup(plan) {
     for (const item of plan.connectionCards) {
         const entry = document.createElement("article");
         entry.className = "status-setup-value-card";
+        if (item.state) {
+            entry.classList.add(`status-setup-value-${item.state}`);
+        }
         appendText(entry, "span", item.label);
         appendText(entry, "strong", item.value);
         appendText(entry, "p", item.description);
+        if (item.copyValue) {
+            const copyButton = document.createElement("button");
+            copyButton.className = "users-secondary-button status-copy-button";
+            copyButton.type = "button";
+            copyButton.textContent = "복사";
+            copyButton.addEventListener("click", async () => {
+                await navigator.clipboard.writeText(item.copyValue ?? "");
+                copyButton.textContent = "복사됨";
+            });
+            entry.append(copyButton);
+        }
         settings.append(entry);
     }
     const actions = document.createElement("div");
