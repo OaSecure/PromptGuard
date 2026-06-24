@@ -31,6 +31,7 @@ def test_public_analyze_scanned_pdf_file_reference_uses_real_paddleocr_without_r
 ):
     monkeypatch.setenv("PROMPTGUARD_ML_INFERENCE_QUEUE_TIMEOUT_MS", "120000")
     analyze_route.get_settings.cache_clear()
+    analyze_route._cached_ml_inference_queue.cache_clear()
     user = _user()
     client, session = _client(user, rules=[_keyword_rule("BLOCK")])
     storage = EncryptedTemporaryFileStorage(tmp_path, base64.b64encode(b"K" * 32).decode(), 900)

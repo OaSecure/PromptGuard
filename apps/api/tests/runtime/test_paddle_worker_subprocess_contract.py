@@ -103,6 +103,7 @@ def test_client_payload_ref_keeps_image_bytes_out_of_control_json_and_deletes_pa
         assert request["metadata"]["payload_ref"].startswith("pwpl_")
         seen_payload_ref = request["metadata"]["payload_ref"]
         assert payload_store.read(seen_payload_ref)["image_b64"] == "PRIVATE_IMAGE_BYTES"
+        assert kwargs["env"]["PROMPTGUARD_PADDLE_WORKER_PAYLOAD_DIR"] == tmp_path.as_posix()
         return SimpleNamespace(
             returncode=0,
             stdout=json.dumps({"ok": True, "task": "ocr_image", "request_id": "req-1", "metadata": {"blocks": []}}),

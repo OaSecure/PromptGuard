@@ -1,3 +1,4 @@
+import os
 import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -92,6 +93,7 @@ class PaddleWorkerClient:
                 input=dumps_paddle_worker_json(control_payload),
                 text=True,
                 capture_output=True,
+                env=self._worker_env(),
                 timeout=self._config.timeout_ms / 1000,
                 check=False,
             )
@@ -112,6 +114,12 @@ class PaddleWorkerClient:
             request_id=_optional_text(response.get("request_id")),
             metadata=metadata if isinstance(metadata, dict) else {},
         )
+
+    def _worker_env(self) -> dict[str, str]:
+        env = dict(os.environ)
+        if self._payload_store is not None:
+            env["PROMPTGUARD_PADDLE_WORKER_PAYLOAD_DIR"] = self._payload_store.root.as_posix()
+        return env
 
 
 class PaddleOcrSubprocessRuntime:

@@ -17,6 +17,10 @@ class PaddleWorkerPayloadStore:
         self._root = root
         self._root.mkdir(parents=True, exist_ok=True)
 
+    @property
+    def root(self) -> Path:
+        return self._root
+
     def write(self, payload: dict[str, Any]) -> str:
         payload_ref = f"pwpl_{secrets.token_urlsafe(24)}"
         self._path_for(payload_ref).write_text(
