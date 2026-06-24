@@ -7,7 +7,6 @@ from app.core.config import Settings, get_settings
 from app.models.auth import User
 from app.routes.auth import require_active_user
 
-
 router = APIRouter(prefix="/config", tags=["extension-config"])
 
 

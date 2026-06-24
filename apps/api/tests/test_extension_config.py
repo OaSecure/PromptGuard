@@ -1,11 +1,10 @@
 from types import SimpleNamespace
 
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-
 from app.core.config import Settings
 from app.routes import extension_config
 from app.routes.auth import require_active_user
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
 
 def _client_with_user(user=None) -> TestClient:
