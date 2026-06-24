@@ -18,6 +18,7 @@ from app.runtime.torch_worker_protocol import (
     build_worker_error,
     validate_worker_request,
 )
+from app.services.analyze_torch_worker import AnalyzeTorchWorker
 
 API_ROOT = Path(__file__).resolve().parents[2]
 WORKER_SCRIPT = API_ROOT / "scripts" / "torch_context_worker.py"
@@ -297,6 +298,50 @@ def test_context_pipeline_orchestrates_real_model_steps_with_sanitized_summary(m
     assert "PRIVATE_RAW_CONTEXT" not in serialized
     assert "0.91" not in serialized
     assert "0.42" not in serialized
+
+
+def test_analyze_torch_worker_runs_subprocess_calls_through_shared_queue():
+    calls: list[str] = []
+
+    class Client:
+        def execute(self, request, *, payload=None):
+            calls.append(f"client:{request.task}")
+            return TorchWorkerResult(
+                ok=True,
+                task=request.task,
+                request_id=request.request_id,
+                metadata={"classification": {"has_candidates": True}},
+            )
+
+    class Queue:
+        def execute(self, job, timeout_ms, *, operation=None):
+            calls.append(f"queue:{job.task_type}:{timeout_ms}")
+            return SimpleNamespace(status="succeeded", value=operation(), failure_code=None)
+
+    worker = AnalyzeTorchWorker(Client(), inference_queue=Queue(), inference_timeout_ms=1234)
+
+    outcome = worker.evaluate([(0, SimpleNamespace(input_id="input-1", content="runtime text"))])
+
+    assert outcome.enabled is True
+    assert outcome.has_candidates is True
+    assert calls == ["queue:classifier:1234", "client:context_pipeline"]
+
+
+def test_analyze_torch_worker_fails_closed_when_shared_queue_is_full():
+    class Client:
+        def execute(self, request, *, payload=None):
+            raise AssertionError("client must not be called when queue is saturated")
+
+    class Queue:
+        def execute(self, job, timeout_ms, *, operation=None):
+            return SimpleNamespace(status="failed", value=None, failure_code="ML_INFERENCE_LIMIT_EXCEEDED")
+
+    worker = AnalyzeTorchWorker(Client(), inference_queue=Queue(), inference_timeout_ms=1234)
+
+    outcome = worker.evaluate([(0, SimpleNamespace(input_id="input-1", content="runtime text"))])
+
+    assert outcome.failure is not None
+    assert outcome.failure.code == "ML_INFERENCE_LIMIT_EXCEEDED"
 
 
 def _load_worker_module():

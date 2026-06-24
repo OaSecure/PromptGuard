@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from app.infrastructure.ocr.paddle_runtime import PaddleOcrRuntimeRequest, PaddleOcrRuntimeResult
+from app.runtime.ml_inference_queue import MlInferenceJob, MlInferenceQueue
 from app.runtime.paddle_worker_payload import PaddleWorkerPayloadStore, encode_bytes
 from app.runtime.paddle_worker_protocol import (
     PADDLE_WORKER_PROTOCOL_VERSION,
@@ -116,21 +117,30 @@ class PaddleWorkerClient:
 class PaddleOcrSubprocessRuntime:
     """PaddleOCR runtime adapter that executes OCR in the Paddle venv."""
 
-    def __init__(self, client: PaddleWorkerClient, *, image_resolver: ImageResolver) -> None:
+    def __init__(
+        self,
+        client: PaddleWorkerClient,
+        *,
+        image_resolver: ImageResolver,
+        inference_queue: MlInferenceQueue | None = None,
+    ) -> None:
         self._client = client
         self._image_resolver = image_resolver
+        self._inference_queue = inference_queue
 
     def recognize(self, request: PaddleOcrRuntimeRequest) -> PaddleOcrRuntimeResult:
         try:
             image_payload = _build_image_payload(self._image_resolver(request.image_handle))
         except Exception:
             return PaddleOcrRuntimeResult(status="failed")
-        result = self._client.execute(
-            PaddleWorkerRequest(
-                task="ocr_image",
-                request_id="ocr-request",
-                metadata={"page": request.page, "language_count": len(request.languages)},
-            ),
+        worker_request = PaddleWorkerRequest(
+            task="ocr_image",
+            request_id="ocr-request",
+            metadata={"page": request.page, "language_count": len(request.languages)},
+        )
+        result = self._execute(
+            worker_request,
+            timeout_ms=request.timeout_ms,
             payload={
                 **image_payload,
                 "page": request.page,
@@ -145,6 +155,29 @@ class PaddleOcrSubprocessRuntime:
             return PaddleOcrRuntimeResult(status="failed")
         blocks = result.metadata.get("blocks", [])
         return PaddleOcrRuntimeResult(status="success", blocks=blocks if isinstance(blocks, list) else [])
+
+    def _execute(
+        self,
+        request: PaddleWorkerRequest,
+        *,
+        timeout_ms: int,
+        payload: dict[str, Any],
+    ) -> PaddleWorkerResult:
+        if self._inference_queue is None:
+            return self._client.execute(request, payload=payload)
+        queued = self._inference_queue.execute(
+            MlInferenceJob(
+                job_id=f"{request.request_id}:paddle-worker",
+                request_id=request.request_id,
+                task_type="generic",
+                metadata={"worker": "paddle"},
+            ),
+            timeout_ms=timeout_ms,
+            operation=lambda: self._client.execute(request, payload=payload),
+        )
+        if queued.status != "succeeded":
+            return _failure(queued.failure_code or "ML_INFERENCE_WORKER_FAILED", request)
+        return queued.value
 
 
 def _build_image_payload(image: object) -> dict[str, Any]:

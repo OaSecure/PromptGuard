@@ -4,6 +4,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from app.runtime.paddle_worker_client import (
+    PaddleOcrSubprocessRuntime,
     PaddleWorkerClient,
     PaddleWorkerClientConfig,
     PaddleWorkerRequest,
@@ -151,3 +152,52 @@ def test_client_timeout_is_fail_closed_without_private_values():
     assert result.ok is False
     assert result.error_code == "PADDLE_WORKER_TIMEOUT"
     assert "PRIVATE" not in repr(result)
+
+
+def test_paddle_ocr_runtime_runs_worker_call_through_shared_queue(tmp_path):
+    calls: list[str] = []
+    image_path = tmp_path / "image.png"
+    image_path.write_bytes(b"\x89PNG\r\n\x1a\nPRIVATE_IMAGE_BYTES")
+
+    class Client:
+        def execute(self, request, *, payload=None):
+            calls.append(f"client:{request.task}")
+            return PaddleWorkerResult(
+                ok=True,
+                task=request.task,
+                request_id=request.request_id,
+                metadata={"blocks": [{"text": "safe text", "confidence": 0.9}]},
+            )
+
+    class Queue:
+        def execute(self, job, timeout_ms, *, operation=None):
+            calls.append(f"queue:{job.task_type}:{timeout_ms}")
+            return SimpleNamespace(status="succeeded", value=operation(), failure_code=None)
+
+    runtime = PaddleOcrSubprocessRuntime(Client(), image_resolver=lambda _handle: image_path, inference_queue=Queue())
+
+    result = runtime.recognize(SimpleNamespace(image_handle="opaque-handle", page=1, languages=("eng",), timeout_ms=987))
+
+    assert result.status == "success"
+    assert result.blocks == [{"text": "safe text", "confidence": 0.9}]
+    assert calls == ["queue:generic:987", "client:ocr_image"]
+
+
+def test_paddle_ocr_runtime_fails_closed_when_shared_queue_is_full(tmp_path):
+    image_path = tmp_path / "image.png"
+    image_path.write_bytes(b"\x89PNG\r\n\x1a\nPRIVATE_IMAGE_BYTES")
+
+    class Client:
+        def execute(self, request, *, payload=None):
+            raise AssertionError("client must not be called when queue is saturated")
+
+    class Queue:
+        def execute(self, job, timeout_ms, *, operation=None):
+            return SimpleNamespace(status="failed", value=None, failure_code="ML_INFERENCE_LIMIT_EXCEEDED")
+
+    runtime = PaddleOcrSubprocessRuntime(Client(), image_resolver=lambda _handle: image_path, inference_queue=Queue())
+
+    result = runtime.recognize(SimpleNamespace(image_handle="opaque-handle", page=1, languages=("eng",), timeout_ms=987))
+
+    assert result.status == "failed"
+    assert "PRIVATE_IMAGE_BYTES" not in repr(result)
