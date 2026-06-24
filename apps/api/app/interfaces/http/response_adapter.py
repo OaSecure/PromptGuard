@@ -122,9 +122,9 @@ def _user_message(action: str, unavailable: bool) -> str:
 def _requires_confirmation(action: str, matches: list[Any]) -> bool:
     if action == "BLOCK":
         return False
-    if action == "WARN":
+    if action in {"MASK", "WARN"}:
         return True
-    return action == "MASK" and any(match.action == "WARN" for match in matches)
+    return False
 
 
 def _response_detections(matched_inputs: list[tuple[int, Any, list[Any]]]) -> list[AnalyzeDetection]:

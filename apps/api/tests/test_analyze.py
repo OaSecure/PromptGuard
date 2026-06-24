@@ -430,7 +430,7 @@ def test_analyze_masks_email_and_phone_and_keeps_legacy_event_bridge_raw_free() 
     assert body["risk_score"] == 55
     assert body["risk_level"] == "medium"
     assert body["allow_original_send"] is False
-    assert body["requires_user_confirmation"] is False
+    assert body["requires_user_confirmation"] is True
     assert body["masked_prompt"] == "Contact [EMAIL_1] or [PHONE_1]."
     assert {item["type"] for item in body["detections"]} == {"EMAIL", "PHONE"}
     assert {item["input_id"] for item in body["detections"]} == {"in_1"}
