@@ -10,8 +10,9 @@ class Settings(BaseSettings):
 
     environment: str = Field(default="development", alias="PROMPTGUARD_ENV")
     api_public_url: str = Field(default="http://localhost:8000", alias="PROMPTGUARD_API_PUBLIC_URL")
-    dashboard_public_url: str = Field(default="http://localhost:3000", alias="PROMPTGUARD_DASHBOARD_PUBLIC_URL")
-    cors_origins: str = Field(default="http://localhost:3000", alias="PROMPTGUARD_CORS_ORIGINS")
+    dashboard_public_url: str = Field(default="http://localhost:8000/dashboard/", alias="PROMPTGUARD_DASHBOARD_PUBLIC_URL")
+    dashboard_static_dir: str = Field(default="/opt/promptguard/dashboard", alias="PROMPTGUARD_DASHBOARD_STATIC_DIR")
+    cors_origins: str = Field(default="http://localhost:8000", alias="PROMPTGUARD_CORS_ORIGINS")
 
     database_url: str = Field(default="", alias="DATABASE_URL")
     redis_url: str = Field(default="", alias="REDIS_URL")

@@ -3,6 +3,7 @@ import ipaddress
 from pathlib import Path
 import socket
 from typing import Literal
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, Request, Response, status
 from pydantic import BaseModel
@@ -10,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db_session
+from app.core.config import get_settings
 from app.models.auth import User
 from app.models.filters import FilterRule
 from app.routes.dashboard_session import require_dashboard_admin_session
@@ -143,6 +145,24 @@ def forwarded_origin(request: Request) -> str | None:
     return f"{proto}://{host}"
 
 
+def configured_public_api_origin() -> str | None:
+    configured = get_settings().api_public_url.strip()
+    if not configured:
+        return None
+    parsed = urlparse(configured)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        return None
+    if parsed.hostname in {"localhost", "127.0.0.1", "::1"}:
+        return None
+
+    host = parsed.hostname
+    if ":" in host and not host.startswith("["):
+        host = f"[{host}]"
+    if parsed.port is None:
+        return f"{parsed.scheme}://{host}"
+    return f"{parsed.scheme}://{host}:{parsed.port}"
+
+
 def build_extension_connection_info(request: Request) -> ExtensionConnectionInfo:
     port = request_port(request)
     scheme = request.url.scheme
@@ -158,7 +178,7 @@ def build_extension_connection_info(request: Request) -> ExtensionConnectionInfo
         internal_api_origins=internal_origins,
         excluded_internal_api_origins=excluded_origins,
         admin_local_api_origin=request_origin(request),
-        external_api_origin=forwarded_origin(request),
+        external_api_origin=configured_public_api_origin() or forwarded_origin(request),
         api_port=port,
     )
 

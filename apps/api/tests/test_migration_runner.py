@@ -145,9 +145,14 @@ def test_compose_builds_single_api_image_with_split_worker_virtualenvs() -> None
     assert "ARG PROMPTGUARD_INSTALL_OCR_GPU" not in dockerfile_text
     assert "libgl1" in dockerfile_text
     assert "libglib2.0-0" in dockerfile_text
+    assert "context: ./apps/api" in compose_text
+    assert "additional_contexts:" in compose_text
+    assert "dashboard: ./apps/dashboard" in compose_text
     assert "COPY requirements.txt ./" in dockerfile_text
     assert "COPY requirements-paddle-gpu.txt ./" in dockerfile_text
     assert "COPY requirements-torch-gpu.txt ./" in dockerfile_text
+    assert "COPY --from=dashboard . /opt/promptguard/dashboard" in dockerfile_text
+    assert "PROMPTGUARD_DASHBOARD_STATIC_DIR=/opt/promptguard/dashboard" in dockerfile_text
     assert "COPY requirements.txt requirements-paddle-gpu.txt requirements-torch-gpu.txt ./" not in dockerfile_text
     assert "python -m venv /opt/venvs/api" in dockerfile_text
     assert "python -m venv /opt/venvs/paddle" in dockerfile_text
