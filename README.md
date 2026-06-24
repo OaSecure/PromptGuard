@@ -86,28 +86,42 @@ PROMPTGUARD_VERIFIER_MANIFEST_PATH=/opt/promptguard/models/context_lr_roberta_ac
 
 ### API 로컬 CUDA 런타임 확인
 
-로컬에서 실제 모델 런타임을 검증할 때는 저장소 루트에 전용 venv를 만들고 CUDA용 PyTorch wheel을 설치한다.
+Docker 배포는 API 이미지 하나를 사용한다. 이미지 내부에서는 Python 환경을 세 개로 나눈다.
+
+- `/opt/venvs/api`: FastAPI 서버, DB, queue, 공통 parser runtime.
+- `/opt/venvs/paddle`: PaddleOCR GPU worker runtime.
+- `/opt/venvs/torch`: Torch GPU model worker runtime.
+
+PaddleOCR와 Torch는 서로 다른 NVIDIA Python wheel 버전을 요구할 수 있으므로 같은 Python 환경에 함께 설치하지 않는다. API 프로세스는 외부 공개 API를 유지하고, 내부 worker process가 각 전용 venv에서 OCR 또는 model inference를 실행한다.
+
+로컬에서 실제 모델 런타임을 검증할 때도 같은 분리 구조를 사용한다.
 
 ```bash
-python -m venv .venv
-.venv\Scripts\python -m pip install --upgrade pip setuptools wheel
-.venv\Scripts\python -m pip install -r apps/api/requirements.txt -r apps/api/requirements-ml.txt
-.venv\Scripts\python -m pip install --force-reinstall -r apps/api/requirements-ml-cu128.txt
-.venv\Scripts\python -m pip install -r apps/api/requirements-ocr-gpu.txt
+python -m venv .venv-api
+.venv-api\Scripts\python -m pip install --upgrade pip setuptools wheel
+.venv-api\Scripts\python -m pip install -r apps/api/requirements.txt
+
+python -m venv .venv-paddle
+.venv-paddle\Scripts\python -m pip install --upgrade pip setuptools wheel
+.venv-paddle\Scripts\python -m pip install -r apps/api/requirements-paddle-gpu.txt
+
+python -m venv .venv-torch
+.venv-torch\Scripts\python -m pip install --upgrade pip setuptools wheel
+.venv-torch\Scripts\python -m pip install -r apps/api/requirements-torch-gpu.txt
 ```
 
-현재 Python 런타임이 CUDA를 쓰는지 확인한다.
+Torch worker Python 런타임이 CUDA를 쓰는지 확인한다.
 
 ```bash
 cd apps/api
-..\..\.venv\Scripts\python scripts/runtime_readiness.py
+..\..\.venv-torch\Scripts\python scripts/runtime_readiness.py --target torch
 ```
 
-OCR 런타임까지 함께 확인하려면 다음 명령을 사용한다. 이 출력은 설치 여부, CUDA 사용 가능 여부, blocker 코드만 포함하고 OCR 원문이나 파일명을 출력하지 않는다.
+PaddleOCR worker 런타임을 확인하려면 다음 명령을 사용한다. 이 출력은 설치 여부, CUDA 사용 가능 여부, blocker 코드만 포함하고 OCR 원문이나 파일명을 출력하지 않는다.
 
 ```bash
 cd apps/api
-..\..\.venv\Scripts\python scripts/runtime_readiness.py --include-ocr
+..\..\.venv-paddle\Scripts\python scripts/runtime_readiness.py --target ocr
 ```
 
 Windows에서 Tesseract가 PATH에 없으면 `PROMPTGUARD_TESSERACT_BINARY_PATH`에 `tesseract.exe` 절대경로를 지정한다. 한국어 OCR은 `tesseract --list-langs` 결과에 `kor`가 있어야 준비 완료로 판단한다.
@@ -189,28 +203,43 @@ PROMPTGUARD_VERIFIER_MANIFEST_PATH=/opt/promptguard/models/context_lr_roberta_ac
 
 ### API Local CUDA Runtime Check
 
-For local real-model runtime verification, create a repository-local venv and install the CUDA PyTorch wheel.
+The Docker deployment still uses one API image. Inside that image, Python is split into three runtime environments:
+
+- `/opt/venvs/api`: FastAPI server, DB, queue, and common parser runtime.
+- `/opt/venvs/paddle`: PaddleOCR GPU worker runtime.
+- `/opt/venvs/torch`: Torch GPU model worker runtime.
+
+PaddleOCR and Torch may require incompatible NVIDIA Python wheels, so they are not installed into the same Python environment. The API process keeps the public API stable, and internal worker processes run OCR or model inference from their dedicated venvs.
+
+For local real-model runtime verification, use the same split-runtime layout.
 
 ```bash
-python -m venv .venv
-.venv\Scripts\python -m pip install --upgrade pip setuptools wheel
-.venv\Scripts\python -m pip install -r apps/api/requirements.txt -r apps/api/requirements-ml.txt
-.venv\Scripts\python -m pip install --force-reinstall -r apps/api/requirements-ml-cu128.txt
-.venv\Scripts\python -m pip install -r apps/api/requirements-ocr-gpu.txt
+python -m venv .venv-api
+.venv-api\Scripts\python -m pip install --upgrade pip setuptools wheel
+.venv-api\Scripts\python -m pip install -r apps/api/requirements.txt
+
+python -m venv .venv-paddle
+.venv-paddle\Scripts\python -m pip install --upgrade pip setuptools wheel
+.venv-paddle\Scripts\python -m pip install -r apps/api/requirements-paddle-gpu.txt
+
+python -m venv .venv-torch
+.venv-torch\Scripts\python -m pip install --upgrade pip setuptools wheel
+.venv-torch\Scripts\python -m pip install -r apps/api/requirements-torch-gpu.txt
 ```
 
-Check whether the active Python runtime can use CUDA.
+Check whether the Torch worker Python runtime can use CUDA.
 
 ```bash
 cd apps/api
-..\..\.venv\Scripts\python scripts/runtime_readiness.py
+..\..\.venv-torch\Scripts\python scripts/runtime_readiness.py --target torch
 ```
 
-Use this command to include OCR runtime checks. The output contains dependency state, CUDA availability, and blocker codes only; it does not print OCR text or filenames.
+Use this command to check the PaddleOCR worker runtime. The output contains dependency state, CUDA availability, and blocker codes only; it does not print OCR text or filenames.
 
 ```bash
 cd apps/api
-..\..\.venv\Scripts\python scripts/runtime_readiness.py --include-ocr
+..\..\.venv-paddle\Scripts\python scripts/runtime_readiness.py --target ocr
 ```
 
 On Windows, set `PROMPTGUARD_TESSERACT_BINARY_PATH` to the absolute `tesseract.exe` path when Tesseract is not on PATH. Korean OCR is considered ready only when `tesseract --list-langs` includes `kor`.
+

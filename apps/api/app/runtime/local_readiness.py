@@ -143,20 +143,25 @@ class LocalRuntimeReadinessProbe:
         *,
         dependency_probe: RuntimeDependencyProbe | None = None,
         expected_cuda: bool = True,
+        include_torch: bool = True,
         include_ocr: bool = False,
     ) -> None:
         self._dependency_probe = dependency_probe or DependencyProbe()
         self._expected_cuda = expected_cuda
+        self._include_torch = include_torch
         self._include_ocr = include_ocr
 
     def check(self) -> LocalRuntimeReadinessReport:
-        dependencies = {"torch": self._dependency_probe.check("torch")}
+        dependencies = {}
+        if self._include_torch:
+            dependencies["torch"] = self._dependency_probe.check("torch")
         if self._include_ocr:
             dependencies["tesseract-kor"] = self._dependency_probe.check("tesseract-kor")
             dependencies["paddleocr"] = self._dependency_probe.check("paddleocr")
         blockers = _runtime_blockers(
             dependencies,
             expected_cuda=self._expected_cuda,
+            include_torch=self._include_torch,
             include_ocr=self._include_ocr,
         )
 
@@ -174,14 +179,16 @@ def _runtime_blockers(
     dependencies: dict[str, RuntimeDependencyStatus],
     *,
     expected_cuda: bool,
+    include_torch: bool,
     include_ocr: bool,
 ) -> list[str]:
     blockers: list[str] = []
-    torch_status = dependencies["torch"]
-    if not torch_status.installed:
-        blockers.append("torch_unavailable")
-    elif expected_cuda and torch_status.cuda_available is not True:
-        blockers.append("torch_cuda_unavailable")
+    if include_torch:
+        torch_status = dependencies["torch"]
+        if not torch_status.installed:
+            blockers.append("torch_unavailable")
+        elif expected_cuda and torch_status.cuda_available is not True:
+            blockers.append("torch_cuda_unavailable")
     if include_ocr:
         blockers.extend(_ocr_blockers(dependencies, expected_cuda=expected_cuda))
     return blockers

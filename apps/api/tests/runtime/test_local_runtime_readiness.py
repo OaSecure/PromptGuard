@@ -18,7 +18,7 @@ class _UnavailableDependencyProbe:
 
 
 class _TorchCudaProbe:
-    def __init__(self, *, installed: bool = True, cuda_available: bool = True, version: str = "2.9.1+cu128") -> None:
+    def __init__(self, *, installed: bool = True, cuda_available: bool = True, version: str = "2.9.1+cu126") -> None:
         self._installed = installed
         self._cuda_available = cuda_available
         self._version = version
@@ -55,7 +55,7 @@ def test_dependency_probe_reports_missing_optional_dependency_without_raw_except
 
 def test_dependency_probe_reports_torch_cuda_device_when_available(monkeypatch):
     fake_torch = SimpleNamespace(
-        __version__="2.9.1+cu128",
+        __version__="2.9.1+cu126",
         cuda=SimpleNamespace(is_available=lambda: True, current_device=lambda: 0),
     )
     monkeypatch.setitem(__import__("sys").modules, "torch", fake_torch)
@@ -63,7 +63,7 @@ def test_dependency_probe_reports_torch_cuda_device_when_available(monkeypatch):
     status = DependencyProbe().check("torch")
 
     assert status.installed is True
-    assert status.version == "2.9.1+cu128"
+    assert status.version == "2.9.1+cu126"
     assert status.cuda_available is True
     assert status.device == "cuda:0"
 
@@ -99,7 +99,7 @@ def test_runtime_readiness_can_require_ocr_dependencies():
                 return RuntimeDependencyStatus(
                     name="torch",
                     installed=True,
-                    version="2.9.1+cu128",
+                    version="2.9.1+cu126",
                     cuda_available=True,
                     device="cuda:0",
                 )
@@ -121,6 +121,27 @@ def test_runtime_readiness_can_require_ocr_dependencies():
     assert report.dependencies["tesseract-kor"].reason == "tesseract_korean_unavailable"
 
 
+def test_runtime_readiness_can_check_ocr_worker_without_torch_dependency():
+    class OcrOnlyProbe:
+        def check(self, dependency: str) -> RuntimeDependencyStatus:
+            if dependency == "tesseract-kor":
+                return RuntimeDependencyStatus(name=dependency, installed=True)
+            if dependency == "paddleocr":
+                return RuntimeDependencyStatus(name=dependency, installed=True, cuda_available=True, device="gpu")
+            return RuntimeDependencyStatus(name=dependency, installed=False, reason="unexpected_dependency_probe")
+
+    report = LocalRuntimeReadinessProbe(
+        dependency_probe=OcrOnlyProbe(),
+        expected_cuda=True,
+        include_torch=False,
+        include_ocr=True,
+    ).check()
+
+    assert report.ready is True
+    assert report.blockers == []
+    assert set(report.dependencies) == {"tesseract-kor", "paddleocr"}
+
+
 def test_runtime_readiness_has_no_sensitive_payload_fields():
     report = LocalRuntimeReadinessProbe(
         dependency_probe=_UnavailableDependencyProbe(),
@@ -138,8 +159,9 @@ def test_runtime_readiness_has_no_sensitive_payload_fields():
 
 def test_runtime_readiness_script_emits_metadata_only_json(monkeypatch, capfd):
     class FakeProbe:
-        def __init__(self, *, expected_cuda: bool, include_ocr: bool) -> None:
+        def __init__(self, *, expected_cuda: bool, include_torch: bool, include_ocr: bool) -> None:
             assert expected_cuda is True
+            assert include_torch is True
             assert include_ocr is False
 
         def check(self) -> LocalRuntimeReadinessReport:
@@ -166,8 +188,9 @@ def test_runtime_readiness_script_emits_metadata_only_json(monkeypatch, capfd):
 
 def test_runtime_readiness_script_can_include_ocr_checks(monkeypatch, capfd):
     class FakeProbe:
-        def __init__(self, *, expected_cuda: bool, include_ocr: bool) -> None:
+        def __init__(self, *, expected_cuda: bool, include_torch: bool, include_ocr: bool) -> None:
             assert expected_cuda is True
+            assert include_torch is True
             assert include_ocr is True
 
         def check(self) -> LocalRuntimeReadinessReport:
@@ -192,10 +215,39 @@ def test_runtime_readiness_script_can_include_ocr_checks(monkeypatch, capfd):
     assert "raw_prompt" not in output
 
 
+def test_runtime_readiness_script_can_check_ocr_worker_target_without_torch(monkeypatch, capfd):
+    class FakeProbe:
+        def __init__(self, *, expected_cuda: bool, include_torch: bool, include_ocr: bool) -> None:
+            assert expected_cuda is True
+            assert include_torch is False
+            assert include_ocr is True
+
+        def check(self) -> LocalRuntimeReadinessReport:
+            return LocalRuntimeReadinessReport(
+                runtime="python",
+                python_version="3.11.0",
+                platform="windows",
+                ready=True,
+                blockers=[],
+                dependencies={
+                    "paddleocr": RuntimeDependencyStatus(name="paddleocr", installed=True, cuda_available=True, device="gpu"),
+                },
+            )
+
+    monkeypatch.setattr(runtime_readiness, "LocalRuntimeReadinessProbe", FakeProbe)
+    exit_code = runtime_readiness.main(["--target", "ocr"])
+    output = capfd.readouterr().out
+
+    assert exit_code == 0
+    assert '"ready": true' in output
+    assert "torch" not in output
+
+
 def test_runtime_readiness_script_keeps_probe_noise_out_of_stdout(monkeypatch, capfd):
     class NoisyProbe:
-        def __init__(self, *, expected_cuda: bool, include_ocr: bool) -> None:
+        def __init__(self, *, expected_cuda: bool, include_torch: bool, include_ocr: bool) -> None:
             assert expected_cuda is True
+            assert include_torch is True
             assert include_ocr is True
 
         def check(self) -> LocalRuntimeReadinessReport:
@@ -231,22 +283,31 @@ def test_runtime_readiness_script_keeps_probe_noise_out_of_stdout(monkeypatch, c
 
 
 def test_cuda_requirements_pin_pytorch_cuda_index():
-    requirements = Path(__file__).parents[2] / "requirements-ml-cu128.txt"
+    api_requirements = (Path(__file__).parents[2] / "requirements.txt").read_text(encoding="utf-8")
+    requirements = Path(__file__).parents[2] / "requirements-torch-gpu.txt"
     content = requirements.read_text(encoding="utf-8")
 
-    assert "--index-url https://download.pytorch.org/whl/cu128" in content
-    assert "torch==2.9.1" in content
+    assert "torch==" not in api_requirements
+    assert "--extra-index-url https://download.pytorch.org/whl/cu126" in content
+    assert "torch==2.9.1+cu126" in content
+    assert "sentence-transformers==5.4.1" in content
+    assert "transformers==4.57.1" in content
     assert "cpu" not in content.casefold()
 
 
-def test_ocr_gpu_requirements_pin_paddle_runtime_overlay():
-    requirements = Path(__file__).parents[2] / "requirements-ocr-gpu.txt"
+def test_ocr_gpu_requirements_pin_paddle_cuda_runtime():
+    api_requirements = (Path(__file__).parents[2] / "requirements.txt").read_text(encoding="utf-8")
+    requirements = Path(__file__).parents[2] / "requirements-paddle-gpu.txt"
     content = requirements.read_text(encoding="utf-8")
 
-    assert "--index-url https://www.paddlepaddle.org.cn/packages/stable/cu118/" in content
-    assert "paddlepaddle-gpu==3.2.0" in content
+    assert "paddleocr==" not in api_requirements
+    assert "paddlepaddle-gpu==" not in api_requirements
+    assert "--extra-index-url https://www.paddlepaddle.org.cn/packages/stable/cu126/" in content
+    assert "paddlepaddle-gpu==3.3.1" in content
     assert "numpy==2.3.5" in content
     assert "paddleocr==3.7.0" in content
+    assert "pypdfium2==5.10.1" in content
+    assert "cu118" not in content
     assert "paddlepaddle==" not in content
 
 
@@ -261,3 +322,4 @@ def test_local_runtime_blocker_doc_records_tesseract_install_evidence():
     assert "PROMPTGUARD_TESSERACT_BINARY_PATH" in content
     assert "torch.cuda_available=true" in content
     assert "paddleocr.cuda_available=true" in content
+

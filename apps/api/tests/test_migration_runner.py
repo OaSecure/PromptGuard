@@ -76,6 +76,13 @@ def test_compose_mounts_model_artifacts_read_only_and_documents_manifest_paths()
     assert "PROMPTGUARD_VERIFIER_RUNTIME_ENABLED: ${PROMPTGUARD_VERIFIER_RUNTIME_ENABLED:-false}" in compose_text
     assert "PROMPTGUARD_VERIFIER_MANIFEST_PATH: ${PROMPTGUARD_VERIFIER_MANIFEST_PATH:-}" in compose_text
     assert (
+        "PROMPTGUARD_TEMP_FILE_ENCRYPTION_KEY: ${PROMPTGUARD_TEMP_FILE_ENCRYPTION_KEY:-}"
+        in compose_text
+    )
+    assert "PROMPTGUARD_TEMP_FILE_DIR: ${PROMPTGUARD_TEMP_FILE_DIR:-.promptguard-temp}" in compose_text
+    assert "PROMPTGUARD_TEMP_FILE_TTL_SECONDS: ${PROMPTGUARD_TEMP_FILE_TTL_SECONDS:-900}" in compose_text
+    assert "PROMPTGUARD_TEMP_FILE_MAX_BYTES: ${PROMPTGUARD_TEMP_FILE_MAX_BYTES:-1048576}" in compose_text
+    assert (
         "PROMPTGUARD_CLASSIFIER_MANIFEST_PATH=/opt/promptguard/models/context_lr_roberta_active_best_f1_manifest.json"
         in env_example_text
     )
@@ -83,6 +90,31 @@ def test_compose_mounts_model_artifacts_read_only_and_documents_manifest_paths()
         "PROMPTGUARD_VERIFIER_MANIFEST_PATH=/opt/promptguard/models/context_lr_roberta_active_best_f1_manifest.json"
         in env_example_text
     )
+
+
+def test_compose_builds_single_api_image_with_split_worker_virtualenvs() -> None:
+    compose_text = load_compose_text()
+    dockerfile_text = (repo_api_root() / "Dockerfile").read_text(encoding="utf-8")
+
+    assert "PROMPTGUARD_INSTALL_ML_RUNTIME" not in compose_text
+    assert "PROMPTGUARD_INSTALL_CUDA_TORCH" not in compose_text
+    assert "PROMPTGUARD_INSTALL_OCR_GPU" not in compose_text
+    assert "gpus: all" in compose_text
+    assert "ARG PROMPTGUARD_INSTALL_ML_RUNTIME" not in dockerfile_text
+    assert "ARG PROMPTGUARD_INSTALL_CUDA_TORCH" not in dockerfile_text
+    assert "ARG PROMPTGUARD_INSTALL_OCR_GPU" not in dockerfile_text
+    assert "libgl1" in dockerfile_text
+    assert "libglib2.0-0" in dockerfile_text
+    assert "COPY requirements.txt requirements-paddle-gpu.txt requirements-torch-gpu.txt ./" in dockerfile_text
+    assert "python -m venv /opt/venvs/api" in dockerfile_text
+    assert "python -m venv /opt/venvs/paddle" in dockerfile_text
+    assert "python -m venv /opt/venvs/torch" in dockerfile_text
+    assert "/opt/venvs/api/bin/python -m pip install --no-cache-dir -r requirements.txt" in dockerfile_text
+    assert "/opt/venvs/paddle/bin/python -m pip install --no-cache-dir -r requirements-paddle-gpu.txt" in dockerfile_text
+    assert "/opt/venvs/torch/bin/python -m pip install --no-cache-dir -r requirements-torch-gpu.txt" in dockerfile_text
+    assert 'CMD ["/opt/venvs/api/bin/uvicorn"' in dockerfile_text
+    assert "requirements-ml.txt" not in dockerfile_text
+    assert "requirements-ml-cu128.txt" not in dockerfile_text
 
 
 def test_model_artifact_directory_documents_samples_without_real_artifacts() -> None:

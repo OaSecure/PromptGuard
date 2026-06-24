@@ -21,10 +21,11 @@ def test_runtime_report_marks_paddle_as_active_local_runtime_dependency():
     report = _report()
     assert report["schema_version"] == "1"
     assert report["status"] == "runtime-ready"
-    assert report["dependency_overlay_enabled"] is True
+    assert report["dependency_overlay_enabled"] is False
     assert report["default_runtime_enabled"] is True
     assert report["blockers"] == []
-    assert report["runtime_profile"]["dependency_overlay"] == "apps/api/requirements-ocr-gpu.txt"
+    assert report["runtime_profile"]["dependency_file"] == "apps/api/requirements-paddle-gpu.txt"
+    assert report["runtime_profile"]["worker_venv"] == "/opt/venvs/paddle"
     assert report["runtime_profile"]["cuda_required"] is True
 
 
@@ -32,13 +33,13 @@ def test_gpu_package_overlay_is_explicit():
     packages = {item["name"]: item for item in _report()["packages"]}
     assert set(packages) == PACKAGE_NAMES
     assert packages["paddleocr"]["version"] == "3.7.0"
-    assert packages["paddlepaddle-gpu"]["version"] == "3.2.0"
+    assert packages["paddlepaddle-gpu"]["version"] == "3.3.1"
     for package in packages.values():
         assert package["version"]
         assert package["package_source"].startswith("https://")
         assert package["license_id"] == "Apache-2.0"
         assert package["cpu_only"] is False
-        assert package["transitive_dependency_status"] == "local-runtime-overlay"
+        assert package["transitive_dependency_status"] == "paddle-worker-requirements"
 
 
 def test_models_are_runtime_ready_and_checksum_pinned():
@@ -77,10 +78,15 @@ def test_model_delivery_remains_local_and_fail_closed():
     assert policy["missing_asset_behavior"] == "fail-closed"
 
 
-def test_gpu_overlay_requirements_include_paddle_runtime():
-    requirements = (API / "requirements-ocr-gpu.txt").read_text(encoding="utf-8").lower()
+def test_gpu_requirements_include_paddle_runtime():
+    api_requirements = (API / "requirements.txt").read_text(encoding="utf-8").lower()
+    requirements = (API / "requirements-paddle-gpu.txt").read_text(encoding="utf-8").lower()
+    assert "paddleocr==" not in api_requirements
+    assert "paddlepaddle-gpu==" not in api_requirements
     assert "paddleocr==3.7.0" in requirements
-    assert "paddlepaddle-gpu==3.2.0" in requirements
+    assert "paddlepaddle-gpu==3.3.1" in requirements
+    assert "cu126" in requirements
+    assert "cu118" not in requirements
     assert "paddlepaddle==" not in requirements
 
 
@@ -103,4 +109,3 @@ def test_application_code_keeps_paddle_imports_behind_lazy_runtime_boundary():
         if imports & {"paddleocr", "paddle", "paddlepaddle"} and path.relative_to(API) not in allowed:
             offenders.append(str(path.relative_to(API)))
     assert offenders == []
-

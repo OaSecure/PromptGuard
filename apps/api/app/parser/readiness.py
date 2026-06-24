@@ -155,7 +155,28 @@ def _validate_runtime_report(artifact: object, prefix: str, reasons: set[str]) -
         return
     if dependency_enabled and runtime_enabled and status in {"runtime-ready", "approved", "enabled", "ready"}:
         return
+    if _split_worker_runtime_ready(report, runtime_enabled=runtime_enabled, status=status):
+        return
     reasons.add(f"{prefix}_RUNTIME_NOT_READY")
+
+
+def _split_worker_runtime_ready(
+    report: Mapping[str, object],
+    *,
+    runtime_enabled: bool,
+    status: str,
+) -> bool:
+    runtime_profile = _mapping(report.get("runtime_profile"))
+    if runtime_profile is None:
+        return False
+    dependency_file = runtime_profile.get("dependency_file")
+    worker_venv = runtime_profile.get("worker_venv")
+    return (
+        runtime_enabled
+        and status in {"runtime-ready", "approved", "enabled", "ready"}
+        and _nonempty_string(dependency_file)
+        and _nonempty_string(worker_venv)
+    )
 
 
 def _validate_candidate(artifact: object, prefix: str, reasons: set[str]) -> None:

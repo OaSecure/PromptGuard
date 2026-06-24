@@ -1,5 +1,0 @@
-# Install after requirements-ml.txt when the local runtime must use NVIDIA CUDA.
-# This intentionally replaces the default PyPI torch wheel with the CUDA 12.8
-# PyTorch wheel while leaving the rest of the ML dependency set unchanged.
---index-url https://download.pytorch.org/whl/cu128
-torch==2.9.1
