@@ -425,6 +425,14 @@ def get_ml_inference_queue(settings: Settings = Depends(get_settings)) -> MlInfe
     )
 
 
+def get_paddle_inference_queue(settings: Settings = Depends(get_settings)) -> MlInferenceQueue | None:
+    return _cached_ml_inference_queue(
+        settings.ml_inference_queue_enabled,
+        _resolve_ml_inference_max_workers(settings),
+        settings.ml_inference_queue_max_queue_size,
+    )
+
+
 def _resolve_ml_inference_max_workers(settings: Settings) -> int:
     decision = resolve_gpu_worker_capacity(
         GpuWorkerCapacityPolicy(
@@ -439,7 +447,11 @@ def _resolve_ml_inference_max_workers(settings: Settings) -> int:
     return decision.worker_count
 
 
-def get_parser_worker_pool(settings: Settings = Depends(get_settings), storage=Depends(get_temp_storage)) -> ParserWorkerPool | None:
+def get_parser_worker_pool(
+    settings: Settings = Depends(get_settings),
+    storage=Depends(get_temp_storage),
+    paddle_inference_queue: MlInferenceQueue | None = Depends(get_paddle_inference_queue),
+) -> ParserWorkerPool | None:
     return build_parser_worker_pool(
         storage,
         max_workers=settings.ml_inference_queue_max_workers,
@@ -447,10 +459,14 @@ def get_parser_worker_pool(settings: Settings = Depends(get_settings), storage=D
         paddle_worker_python_path=settings.paddle_worker_python_path,
         paddle_worker_script_path=settings.paddle_worker_script_path,
         paddle_worker_payload_dir=settings.paddle_worker_payload_dir,
+        paddle_inference_queue=paddle_inference_queue,
     )
 
 
-def get_analyze_torch_worker(settings: Settings = Depends(get_settings)) -> AnalyzeTorchWorker | None:
+def get_analyze_torch_worker(
+    settings: Settings = Depends(get_settings),
+    inference_queue: MlInferenceQueue | None = Depends(get_ml_inference_queue),
+) -> AnalyzeTorchWorker | None:
     if not settings.classifier_runtime_enabled or not settings.verifier_runtime_enabled:
         return None
     if settings.classifier_manifest_path_value() is None or settings.verifier_manifest_path_value() is None:
@@ -463,7 +479,11 @@ def get_analyze_torch_worker(settings: Settings = Depends(get_settings)) -> Anal
         ),
         payload_store=TorchWorkerPayloadStore(Path(settings.torch_worker_payload_dir)),
     )
-    return build_analyze_torch_worker(client)
+    return build_analyze_torch_worker(
+        client,
+        inference_queue=inference_queue,
+        inference_timeout_ms=settings.ml_inference_queue_timeout_ms,
+    )
 
 
 def parser_results_for_payload(

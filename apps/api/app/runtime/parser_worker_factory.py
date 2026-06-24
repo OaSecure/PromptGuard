@@ -23,6 +23,7 @@ from app.parser.registry import InMemoryParserAdapterRegistry, ParserAdapterRegi
 from app.parser.runner import FileParserRunner
 from app.parser.temp_file_resolver import TemporaryFileResolver
 from app.ports.clock import ClockPort
+from app.runtime.ml_inference_queue import MlInferenceQueue
 from app.runtime.paddle_worker_client import (
     PaddleOcrSubprocessRuntime,
     PaddleWorkerClient,
@@ -48,6 +49,7 @@ def build_parser_worker_pool(
     paddle_worker_python_path: str = "/opt/venvs/paddle/bin/python",
     paddle_worker_script_path: str = "/app/scripts/paddle_ocr_worker.py",
     paddle_worker_payload_dir: str = "/tmp/promptguard-paddle-payloads",
+    paddle_inference_queue: MlInferenceQueue | None = None,
 ) -> ParserWorkerPool:
     clock = clock or SystemClock()
     content_source = TemporaryStorageContentSource(storage, clock)
@@ -68,6 +70,7 @@ def build_parser_worker_pool(
             payload_store=PaddleWorkerPayloadStore(Path(paddle_worker_payload_dir)),
         ),
         image_resolver=image_resolver,
+        inference_queue=paddle_inference_queue,
     )
     paddle_engine = compose_paddle_ocr_engine(
         PaddleOcrRuntimeConfig(enabled=True),
