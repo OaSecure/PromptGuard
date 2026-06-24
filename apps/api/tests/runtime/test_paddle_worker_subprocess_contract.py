@@ -365,6 +365,44 @@ def test_paddle_worker_reuses_ocr_runtime_for_same_language(monkeypatch):
     worker._reset_paddle_runtime_for_tests()
 
 
+def test_paddle_worker_ocr_result_suppresses_native_stdout(monkeypatch, tmp_path, capsys):
+    worker = _load_worker_module()
+    payload_store = PaddleWorkerPayloadStore(tmp_path)
+
+    class NoisyPaddleOCR:
+        def __init__(self, *, lang):
+            print(f"native model log {lang}")
+
+        def predict(self, image):
+            print(f"native predict log {Path(image).suffix}")
+            return {"safe": True}
+
+    monkeypatch.setattr(worker, "PaddleOCR", NoisyPaddleOCR)
+    monkeypatch.setattr(worker, "_extract_blocks", lambda raw_result, page: [{"text": "safe", "confidence": 0.9}])
+    monkeypatch.setenv("PROMPTGUARD_PADDLE_WORKER_PAYLOAD_DIR", tmp_path.as_posix())
+    payload_ref = payload_store.write(
+        {
+            "image_b64": encode_bytes(b"\x89PNG\r\n\x1a\nSAFE_IMAGE_BYTES"),
+            "suffix": ".png",
+            "page": 1,
+            "languages": ["kor"],
+        }
+    )
+
+    result = worker._ocr_image_result(
+        {"task": "ocr_image", "request_id": "req-1", "metadata": {"payload_ref": payload_ref}},
+        task="ocr_image",
+        request_id="req-1",
+    )
+
+    captured = capsys.readouterr()
+    assert result["ok"] is True
+    assert result["metadata"]["blocks"] == [{"text": "safe", "confidence": 0.9}]
+    assert "native model log" not in captured.out
+    assert "native predict log" not in captured.out
+    worker._reset_paddle_runtime_for_tests()
+
+
 class _ResidentInput:
     def __init__(self, process) -> None:
         self.process = process
