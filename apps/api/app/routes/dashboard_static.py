@@ -9,16 +9,15 @@ from app.core.config import get_settings
 router = APIRouter()
 
 _PAGE_MAP = {
-    "": "status.html",
-    "admin": "admin.html",
-    "event-detail": "event-detail.html",
-    "events": "events.html",
-    "filters": "filters.html",
-    "home": "index.html",
-    "login": "login.html",
-    "overview": "overview.html",
-    "status-page": "status.html",
-    "users": "users.html",
+    "admin.html": "admin.html",
+    "event-detail.html": "event-detail.html",
+    "events.html": "events.html",
+    "filters.html": "filters.html",
+    "index.html": "index.html",
+    "login.html": "login.html",
+    "overview.html": "overview.html",
+    "status.html": "status.html",
+    "users.html": "users.html",
 }
 
 
@@ -48,12 +47,21 @@ def _safe_dashboard_file(page: str) -> Path:
 
 @router.get("/dashboard", include_in_schema=False)
 async def redirect_dashboard_root() -> RedirectResponse:
-    return RedirectResponse(url="/dashboard/", status_code=307)
+    return RedirectResponse(url="/dashboard/index.html", status_code=307)
+
+
+@router.get("/", include_in_schema=False)
+async def redirect_site_root() -> RedirectResponse:
+    return RedirectResponse(url="/dashboard/index.html", status_code=307)
 
 
 @router.get("/dashboard/", include_in_schema=False)
+async def redirect_dashboard_index() -> RedirectResponse:
+    return RedirectResponse(url="/dashboard/index.html", status_code=307)
+
+
 @router.get("/dashboard/{page}", include_in_schema=False)
-async def serve_dashboard_page(page: str = "") -> FileResponse:
+async def serve_dashboard_page(page: str) -> FileResponse:
     return FileResponse(_safe_dashboard_file(page), media_type="text/html")
 
 

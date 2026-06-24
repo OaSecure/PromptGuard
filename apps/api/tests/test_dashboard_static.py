@@ -8,16 +8,58 @@ def test_dashboard_root_redirects_to_trailing_slash() -> None:
     response = client.get("/dashboard", follow_redirects=False)
 
     assert response.status_code == 307
-    assert response.headers["location"].endswith("/dashboard/")
+    assert response.headers["location"].endswith("/dashboard/index.html")
 
 
-def test_dashboard_entry_serves_status_shell_from_same_api_server() -> None:
-    response = client.get("/dashboard/")
+def test_site_root_redirects_to_landing_page() -> None:
+    response = client.get("/", follow_redirects=False)
 
-    assert response.status_code == 200
-    assert "text/html" in response.headers["content-type"]
-    assert '<div id="status-app"></div>' in response.text
-    assert './static/status.js' in response.text
+    assert response.status_code == 307
+    assert response.headers["location"].endswith("/dashboard/index.html")
+
+
+def test_dashboard_entry_redirects_to_landing_page() -> None:
+    response = client.get("/dashboard/", follow_redirects=False)
+
+    assert response.status_code == 307
+    assert response.headers["location"].endswith("/dashboard/index.html")
+
+
+def test_dashboard_html_pages_are_served_under_dashboard_prefix() -> None:
+    expected_markers = {
+        "admin.html": "대시보드 열기",
+        "event-detail.html": "./static/event-detail.js",
+        "events.html": "./static/events.js",
+        "filters.html": "./static/filters.js",
+        "index.html": "OASECURE SOLUTION",
+        "login.html": "./static/login.js",
+        "overview.html": "./static/overview.js",
+        "status.html": "./static/status.js",
+        "users.html": "./static/users.js",
+    }
+
+    for page, marker in expected_markers.items():
+        response = client.get(f"/dashboard/{page}")
+
+        assert response.status_code == 200, page
+        assert "text/html" in response.headers["content-type"], page
+        assert marker in response.text, page
+
+
+def test_dashboard_extensionless_page_paths_do_not_shadow_api_routes() -> None:
+    api_routes = {
+        "/dashboard/status": 401,
+        "/dashboard/overview": 401,
+        "/dashboard/events": 401,
+        "/dashboard/filters": 401,
+        "/dashboard/users": 401,
+    }
+
+    for path, expected_status in api_routes.items():
+        response = client.get(path)
+
+        assert response.status_code == expected_status, path
+        assert response.headers["content-type"].startswith("application/json"), path
 
 
 def test_dashboard_static_assets_are_served_under_dashboard_prefix() -> None:

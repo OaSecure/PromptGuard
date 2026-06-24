@@ -21,6 +21,10 @@ function statusPayload(overrides = {}) {
       external_api_origin: null,
       admin_local_api_origin: "http://localhost:8000",
       api_port: "8000",
+      extension_api_url: "http://192.168.0.25:8000",
+      extension_api_url_status: "configured",
+      extension_api_url_error: null,
+      dashboard_public_url: "http://192.168.0.25:8000/dashboard/",
     },
     ...overrides,
   };
@@ -32,29 +36,72 @@ function connectionCardByLabel(plan, label) {
   return card;
 }
 
-test("status screen contract shows network addresses extension users can actually enter", () => {
+test("status screen contract shows explicitly configured extension API URL as the copyable value", () => {
   const plan = renderStatusPlan(statusPayload());
-  const internal = connectionCardByLabel(plan, "내부망 연결 주소");
-  const external = connectionCardByLabel(plan, "외부/포트포워딩 주소");
-  const port = connectionCardByLabel(plan, "API 포트");
+  const apiUrl = connectionCardByLabel(plan, "Chrome Extension API URL");
+  const dashboardUrl = connectionCardByLabel(plan, "Dashboard URL");
+  const detected = connectionCardByLabel(plan, "진단용 감지 주소");
 
   assert.equal(plan.extensionSetup.title, "Chrome 확장프로그램 연동");
   assert.deepEqual(
     plan.extensionSetup.connectionCards.map((item) => item.label),
-    ["내부망 연결 주소", "외부/포트포워딩 주소", "API 포트"]
+    ["Chrome Extension API URL", "Dashboard URL", "진단용 감지 주소"]
   );
-  assert.match(internal.value, /http:\/\/192\.168\.0\.10:8000/);
-  assert.match(internal.value, /http:\/\/10\.0\.0\.8:8000/);
-  assert.match(internal.description, /같은 공유기|사내망|내부망/);
-  assert.match(external.description, /외부 접속.*API URL 확인 방법/);
-  assert.match(external.value, /자동 감지 안 됨/);
-  assert.match(external.description, /자동으로 확인하지 못했습니다/);
-  assert.equal(port.value, "8000");
+  assert.equal(apiUrl.value, "http://192.168.0.25:8000");
+  assert.equal(apiUrl.copyValue, "http://192.168.0.25:8000");
+  assert.equal(apiUrl.state, "ready");
+  assert.equal(dashboardUrl.value, "http://192.168.0.25:8000/dashboard/");
+  assert.match(detected.value, /자동 감지 안 됨/);
+  assert.match(detected.description, /참고용/);
 
   const encoded = JSON.stringify(plan);
-  assert.match(encoded, /포트포워딩|공인 IP|도메인|외부 포트/);
+  assert.match(encoded, /PROMPTGUARD_EXTENSION_API_URL|포트포워딩|공인 IP|도메인|외부 포트/);
   assert.doesNotMatch(encoded, /Login ID|Password|Mock API|해당 계정의 비밀번호/);
   assert.doesNotMatch(encoded, /1234|access[_ -]?token|refresh[_ -]?token|secret|DB URL|DATABASE_URL|stack trace|selector/i);
+});
+
+test("status screen requires explicit extension API URL before showing a copy value", () => {
+  const plan = renderStatusPlan(statusPayload({
+    extension_connection: {
+      internal_api_origins: ["http://192.168.0.10:8000"],
+      excluded_internal_api_origins: [],
+      external_api_origin: null,
+      admin_local_api_origin: "http://localhost:8000",
+      api_port: "8000",
+      extension_api_url: null,
+      extension_api_url_status: "missing",
+      extension_api_url_error: "PROMPTGUARD_EXTENSION_API_URL is not configured.",
+      dashboard_public_url: null,
+    },
+  }));
+  const apiUrl = connectionCardByLabel(plan, "Chrome Extension API URL");
+
+  assert.equal(apiUrl.value, "설정 필요");
+  assert.equal(apiUrl.copyValue, undefined);
+  assert.equal(apiUrl.state, "error");
+  assert.match(apiUrl.description, /PROMPTGUARD_EXTENSION_API_URL/);
+});
+
+test("status screen treats invalid extension API URL as configuration error without copy value", () => {
+  const plan = renderStatusPlan(statusPayload({
+    extension_connection: {
+      internal_api_origins: [],
+      excluded_internal_api_origins: ["http://172.19.0.3:8000"],
+      external_api_origin: null,
+      admin_local_api_origin: "http://localhost:8000",
+      api_port: "8000",
+      extension_api_url: null,
+      extension_api_url_status: "invalid",
+      extension_api_url_error: "localhost only points to the user's own computer and cannot be used as the Extension API URL.",
+      dashboard_public_url: "http://192.168.0.25:8000/dashboard/",
+    },
+  }));
+  const apiUrl = connectionCardByLabel(plan, "Chrome Extension API URL");
+
+  assert.equal(apiUrl.value, "설정 오류");
+  assert.equal(apiUrl.copyValue, undefined);
+  assert.equal(apiUrl.state, "error");
+  assert.match(apiUrl.description, /localhost/);
 });
 
 test("status screen distinguishes local-admin localhost from extension-user address", () => {
@@ -65,15 +112,19 @@ test("status screen distinguishes local-admin localhost from extension-user addr
       external_api_origin: null,
       admin_local_api_origin: "http://localhost:8000",
       api_port: "8000",
+      extension_api_url: null,
+      extension_api_url_status: "missing",
+      extension_api_url_error: "PROMPTGUARD_EXTENSION_API_URL is not configured.",
+      dashboard_public_url: null,
     },
   }));
   const encoded = JSON.stringify(plan);
-  const internal = connectionCardByLabel(plan, "내부망 연결 주소");
+  const apiUrl = connectionCardByLabel(plan, "Chrome Extension API URL");
 
-  assert.match(encoded, /서버 내부망 IP를 확인할 수 없습니다/);
+  assert.match(encoded, /PROMPTGUARD_EXTENSION_API_URL/);
   assert.match(encoded, /관리자 로컬 확인용/);
   assert.match(encoded, /localhost는 서버 관리자 PC에서만 유효/);
-  assert.doesNotMatch(internal.value, /localhost/);
+  assert.doesNotMatch(apiUrl.value, /localhost/);
 });
 
 test("status screen uses forwarded external origin when proxy or port forwarding exposes one", () => {
@@ -84,14 +135,20 @@ test("status screen uses forwarded external origin when proxy or port forwarding
       external_api_origin: "https://promptguard.example.com:9443",
       admin_local_api_origin: "http://localhost:8000",
       api_port: "8000",
+      extension_api_url: "https://promptguard.example.com:9443",
+      extension_api_url_status: "configured",
+      extension_api_url_error: null,
+      dashboard_public_url: "https://promptguard.example.com/dashboard/",
     },
   }));
-  const external = connectionCardByLabel(plan, "외부/포트포워딩 주소");
+  const detected = connectionCardByLabel(plan, "진단용 감지 주소");
+  const apiUrl = connectionCardByLabel(plan, "Chrome Extension API URL");
 
   const encoded = JSON.stringify(plan);
-  assert.equal(external.value, "https://promptguard.example.com:9443");
-  assert.match(external.description, /자동 감지됨/);
-  assert.match(external.description, /외부에서 접속할 Chrome 확장프로그램 사용자/);
+  assert.equal(apiUrl.value, "https://promptguard.example.com:9443");
+  assert.equal(apiUrl.copyValue, "https://promptguard.example.com:9443");
+  assert.equal(detected.value, "https://promptguard.example.com:9443");
+  assert.match(detected.description, /자동 감지됨/);
 });
 
 test("status help contract teaches non-expert admins to find IP and port forwarding on Windows macOS and Linux", () => {
@@ -128,12 +185,16 @@ test("status screen excludes Docker bridge origins from recommended cards but ex
       external_api_origin: null,
       admin_local_api_origin: "http://localhost:8000",
       api_port: "8000",
+      extension_api_url: null,
+      extension_api_url_status: "missing",
+      extension_api_url_error: "PROMPTGUARD_EXTENSION_API_URL is not configured.",
+      dashboard_public_url: null,
     },
   }));
-  const internal = connectionCardByLabel(plan, "내부망 연결 주소");
+  const apiUrl = connectionCardByLabel(plan, "Chrome Extension API URL");
   const encoded = JSON.stringify(plan);
 
-  assert.doesNotMatch(internal.value, /172\.19\.0\.3/);
+  assert.doesNotMatch(apiUrl.value, /172\.19\.0\.3/);
   assert.match(encoded, /컨테이너 내부 주소는 제외됨/);
   assert.match(encoded, /http:\/\/172\.19\.0\.3:8000/);
 });
@@ -141,7 +202,7 @@ test("status screen excludes Docker bridge origins from recommended cards but ex
 test("status URL builder creates extension API origins from admin-entered host values", () => {
   assert.equal(buildLanApiOrigin("192.168.0.10", "8000"), "http://192.168.0.10:8000");
   assert.equal(buildLanApiOrigin(" 10.0.0.8 ", "8000"), "http://10.0.0.8:8000");
-  assert.equal(buildLanApiOrigin("172.19.0.3", "8000"), "http://172.19.0.3:8000");
+  assert.equal(buildLanApiOrigin("172.19.0.3", "8000"), null);
   assert.equal(buildLanApiOrigin("localhost", "8000"), null);
   assert.equal(buildLanApiOrigin("999.1.1.1", "8000"), null);
 
