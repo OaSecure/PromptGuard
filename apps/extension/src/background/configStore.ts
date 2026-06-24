@@ -1,4 +1,4 @@
-import { DEFAULT_CONFIG, STORAGE_KEYS } from "../shared/constants";
+import { DEFAULT_CONFIG, DEFAULT_MOCK_MODE, STORAGE_KEYS } from "../shared/constants";
 import { isExtensionConfigResponse } from "../shared/configValidation";
 import type { ExtensionConfigResponse } from "../shared/types";
 
@@ -30,7 +30,7 @@ export async function getSettings(): Promise<StoredSettings> {
   const apiBaseUrl = normalizeApiBaseUrl(result[STORAGE_KEYS.apiBaseUrl], configApiBaseUrl);
   return {
     apiBaseUrl,
-    mockMode: (result[STORAGE_KEYS.mockMode] as boolean | undefined) ?? true,
+    mockMode: (result[STORAGE_KEYS.mockMode] as boolean | undefined) ?? DEFAULT_MOCK_MODE,
     config,
     lastConfigSyncAt: result[STORAGE_KEYS.lastConfigSyncAt] as string | undefined
   };

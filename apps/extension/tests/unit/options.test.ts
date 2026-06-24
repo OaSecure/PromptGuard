@@ -34,7 +34,7 @@ describe("options page", () => {
     await waitFor(() => inputValue("#apiBaseUrl") === DEFAULT_CONFIG.api_base_url);
     expect(textValue("#policyVersion")).toBe(DEFAULT_CONFIG.policy_version);
     expect(textValue("#fileInspection")).toBe("Enabled");
-    expect(textValue("#modeStatus")).toBe("Mock API");
+    expect(textValue("#modeStatus")).toBe("Real API");
   });
 
   it("trims API URL and credentials before save", async () => {
@@ -55,8 +55,45 @@ describe("options page", () => {
       payload: { login_id: "member@example.com", password: "test-password" }
     });
     expect(inputValue("#password")).toBe("");
-    expect(textValue("#modeStatus")).toBe("Mock API");
+    expect(textValue("#modeStatus")).toBe("Real API");
     expect(textValue("#serverStatus")).toBe("Not checked after settings change");
+  });
+
+  it("requests the configured API origin permission before saving real API settings", async () => {
+    const chromeMock = createChromeMock({
+      [STORAGE_KEYS.mockMode]: false
+    });
+    vi.stubGlobal("chrome", chromeMock);
+    await import("../../src/options/options");
+
+    await waitFor(() => inputValue("#apiBaseUrl") === DEFAULT_CONFIG.api_base_url);
+    document.querySelector<HTMLInputElement>("#mockMode")!.checked = false;
+    setInputValue("#apiBaseUrl", "  http://175.117.167.115:8000/  ");
+    document.querySelector<HTMLButtonElement>("#saveSettings")!.click();
+
+    await waitFor(() => textValue("#connectionStatus") === "Saved");
+    expect(chromeMock.permissions.contains).toHaveBeenCalledWith({ origins: ["http://175.117.167.115:8000/*"] });
+    expect(chromeMock.permissions.request).toHaveBeenCalledWith({ origins: ["http://175.117.167.115:8000/*"] });
+    expect(chromeMock.storage.local.snapshot()[STORAGE_KEYS.apiBaseUrl]).toBe("http://175.117.167.115:8000/");
+    expect(chromeMock.storage.local.snapshot()[STORAGE_KEYS.mockMode]).toBe(false);
+  });
+
+  it("blocks real API save when the API origin permission is denied", async () => {
+    const chromeMock = createChromeMock(
+      { [STORAGE_KEYS.mockMode]: false },
+      async () => ({ ok: true }),
+      { requestResult: false }
+    );
+    vi.stubGlobal("chrome", chromeMock);
+    await import("../../src/options/options");
+
+    await waitFor(() => inputValue("#apiBaseUrl") === DEFAULT_CONFIG.api_base_url);
+    document.querySelector<HTMLInputElement>("#mockMode")!.checked = false;
+    setInputValue("#apiBaseUrl", "http://175.117.167.115:8000");
+    document.querySelector<HTMLButtonElement>("#saveSettings")!.click();
+
+    await waitFor(() => textValue("#connectionStatus") === "API URL permission is required to use Real API mode.");
+    expect(chromeMock.storage.local.snapshot()[STORAGE_KEYS.apiBaseUrl]).toBeUndefined();
   });
 
   it("requires both login ID and password before sending auth login", async () => {
@@ -161,7 +198,9 @@ describe("options page", () => {
   it("sync config click persists visible settings and renders returned config", async () => {
     const syncedConfig = {
       ...DEFAULT_CONFIG,
+      filter_config_revision: "v-synced",
       policy_version: "v-synced",
+      attachment_policy: { ...DEFAULT_CONFIG.attachment_policy, enabled: false },
       file_upload: { ...DEFAULT_CONFIG.file_upload, enabled: false }
     };
     const chromeMock = createChromeMock(
@@ -214,7 +253,11 @@ describe("options page", () => {
   });
 });
 
-function createChromeMock(initial: Record<string, unknown>, responder: (message: { type: string }) => Promise<unknown> = async () => ({ ok: true })) {
+function createChromeMock(
+  initial: Record<string, unknown>,
+  responder: (message: { type: string }) => Promise<unknown> = async () => ({ ok: true }),
+  permissions: { containsResult?: boolean; requestResult?: boolean } = {}
+) {
   const values = { ...initial };
   return {
     storage: {
@@ -232,6 +275,10 @@ function createChromeMock(initial: Record<string, unknown>, responder: (message:
           return { ...values };
         }
       }
+    },
+    permissions: {
+      contains: vi.fn(async () => permissions.containsResult ?? false),
+      request: vi.fn(async () => permissions.requestResult ?? true)
     },
     runtime: {
       sendMessage: vi.fn(responder)

@@ -310,7 +310,7 @@ describe("prompt preflight controller", () => {
 
     const timeoutPage = setupComposer("timeout case");
     const timeoutController = startPromptPreflightController({
-      config: { ...DEFAULT_CONFIG, timeout_ms: 1 },
+      config: { ...DEFAULT_CONFIG, request_timeouts: { ...DEFAULT_CONFIG.request_timeouts, analyze_request_ms: 1 }, timeout_ms: 1 },
       getContext: () => context,
       sendAnalyze: async () => new Promise(() => undefined)
     });

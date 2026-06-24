@@ -1,5 +1,6 @@
 import { createAnalyzeRequest, createFileReferenceInput, createUnsupportedAttachmentInput } from "../shared/analyzeRequestBuilder";
 import type { TempUploadResult } from "../background/tempFileUploadClient";
+import { analyzeTimeoutMs, attachmentPolicy, filterConfigRevision } from "../shared/configAccessors";
 import type { AnalyzeFileKind } from "../shared/types";
 import { createClientRequestId } from "../shared/hashing";
 import { validateFilePolicy } from "../shared/filePolicy";
@@ -35,8 +36,8 @@ export interface FileUploadPreflightController {
 /**
  * Starts file upload preflight for input and drop attach attempts.
  *
- * The controller validates policy without reading file content. Until the
- * upload/temp file_ref client exists, supported file handles fail closed.
+ * The controller validates policy without reading file content, then routes
+ * supported file handles through upload/temp file_ref inspection.
  */
 export function startFileUploadPreflightController(options: FileUploadPreflightControllerOptions): FileUploadPreflightController {
   const doc = options.document ?? document;
@@ -75,7 +76,7 @@ export function startFileUploadPreflightController(options: FileUploadPreflightC
     const snapshots = createFileUploadSnapshots(attempt.files);
     const policyDecisions = validateFilePolicy(
       snapshots.map((snapshot) => snapshot.policyInput),
-      options.config.file_upload
+      attachmentPolicy(options.config)
     );
     const rejected = policyDecisions.find((decision) => !decision.allowed && (decision.reason === "disabled" || decision.reason === "too_many_files" || decision.reason === "batch_too_large"));
     if (rejected) {
@@ -108,8 +109,8 @@ export function startFileUploadPreflightController(options: FileUploadPreflightC
         return;
       }
       const response = await withTimeout(
-        options.sendAnalyze(buildFilesAnalyzeRequest(inputs, options.getContext(), options.config.policy_version, requestId)),
-        options.config.timeout_ms
+        options.sendAnalyze(buildFilesAnalyzeRequest(inputs, options.getContext(), filterConfigRevision(options.config), requestId)),
+        analyzeTimeoutMs(options.config)
       );
       if (attemptId !== currentAttemptId) {
         return;
@@ -121,7 +122,7 @@ export function startFileUploadPreflightController(options: FileUploadPreflightC
       handleDecision(response, attempt);
     } catch {
       if (attemptId === currentAttemptId) {
-        showFailClosed("File inspection timed out or could not read the selected text files.", () => void handleAttempt(attempt));
+        showFailClosed("File inspection timed out or could not inspect the selected files.", () => void handleAttempt(attempt));
       }
     } finally {
       if (attemptId === currentAttemptId) {

@@ -30,6 +30,24 @@ def test_cors_preflight_allows_configured_origin() -> None:
     assert response.headers["access-control-allow-credentials"] == "true"
 
 
+def test_cors_preflight_allows_chrome_extension_origin_with_extension_headers() -> None:
+    client = TestClient(app)
+
+    response = client.options(
+        "/auth/login",
+        headers={
+            "Origin": "chrome-extension://abcdefghijklmnopabcdefghijklmnop",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type,x-promptguard-client,x-promptguard-extension-version",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "chrome-extension://abcdefghijklmnopabcdefghijklmnop"
+    assert response.headers["access-control-allow-credentials"] == "true"
+    assert "X-PromptGuard-Client" in response.headers["access-control-allow-headers"]
+
+
 def test_cors_preflight_rejects_unconfigured_origin() -> None:
     client = TestClient(app)
 

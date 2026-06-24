@@ -138,10 +138,31 @@ export interface ExtensionContext {
 /** Remote or cached config that controls selectors, timeouts, and file policy. */
 export interface ExtensionConfigResponse {
   api_base_url: string;
+  filter_config_revision: string;
+  request_timeouts: ExtensionRequestTimeouts;
+  input_limits: ExtensionInputLimits;
+  attachment_policy: FileUploadPolicy;
+  /** Legacy compatibility field; prefer filter_config_revision. */
   policy_version: string;
+  /** Legacy compatibility field; prefer request_timeouts.analyze_request_ms. */
   timeout_ms: number;
   ai_service_configs: AiServiceConfig[];
+  /** Legacy compatibility field; prefer attachment_policy. */
   file_upload: FileUploadPolicy;
+}
+
+/** API timeout settings returned by /config/extension. */
+export interface ExtensionRequestTimeouts {
+  config_request_ms: number;
+  analyze_request_ms: number;
+}
+
+/** Byte limits returned by /config/extension. */
+export interface ExtensionInputLimits {
+  composer_text_bytes: number;
+  converted_paste_text_bytes: number;
+  file_text_scan_bytes: number;
+  analyze_request_bytes: number;
 }
 
 /** Selector and domain config for one supported AI service. */

@@ -6,6 +6,8 @@ export const EXTENSION_VERSION = "0.4.0";
 export const DEFAULT_POLICY_VERSION = "v0.4.0-default";
 /** Default fail-closed inspection timeout in milliseconds. */
 export const DEFAULT_TIMEOUT_MS = 3000;
+/** Product runtime defaults to the configured real API; mock mode is opt-in. */
+export const DEFAULT_MOCK_MODE = false;
 
 /**
  * Default extension config used before cached or remote config is available.
@@ -15,6 +17,17 @@ export const DEFAULT_TIMEOUT_MS = 3000;
  */
 export const DEFAULT_CONFIG: ExtensionConfigResponse = {
   api_base_url: "https://promptguard.example.com/api/v1",
+  filter_config_revision: DEFAULT_POLICY_VERSION,
+  request_timeouts: {
+    config_request_ms: 5000,
+    analyze_request_ms: 8000
+  },
+  input_limits: {
+    composer_text_bytes: 262_144,
+    converted_paste_text_bytes: 1_048_576,
+    file_text_scan_bytes: 1_048_576,
+    analyze_request_bytes: 2_097_152
+  },
   policy_version: DEFAULT_POLICY_VERSION,
   timeout_ms: DEFAULT_TIMEOUT_MS,
   ai_service_configs: [
@@ -42,6 +55,33 @@ export const DEFAULT_CONFIG: ExtensionConfigResponse = {
       }
     }
   ],
+  attachment_policy: {
+    enabled: true,
+    max_file_size_bytes: 1_048_576,
+    max_total_size_bytes: 3_145_728,
+    max_file_count: 5,
+    allowed_extensions: [
+      ".txt",
+      ".md",
+      ".csv",
+      ".json",
+      ".yaml",
+      ".yml",
+      ".xml",
+      ".log",
+      ".env",
+      ".ini",
+      ".conf",
+      ".sql",
+      ".py",
+      ".js",
+      ".ts",
+      ".java",
+      ".go",
+      ".rs"
+    ],
+    excluded_extensions: [".pdf", ".docx", ".xlsx", ".pptx", ".zip", ".png", ".jpg", ".jpeg"]
+  },
   file_upload: {
     enabled: true,
     max_file_size_bytes: 1_048_576,
@@ -68,7 +108,7 @@ export const DEFAULT_CONFIG: ExtensionConfigResponse = {
       ".rs"
     ],
     excluded_extensions: [".pdf", ".docx", ".xlsx", ".pptx", ".zip", ".png", ".jpg", ".jpeg"]
-  }
+  },
 };
 
 /** Storage keys used for extension-local operational settings only. */

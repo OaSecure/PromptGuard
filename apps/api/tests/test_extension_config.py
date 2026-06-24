@@ -44,11 +44,21 @@ def test_extension_config_accepts_active_user_and_returns_extension_shape() -> N
     assert response.status_code == 200
     body = response.json()
     assert body["api_base_url"] == "http://localhost:8000"
+    assert body["filter_config_revision"] == "cfg_default"
+    assert body["request_timeouts"] == {"config_request_ms": 5000, "analyze_request_ms": 8000}
+    assert body["input_limits"] == {
+        "composer_text_bytes": 262_144,
+        "converted_paste_text_bytes": 1_048_576,
+        "file_text_scan_bytes": 1_048_576,
+        "analyze_request_bytes": 2_097_152,
+    }
     assert body["policy_version"] == "cfg_default"
     assert body["timeout_ms"] == 8000
     assert body["ai_service_configs"][0]["service"] == "CHATGPT"
     assert body["ai_service_configs"][0]["selectors"]["input"]
     assert body["file_upload"]["enabled"] is True
+    assert body["attachment_policy"]["enabled"] is True
+    assert body["attachment_policy"] == body["file_upload"]
     assert body["file_upload"]["max_file_size_bytes"] == 1_048_576
     assert ".pdf" in body["file_upload"]["excluded_extensions"]
     assert "raw_prompt" not in response.text

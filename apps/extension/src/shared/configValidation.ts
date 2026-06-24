@@ -14,11 +14,34 @@ export function isExtensionConfigResponse(value: unknown): value is ExtensionCon
 
   return (
     isNonEmptyString(value.api_base_url) &&
+    isNonEmptyString(value.filter_config_revision) &&
+    isRequestTimeouts(value.request_timeouts) &&
+    isInputLimits(value.input_limits) &&
+    isFileUploadPolicy(value.attachment_policy) &&
     isNonEmptyString(value.policy_version) &&
     isPositiveFiniteNumber(value.timeout_ms) &&
     isNonEmptyArray(value.ai_service_configs) &&
     value.ai_service_configs.every(isAiServiceConfig) &&
     isFileUploadPolicy(value.file_upload)
+  );
+}
+
+function isRequestTimeouts(value: unknown): boolean {
+  if (!isRecord(value)) {
+    return false;
+  }
+  return isPositiveFiniteNumber(value.config_request_ms) && isPositiveFiniteNumber(value.analyze_request_ms);
+}
+
+function isInputLimits(value: unknown): boolean {
+  if (!isRecord(value)) {
+    return false;
+  }
+  return (
+    isPositiveFiniteNumber(value.composer_text_bytes) &&
+    isPositiveFiniteNumber(value.converted_paste_text_bytes) &&
+    isPositiveFiniteNumber(value.file_text_scan_bytes) &&
+    isPositiveFiniteNumber(value.analyze_request_bytes)
   );
 }
 

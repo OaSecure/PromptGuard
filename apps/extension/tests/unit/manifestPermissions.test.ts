@@ -14,6 +14,7 @@ describe("manifest permission boundary", () => {
       "https://chat.openai.com/*",
       "https://promptguard.example.com/*"
     ]);
+    expect(manifest.optional_host_permissions).toEqual(["http://*/*", "https://*/*"]);
   });
 
   it("does not inject the content script into the API origin", () => {
