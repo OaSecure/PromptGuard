@@ -2,7 +2,14 @@ from dataclasses import asdict
 
 import pytest
 
-from app.detectors.pii import detect_card, detect_email, detect_phone, detect_pii, detect_rrn
+from app.detectors.pii import (
+    detect_card,
+    detect_email,
+    detect_korean_bank_account,
+    detect_phone,
+    detect_pii,
+    detect_rrn,
+)
 
 
 @pytest.mark.parametrize(
@@ -121,6 +128,21 @@ def test_detect_card_ignores_luhn_invalid_candidates(text: str) -> None:
     assert detect_card(text) == []
 
 
+def test_detect_korean_bank_account_uses_bank_context_and_suppresses_card_overlap() -> None:
+    text = "계좌 국민은행 482719-02-774182"
+
+    account_detections = detect_korean_bank_account(text)
+
+    assert [text[item.start : item.end] for item in account_detections] == ["482719-02-774182"]
+    assert account_detections[0].detector_key == "BANK_ACCOUNT"
+    assert account_detections[0].placeholder == "BANK_ACCOUNT"
+    assert detect_card(text) == []
+
+
+def test_detect_korean_bank_account_ignores_number_without_bank_context() -> None:
+    assert detect_korean_bank_account("reference 482719-02-774182") == []
+
+
 def test_detect_pii_returns_sorted_detections() -> None:
     text = "phone 010-1234-5678, email member@example.com, rrn 900101-1234568, card 4111 1111 1111 1111"
 
@@ -130,8 +152,14 @@ def test_detect_pii_returns_sorted_detections() -> None:
 
 
 def test_detections_do_not_store_raw_values() -> None:
-    text = "member@example.com / 010-1234-5678 / 900101-1234568 / 4111 1111 1111 1111"
-    raw_values = ["member@example.com", "010-1234-5678", "900101-1234568", "4111 1111 1111 1111"]
+    text = "member@example.com / 010-1234-5678 / 900101-1234568 / 4111 1111 1111 1111 / 계좌 국민은행 482719-02-774182"
+    raw_values = [
+        "member@example.com",
+        "010-1234-5678",
+        "900101-1234568",
+        "4111 1111 1111 1111",
+        "482719-02-774182",
+    ]
 
     serialized = [asdict(item) for item in detect_pii(text)]
 
@@ -140,7 +168,7 @@ def test_detections_do_not_store_raw_values() -> None:
         assert "value" not in item
         assert "raw" not in item
         assert "text" not in item
-        assert item["detector_key"] in {"EMAIL", "PHONE", "RRN", "CARD"}
+        assert item["detector_key"] in {"EMAIL", "PHONE", "RRN", "CARD", "BANK_ACCOUNT"}
         assert item["value_length"] > 0
         for raw_value in raw_values:
             assert raw_value not in str(item)

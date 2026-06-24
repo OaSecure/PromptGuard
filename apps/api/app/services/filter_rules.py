@@ -97,6 +97,21 @@ BUILT_IN_RULES: list[FilterRule] = [
         editable_fields={"severity": True, "action": True, "enabled": True},
         version=1,
     ),
+    FilterRule(
+        id=uuid.UUID("00000000-0000-4000-8000-000000000105"),
+        origin="built_in",
+        kind="detector",
+        category="Payment",
+        label="Korean Bank Account",
+        description="Detects Korean bank account numbers near bank/account context.",
+        detector_key="BANK_ACCOUNT",
+        placeholder="BANK_ACCOUNT",
+        severity="high",
+        action="MASK",
+        enabled=True,
+        editable_fields={"severity": True, "action": True, "enabled": True},
+        version=1,
+    ),
 ]
 
 
@@ -108,8 +123,47 @@ async def load_active_filter_rules(session: AsyncSession) -> list[FilterRule]:
     except Exception:
         return [rule for rule in BUILT_IN_RULES if rule.enabled]
 
-    rules = list(result.scalars().all())
-    return rules or [rule for rule in BUILT_IN_RULES if rule.enabled]
+    return _merge_built_in_and_stored_rules(list(result.scalars().all()))
+
+
+def _merge_built_in_and_stored_rules(stored_rules: list[FilterRule]) -> list[FilterRule]:
+    active_stored = _active_rules(stored_rules)
+    stored_built_in_by_key = _stored_built_in_overrides(active_stored)
+    merged = [_rule_with_override(rule, stored_built_in_by_key) for rule in BUILT_IN_RULES]
+    merged.extend(_custom_rules(active_stored))
+    return [rule for rule in merged if rule.enabled]
+
+
+def _active_rules(rules: list[FilterRule]) -> list[FilterRule]:
+    return [rule for rule in rules if rule.archived_at is None]
+
+
+def _stored_built_in_overrides(rules: list[FilterRule]) -> dict[str, FilterRule]:
+    overrides: dict[str, FilterRule] = {}
+    for rule in rules:
+        key = _built_in_override_key(rule)
+        if key is not None:
+            overrides[key] = rule
+    return overrides
+
+
+def _custom_rules(rules: list[FilterRule]) -> list[FilterRule]:
+    return [rule for rule in rules if rule.origin != "built_in"]
+
+
+def _rule_with_override(rule: FilterRule, overrides: dict[str, FilterRule]) -> FilterRule:
+    key = _built_in_override_key(rule)
+    if key is None:
+        return rule
+    return overrides.get(key, rule)
+
+
+def _built_in_override_key(rule: FilterRule) -> str | None:
+    if rule.origin != "built_in":
+        return None
+    if rule.detector_key:
+        return f"detector:{rule.detector_key}"
+    return f"id:{rule.id}"
 
 
 def filter_rule_set_version(rules: list[FilterRule]) -> str:

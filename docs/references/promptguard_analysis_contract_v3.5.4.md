@@ -4914,6 +4914,7 @@ user_notices
 | protected target risky | protected target with risk context |
 | PII format benign | format/example no person-level data |
 | PII risky context | person-level data handling |
+| payroll/account risky context | payroll statement context and bank account routing; plain amounts are not standalone detector targets |
 | public code benign | open technical explanation |
 | proprietary/security-sensitive code | internal implementation/control context |
 
