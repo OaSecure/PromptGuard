@@ -7,6 +7,16 @@ from .common import ReasonCode
 
 PolicyAction = Literal["allow", "warn", "mask", "block"]
 PolicySeverity = Literal["info", "low", "medium", "high", "critical"]
+ConfigurablePolicyAction = Literal["allow", "warn", "block"]
+UnsupportedMaskFallbackAction = Literal["warn", "block"]
+
+
+class PolicyActionSettings(BaseModel):
+    context_classifier_action: ConfigurablePolicyAction = "warn"
+    content_not_scanned_action: ConfigurablePolicyAction = "warn"
+    parser_or_ocr_failure_action: ConfigurablePolicyAction = "warn"
+    empty_input_action: ConfigurablePolicyAction = "allow"
+    unsupported_mask_fallback_action: UnsupportedMaskFallbackAction = "block"
 
 
 class PolicyRuleEvidence(BaseModel):
@@ -36,6 +46,7 @@ class PolicyDecisionRequest(BaseModel):
     rules: list[PolicyRuleEvidence] = Field(default_factory=list)
     inputs: list[PolicyInputEvidence] = Field(default_factory=list)
     ml: PolicyMlEvidence = Field(default_factory=PolicyMlEvidence)
+    action_settings: PolicyActionSettings = Field(default_factory=PolicyActionSettings)
 
 
 class PolicyDecision(BaseModel):

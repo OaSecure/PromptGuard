@@ -52,6 +52,7 @@ from app.services.filter_rules import (
     load_active_filter_rules,
     score_for_matches,
 )
+from app.services.policy_settings import get_policy_settings_row, policy_action_settings_from_row
 
 router = APIRouter(prefix="/prompts", tags=["prompts"])
 
@@ -626,6 +627,7 @@ async def analyze_prompt(
         )
     detection_input_indexes = {index for index, _item, item_matches in matched_inputs if item_matches}
     input_results = input_results_for_payload(payload, detection_input_indexes, parser_results)
+    action_settings = policy_action_settings_from_row(await get_policy_settings_row(session))
     policy_request = build_policy_request(
         request_id,
         payload.inputs,
@@ -633,6 +635,7 @@ async def analyze_prompt(
         classifier_outcome,
         input_results=input_results,
         evidence_codes=policy_evidence_codes_for_payload(payload, parser_results),
+        action_settings=action_settings,
     )
     action = to_legacy_action(policy_orchestrator.decide(policy_request).action)
     risk_score = score_for_final_action(risk_score, action)
