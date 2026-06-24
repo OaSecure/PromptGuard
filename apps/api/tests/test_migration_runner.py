@@ -91,6 +91,10 @@ def test_compose_mounts_model_artifacts_read_only_and_documents_manifest_paths()
     assert "PROMPTGUARD_VERIFIER_RUNTIME_ENABLED: ${PROMPTGUARD_VERIFIER_RUNTIME_ENABLED:-false}" in compose_text
     assert "PROMPTGUARD_VERIFIER_MANIFEST_PATH: ${PROMPTGUARD_VERIFIER_MANIFEST_PATH:-}" in compose_text
     assert (
+        "PROMPTGUARD_TORCH_WORKER_PAYLOAD_DIR: ${PROMPTGUARD_TORCH_WORKER_PAYLOAD_DIR:-/tmp/promptguard-torch-payloads}"
+        in compose_text
+    )
+    assert (
         "PROMPTGUARD_TEMP_FILE_ENCRYPTION_KEY: ${PROMPTGUARD_TEMP_FILE_ENCRYPTION_KEY:-}"
         in compose_text
     )
@@ -105,6 +109,7 @@ def test_compose_mounts_model_artifacts_read_only_and_documents_manifest_paths()
         "PROMPTGUARD_VERIFIER_MANIFEST_PATH=/opt/promptguard/models/context_lr_roberta_active_best_f1_manifest.json"
         in env_example_text
     )
+    assert "PROMPTGUARD_TORCH_WORKER_PAYLOAD_DIR=/tmp/promptguard-torch-payloads" in env_example_text
 
 
 def test_compose_builds_single_api_image_with_split_worker_virtualenvs() -> None:
