@@ -3,6 +3,7 @@
 import os
 import sys
 import tempfile
+from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from pathlib import Path
 from threading import Lock
 from typing import Any
@@ -105,7 +106,8 @@ def _ocr_image_result(payload: dict[str, Any], *, task: str, request_id: str | N
         return build_paddle_worker_error("PADDLE_WORKER_PAYLOAD_UNAVAILABLE", task=task, request_id=request_id)
     try:
         worker_payload = PaddleWorkerPayloadStore(Path(payload_dir)).read(payload_ref)
-        return _execute_ocr_image(worker_payload)
+        with _suppress_native_output():
+            return _execute_ocr_image(worker_payload)
     except Exception:
         return build_paddle_worker_error("PADDLE_WORKER_OCR_FAILED", task=task, request_id=request_id)
 
@@ -209,6 +211,34 @@ def _select_language(languages: tuple[str, ...]) -> str:
     if normalized & {"eng", "en", "english"}:
         return "en"
     return "korean"
+
+
+@contextmanager
+def _suppress_native_output():
+    try:
+        stdout_fd = sys.stdout.fileno()
+        stderr_fd = sys.stderr.fileno()
+    except (AttributeError, OSError):
+        with redirect_stdout(tempfile.TemporaryFile(mode="w+")), redirect_stderr(tempfile.TemporaryFile(mode="w+")):
+            yield
+        return
+
+    saved_stdout = os.dup(stdout_fd)
+    saved_stderr = os.dup(stderr_fd)
+    try:
+        with tempfile.TemporaryFile(mode="w+b") as sink:
+            sys.stdout.flush()
+            sys.stderr.flush()
+            os.dup2(sink.fileno(), stdout_fd)
+            os.dup2(sink.fileno(), stderr_fd)
+            yield
+    finally:
+        sys.stdout.flush()
+        sys.stderr.flush()
+        os.dup2(saved_stdout, stdout_fd)
+        os.dup2(saved_stderr, stderr_fd)
+        os.close(saved_stdout)
+        os.close(saved_stderr)
 
 
 if __name__ == "__main__":
