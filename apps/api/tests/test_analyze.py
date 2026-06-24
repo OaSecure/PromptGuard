@@ -12,7 +12,10 @@ from sqlalchemy import Index
 from sqlalchemy.exc import IntegrityError
 
 from app.core.tokens import create_access_token
+from app.domain.policy import PolicyOrchestrator
 from app.domain.types.policy import PolicyDecision
+from app.atoms.models import PipelineFailure
+from app.ml.classifier.factory import ClassifierRuntimeProviderResult
 from app.models.events import AnalysisEvent, EventDetection, EventInput, IdempotencyKey
 from app.models.filters import FilterRule
 from app.routes import analyze as analyze_route
@@ -472,6 +475,53 @@ def test_analyze_masks_email_and_phone_and_keeps_legacy_event_bridge_raw_free() 
     assert all("raw" not in json.dumps(item.safe_evidence) for item in detection_rows)
     assert all(prompt not in json.dumps(item.safe_evidence) for item in detection_rows)
     assert fake_session.commits == 1
+
+
+def test_analyze_mask_response_is_driven_by_policy_orchestrator_decision() -> None:
+    class RecordingPolicyOrchestrator:
+        def __init__(self) -> None:
+            self.requests = []
+            self.decisions = []
+            self.real = PolicyOrchestrator()
+
+        def decide(self, request):
+            self.requests.append(request)
+            decision = self.real.decide(request)
+            self.decisions.append(decision)
+            return decision
+
+    user = _user()
+    recorder = RecordingPolicyOrchestrator()
+    client, fake_session = _client(
+        user,
+        rules=[_filter_rule(keyword="mask marker", placeholder="MASK_MARKER", action="MASK", severity="medium")],
+    )
+    client.app.dependency_overrides[analyze_route.get_policy_orchestrator] = lambda: recorder
+    client.app.dependency_overrides[analyze_route.get_classifier_runtime_provider] = lambda: ClassifierRuntimeProviderResult(
+        failure=PipelineFailure(code="CLASSIFIER_RUNTIME_DISABLED", message="classifier runtime disabled")
+    )
+
+    response = client.post(
+        "/prompts/analyze",
+        headers=_bearer_header(user.id),
+        json=_analyze_payload(_text_input("in_1", "review mask marker before sending")),
+    )
+
+    body = response.json()
+    events = [item for item in fake_session.added if isinstance(item, AnalysisEvent)]
+
+    assert response.status_code == 200
+    assert len(recorder.requests) == 1
+    assert len(recorder.decisions) == 1
+    assert recorder.requests[0].rules[0].action == "mask"
+    assert recorder.requests[0].rules[0].masking_supported is True
+    assert recorder.requests[0].inputs[0].content_scanned is True
+    assert recorder.decisions[0].action == "mask"
+    assert body["action"] == "Mask"
+    assert body["allow_original_send"] is False
+    assert body["requires_user_confirmation"] is True
+    assert body["masked_prompt"] == "review [MASK_MARKER_1] before sending"
+    assert events[0].action == "MASK"
 
 
 def test_analyze_masks_rrn_and_card_as_high_risk() -> None:
