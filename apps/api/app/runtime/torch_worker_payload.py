@@ -17,6 +17,11 @@ class TorchWorkerPayloadStore:
         self._root = root
         self._root.mkdir(parents=True, exist_ok=True)
 
+    @property
+    def root(self) -> Path:
+        """Return the directory shared with the Torch subprocess."""
+        return self._root
+
     def write(self, payload: dict[str, Any]) -> str:
         """Persist a transient payload and return an opaque worker-local reference."""
         payload_ref = f"twpl_{secrets.token_urlsafe(24)}"

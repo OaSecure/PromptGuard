@@ -161,6 +161,7 @@ def test_client_payload_ref_keeps_raw_text_out_of_worker_control_json(tmp_path):
         assert request["metadata"]["payload_ref"].startswith("twpl_")
         seen_payload_ref = request["metadata"]["payload_ref"]
         assert payload_store.read(seen_payload_ref)["atoms"][0]["text"] == "PRIVATE_RAW_CONTEXT"
+        assert kwargs["env"]["PROMPTGUARD_TORCH_WORKER_PAYLOAD_DIR"] == tmp_path.as_posix()
         return SimpleNamespace(
             returncode=0,
             stdout=json.dumps(
@@ -244,6 +245,13 @@ def test_context_worker_payload_ref_failure_does_not_echo_raw_text(tmp_path):
         "request_id": "req-1",
         "metadata": {"payload_ref": payload_ref},
     }
+    worker_env = {
+        **os.environ,
+        "PYTHONPATH": str(API_ROOT),
+        "PROMPTGUARD_TORCH_WORKER_PAYLOAD_DIR": str(tmp_path),
+    }
+    worker_env.pop("PROMPTGUARD_CLASSIFIER_MANIFEST_PATH", None)
+    worker_env.pop("PROMPTGUARD_VERIFIER_MANIFEST_PATH", None)
 
     completed = subprocess.run(
         [sys.executable, str(WORKER_SCRIPT)],
@@ -251,7 +259,7 @@ def test_context_worker_payload_ref_failure_does_not_echo_raw_text(tmp_path):
         text=True,
         capture_output=True,
         check=False,
-        env={**os.environ, "PYTHONPATH": str(API_ROOT), "PROMPTGUARD_TORCH_WORKER_PAYLOAD_DIR": str(tmp_path)},
+        env=worker_env,
     )
 
     assert completed.returncode == 1
