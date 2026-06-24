@@ -249,6 +249,11 @@ MVP에서는 여러 입력과 여러 탐지 결과가 동시에 존재하더라�
 
   - MVP 기본 구성은 API와 PostgreSQL이다.
   - API base image는 `python:3.13-slim`을 사용한다.
+  - API 서버는 web request process 안에서 ML/OCR heavy dependency를 직접 import하거나 per-request model load를 수행하지 않는다.
+  - Torch/LR+FT verifier runtime과 PaddleOCR parser runtime은 API 서버가 호출하는 resident worker process로 분리한다.
+  - resident worker process는 startup 후 대기 queue를 유지하며, 요청별 one-shot subprocess 실행은 fallback/debug path로만 허용한다.
+  - worker queue는 bounded queue, timeout, readiness, structured failure code, graceful shutdown을 제공해야 한다.
+  - Docker 실행 기준에서 `/readyz`는 DB/migration/filter rule뿐 아니라 필수 resident worker readiness를 핵심 의존성으로 반영한다.
   - 대시보드는 HTML/CSS/TypeScript 기반 정적 파일 산출물로 배포한다.
   - MVP 배포 기준에서는 FastAPI 서버가 API와 dashboard 정적 파일을 함께 제공한다.
   - Redis는 필요할 때 켤 수 있는 선택 profile로 제공한다.
@@ -274,11 +279,11 @@ MVP에서는 여러 입력과 여러 탐지 결과가 동시에 존재하더라�
 | 엔드포인트                   | 목적                             | 인증             | HTTP 상태 규칙                                                                       |
 | ----------------------- | ------------------------------ | -------------- | -------------------------------------------------------------------------------- |
 | `GET /livez`            | 프로세스가 살아 있고 요청 처리기가 응답 가능한지 확인 | 공개 또는 내부       | 프로세스가 응답 가능하면 `200`, 응답 불가하면 응답 자체가 실패                                           |
-| `GET /readyz`           | 서버가 트래픽을 받아도 되는지 확인            | 내부 권장          | 설정 유효, DB 연결 가능, 마이그레이션 최신, 기본 필터 설정 로드 가능이면 `200`; 핵심 의존성이 불가하면 `503`           |
+| `GET /readyz`           | 서버가 트래픽을 받아도 되는지 확인            | 내부 권장          | 설정 유효, DB 연결 가능, 마이그레이션 최신, 기본 필터 설정 로드 가능, 필수 resident worker 준비 완료이면 `200`; 핵심 의존성이 불가하면 `503` |
 | `GET /healthz`          | 운영자용 집계 상태                     | 내부 또는 ADMIN 권장 | 핵심 기능 가능하면 `200`; 선택 의존성만 문제면 body `status=degraded`와 함께 `200`; 핵심 의존성 불가면 `503` |
 | `GET /dashboard/status` | 대시보드가 쓰는 서버 상태 API             | ADMIN          | `/healthz`와 같은 상태 metadata를 인증된 대시보드 형식으로 반환                                     |
 
-상태 확인 endpoint는 Docker Compose 실행과 fresh install 검증에 사용한다. 준비 상태 확인이 실패하면 MVP smoke를 통과한 것으로 보지 않는다.
+상태 확인 endpoint는 Docker Compose 실행과 fresh install 검증에 사용한다. 준비 상태 확인이 실패하면 MVP smoke를 통과한 것으로 보지 않는다. ML/OCR resident worker가 필수 분석 경로에 연결된 배포 profile에서는 worker readiness 실패도 준비 상태 실패로 취급한다.
 
 ### 5.2 상태 응답 형식
 

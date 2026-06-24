@@ -4,7 +4,7 @@ from typing import Any
 
 PADDLE_WORKER_PROTOCOL_VERSION = "promptguard.paddle-worker.v1"
 
-_ALLOWED_TASKS = {"ocr_image"}
+_ALLOWED_TASKS = {"ocr_image", "ocr_smoke"}
 _FORBIDDEN_KEYS = {
     "raw_prompt",
     "prompt",

@@ -10,6 +10,7 @@ from sqlalchemy import text
 
 from app.core.config import get_settings
 from app.db.session import engine
+from app.runtime.worker_clients import cached_paddle_worker_client, cached_torch_worker_client
 
 router = APIRouter(tags=["health"])
 
@@ -116,6 +117,63 @@ async def check_filter_config() -> dict[str, Any]:
     )
 
 
+async def check_torch_worker() -> dict[str, Any]:
+    settings = get_settings()
+    required = settings.worker_readiness_required and (
+        settings.classifier_runtime_enabled or settings.verifier_runtime_enabled
+    )
+    if not required:
+        return dependency("torch_worker", "disabled", False, "TORCH_WORKER_DISABLED", "Torch worker readiness is not required")
+    if settings.classifier_manifest_path_value() is None or settings.verifier_manifest_path_value() is None:
+        return dependency("torch_worker", "unhealthy", True, "TORCH_WORKER_CONFIG_MISSING", "Torch worker manifests are not configured")
+
+    client = cached_torch_worker_client(
+        settings.torch_worker_python_path,
+        settings.torch_worker_script_path,
+        settings.torch_worker_payload_dir,
+        settings.worker_readiness_timeout_ms,
+        settings.ml_inference_queue_max_queue_size,
+    )
+    result = client.readiness_probe()
+    snapshot = client.status_snapshot()
+    message = _worker_message("Torch worker is ready", snapshot)
+    if result.ok:
+        return dependency("torch_worker", "healthy", True, "TORCH_WORKER_READY", message)
+    return dependency(
+        "torch_worker",
+        "unhealthy",
+        True,
+        result.error_code or "TORCH_WORKER_UNAVAILABLE",
+        _worker_message("Torch worker readiness failed", snapshot),
+    )
+
+
+async def check_paddle_worker() -> dict[str, Any]:
+    settings = get_settings()
+    required = settings.worker_readiness_required
+    if not required:
+        return dependency("paddle_worker", "disabled", False, "PADDLE_WORKER_DISABLED", "PaddleOCR worker readiness is not required")
+
+    client = cached_paddle_worker_client(
+        settings.paddle_worker_python_path,
+        settings.paddle_worker_script_path,
+        settings.paddle_worker_payload_dir,
+        settings.worker_readiness_timeout_ms,
+        settings.ml_inference_queue_max_queue_size,
+    )
+    result = client.readiness_probe()
+    snapshot = client.status_snapshot()
+    if result.ok:
+        return dependency("paddle_worker", "healthy", True, "PADDLE_WORKER_READY", _worker_message("PaddleOCR worker is ready", snapshot))
+    return dependency(
+        "paddle_worker",
+        "unhealthy",
+        True,
+        result.error_code or "PADDLE_WORKER_UNAVAILABLE",
+        _worker_message("PaddleOCR worker readiness failed", snapshot),
+    )
+
+
 async def check_redis() -> dict[str, Any]:
     redis_url = get_settings().redis_url.strip()
     if not redis_url:
@@ -148,6 +206,8 @@ async def build_health(include_optional: bool = True) -> dict[str, Any]:
         await check_migrations(),
         await check_config(),
         await check_filter_config(),
+        await check_torch_worker(),
+        await check_paddle_worker(),
     ]
     if include_optional:
         dependencies.append(await check_redis())
@@ -160,6 +220,23 @@ async def build_health(include_optional: bool = True) -> dict[str, Any]:
         "checked_at": checked_at(),
         "dependencies": dependencies,
     }
+
+
+def _worker_message(prefix: str, snapshot: object) -> str:
+    if snapshot is None:
+        return f"{prefix}; process_running=false warm=false queue_depth=0 failure_code=none"
+    process_running = getattr(snapshot, "process_running", False)
+    warm = getattr(snapshot, "warm", False)
+    queue_depth = getattr(snapshot, "in_flight_or_queued", 0)
+    requests_total = getattr(snapshot, "requests_total", 0)
+    succeeded_total = getattr(snapshot, "succeeded_total", 0)
+    failed_total = getattr(snapshot, "failed_total", 0)
+    failure_code = getattr(snapshot, "last_failure_code", None) or "none"
+    return (
+        f"{prefix}; process_running={str(process_running).lower()} warm={str(warm).lower()} "
+        f"queue_depth={queue_depth} requests_total={requests_total} succeeded_total={succeeded_total} "
+        f"failed_total={failed_total} failure_code={failure_code}"
+    )
 
 
 @router.get("/livez")
