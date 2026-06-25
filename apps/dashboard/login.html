@@ -166,8 +166,25 @@
     }
 
     input:focus {
+      background: #111827;
       border-color: #80cbc4;
       box-shadow: 0 0 0 4px rgba(128, 203, 196, 0.2);
+    }
+
+    input:-webkit-autofill,
+    input:-webkit-autofill:hover,
+    input:-webkit-autofill:active {
+      -webkit-text-fill-color: #ffffff;
+      box-shadow: 0 0 0 1000px #111827 inset;
+      caret-color: #ffffff;
+      transition: background-color 9999s ease-out;
+    }
+
+    input:-webkit-autofill:focus {
+      -webkit-text-fill-color: #ffffff;
+      box-shadow: 0 0 0 1000px #111827 inset, 0 0 0 4px rgba(128, 203, 196, 0.2);
+      caret-color: #ffffff;
+      transition: background-color 9999s ease-out;
     }
 
     button {
