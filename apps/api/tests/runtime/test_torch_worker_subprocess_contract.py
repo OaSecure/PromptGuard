@@ -7,7 +7,6 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-
 from app.runtime import resident_worker_process
 from app.runtime.resident_worker_process import ResidentWorkerProcess
 from app.runtime.torch_worker_client import (

@@ -7,7 +7,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from app.runtime.defaults import DEFAULT_ML_INFERENCE_QUEUE_TIMEOUT_MS
 
 
-
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

@@ -656,15 +656,7 @@ async def analyze_prompt(
         analyze_torch_worker=analyze_torch_worker,
         inference_timeout_ms=settings.ml_inference_queue_timeout_ms,
     )
-    logger.info(
-        "analyze.context_risk.completed status=%s candidates=%s accepted=%s failure_code=%s reason_code=%s",
-        getattr(getattr(classifier_outcome, "context_risk", None), "status", "no_candidate"),
-        getattr(getattr(classifier_outcome, "context_risk", None), "candidate_count", 0),
-        getattr(getattr(classifier_outcome, "context_risk", None), "accepted_count", 0),
-        getattr(getattr(classifier_outcome, "context_risk", None), "failure_code", None) or "none",
-        getattr(getattr(classifier_outcome, "context_risk", None), "reason_code", "NO_RISK_DETECTED"),
-        extra={"request_id": request_id, **_context_risk_log_fields(classifier_outcome)},
-    )
+    log_context_risk_completed(request_id, classifier_outcome)
     detection_input_indexes = {index for index, _item, item_matches in matched_inputs if item_matches}
     input_results = input_results_for_payload(payload, detection_input_indexes, parser_results)
     action_settings = policy_action_settings_from_row(await get_policy_settings_row(session))
@@ -685,23 +677,8 @@ async def analyze_prompt(
         policy_decision.reason_code,
         context_risk_evidence=getattr(classifier_outcome, "context_risk", None),
     )
-    logger.info(
-        "analyze.policy.decided action=%s reason_code=%s severity=%s context_status=%s context_failure_code=%s",
-        action,
-        policy_decision.reason_code,
-        policy_decision.severity,
-        getattr(getattr(classifier_outcome, "context_risk", None), "status", "no_candidate"),
-        getattr(getattr(classifier_outcome, "context_risk", None), "failure_code", None) or "none",
-        extra={
-            "request_id": request_id,
-            "action": action,
-            "reason_code": policy_decision.reason_code,
-            "severity": policy_decision.severity,
-            **_context_risk_log_fields(classifier_outcome),
-        },
-    )
-    risk_score = score_for_final_action(risk_score, action)
-    risk_level = risk_level_for_score(risk_score)
+    log_policy_decided(request_id, action, policy_decision, classifier_outcome)
+    risk_score, risk_level = final_risk_score_and_level(risk_score, action)
     masking_matches = []
     if detection_target is not None:
         masking_matches = next(
@@ -729,6 +706,48 @@ async def analyze_prompt(
         masked_prompt=masked.text if masked is not None else None,
         masked_source=detection_target[1].source if detection_target is not None else None,
         classifier_outcome=classifier_outcome,
+    )
+
+
+def final_risk_score_and_level(risk_score: int, action: str) -> tuple[int, str]:
+    score = score_for_final_action(risk_score, action)
+    return score, risk_level_for_score(score)
+
+
+def log_context_risk_completed(request_id: str, classifier_outcome: AnalyzeClassifierOutcome) -> None:
+    evidence = getattr(classifier_outcome, "context_risk", None)
+    logger.info(
+        "analyze.context_risk.completed status=%s candidates=%s accepted=%s failure_code=%s reason_code=%s",
+        getattr(evidence, "status", "no_candidate"),
+        getattr(evidence, "candidate_count", 0),
+        getattr(evidence, "accepted_count", 0),
+        getattr(evidence, "failure_code", None) or "none",
+        getattr(evidence, "reason_code", "NO_RISK_DETECTED"),
+        extra={"request_id": request_id, **_context_risk_log_fields(classifier_outcome)},
+    )
+
+
+def log_policy_decided(
+    request_id: str,
+    action: str,
+    policy_decision: Any,
+    classifier_outcome: AnalyzeClassifierOutcome,
+) -> None:
+    evidence = getattr(classifier_outcome, "context_risk", None)
+    logger.info(
+        "analyze.policy.decided action=%s reason_code=%s severity=%s context_status=%s context_failure_code=%s",
+        action,
+        policy_decision.reason_code,
+        policy_decision.severity,
+        getattr(evidence, "status", "no_candidate"),
+        getattr(evidence, "failure_code", None) or "none",
+        extra={
+            "request_id": request_id,
+            "action": action,
+            "reason_code": policy_decision.reason_code,
+            "severity": policy_decision.severity,
+            **_context_risk_log_fields(classifier_outcome),
+        },
     )
 
 

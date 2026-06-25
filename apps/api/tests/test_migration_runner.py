@@ -157,9 +157,12 @@ def test_compose_builds_single_api_image_with_split_worker_virtualenvs() -> None
     assert "python -m venv /opt/venvs/api" in dockerfile_text
     assert "python -m venv /opt/venvs/paddle" in dockerfile_text
     assert "python -m venv /opt/venvs/torch" in dockerfile_text
-    assert "/opt/venvs/api/bin/python -m pip install --no-cache-dir -r requirements.txt" in dockerfile_text
-    assert "/opt/venvs/paddle/bin/python -m pip install --no-cache-dir -r requirements-paddle-gpu.txt" in dockerfile_text
-    assert "/opt/venvs/torch/bin/python -m pip install --no-cache-dir -r requirements-torch-gpu.txt" in dockerfile_text
+    assert "--mount=type=cache,id=promptguard-pip-api,target=/root/.cache/pip" in dockerfile_text
+    assert "--mount=type=cache,id=promptguard-pip-paddle,target=/root/.cache/pip" in dockerfile_text
+    assert "--mount=type=cache,id=promptguard-pip-torch,target=/root/.cache/pip" in dockerfile_text
+    assert "/opt/venvs/api/bin/python -m pip install -r requirements.txt" in dockerfile_text
+    assert "/opt/venvs/paddle/bin/python -m pip install -r requirements-paddle-gpu.txt" in dockerfile_text
+    assert "/opt/venvs/torch/bin/python -m pip install -r requirements-torch-gpu.txt" in dockerfile_text
     assert 'CMD ["/opt/venvs/api/bin/uvicorn"' in dockerfile_text
     assert "requirements-ml.txt" not in dockerfile_text
     assert "requirements-ml-cu128.txt" not in dockerfile_text
@@ -198,7 +201,7 @@ def test_wbs48_required_metadata_tables_exist() -> None:
     assert "idempotency_keys" in table_names
     assert "audit_logs" in table_names
     assert "policy_settings" in table_names
-    assert get_migration_head() == "20260624_0013"
+    assert get_migration_head() == "20260625_0014"
 
 
 def test_audit_logs_schema_is_metadata_only_with_required_indexes() -> None:

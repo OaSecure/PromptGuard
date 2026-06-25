@@ -123,10 +123,6 @@
       "count": 1
     },
     {
-      "fingerprint": "ruff|apps/api/app/main.py|I001|Import block is un-sorted or un-formatted|from fastapi import FastAPI, Request",
-      "count": 1
-    },
-    {
       "fingerprint": "ruff|apps/api/app/ml/classifier/__init__.py|I001|Import block is un-sorted or un-formatted|from app.ml.classifier.factory import (",
       "count": 1
     },
