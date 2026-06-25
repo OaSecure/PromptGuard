@@ -5,8 +5,8 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_core import PydanticCustomError
 
 from app.atoms.models import PipelineFailure
-from app.runtime.defaults import DEFAULT_ML_INFERENCE_QUEUE_TIMEOUT_MS
 from app.ml.classifier.models import SegmentClassificationCandidate, SegmentClassificationResult
+from app.runtime.defaults import DEFAULT_ML_INFERENCE_QUEUE_TIMEOUT_MS
 
 RobertaVerificationStatus = Literal["confirmed", "rejected", "uncertain", "timeout", "failed"]
 

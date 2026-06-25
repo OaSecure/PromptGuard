@@ -81,29 +81,46 @@ def _context_label_policy_rules(classifier_outcome: Any, filter_rules: Iterable[
     )
     if context.status not in {"verified", "candidate"} or not context.labels:
         return []
-    rules_by_label = {
+    rules_by_label = _context_rules_by_label(filter_rules)
+    evidence: list[PolicyRuleEvidence] = []
+    for label in context.labels:
+        if rule_evidence := _policy_rule_evidence_for_context_label(label, rules_by_label, context.reason_code):
+            evidence.append(rule_evidence)
+    return evidence
+
+
+def _context_rules_by_label(filter_rules: Iterable[Any]) -> dict[str, Any]:
+    return {
         str(getattr(rule, "detector_key", "")): rule
         for rule in filter_rules
-        if getattr(rule, "origin", None) == "built_in"
+        if _is_active_context_rule(rule)
+    }
+
+
+def _is_active_context_rule(rule: Any) -> bool:
+    return (
+        getattr(rule, "origin", None) == "built_in"
         and getattr(rule, "category", None) == "Context Risk"
         and getattr(rule, "enabled", False)
         and getattr(rule, "archived_at", None) is None
-    }
-    evidence: list[PolicyRuleEvidence] = []
-    for label in context.labels:
-        rule = rules_by_label.get(label)
-        if rule is None:
-            continue
-        action = _TO_CANONICAL.get(str(getattr(rule, "action", "WARN")), "warn")
-        evidence.append(
-            PolicyRuleEvidence(
-                action="block" if action == "mask" else action,
-                severity=_severity_from_rule(getattr(rule, "severity", "medium")),
-                reason_code=context.reason_code,
-                masking_supported=False,
-            )
-        )
-    return evidence
+    )
+
+
+def _policy_rule_evidence_for_context_label(
+    label: str,
+    rules_by_label: dict[str, Any],
+    reason_code: ReasonCode,
+) -> PolicyRuleEvidence | None:
+    rule = rules_by_label.get(label)
+    if rule is None:
+        return None
+    action = _TO_CANONICAL.get(str(getattr(rule, "action", "WARN")), "warn")
+    return PolicyRuleEvidence(
+        action="block" if action == "mask" else action,
+        severity=_severity_from_rule(getattr(rule, "severity", "medium")),
+        reason_code=reason_code,
+        masking_supported=False,
+    )
 
 
 def _severity_from_rule(value: Any) -> PolicySeverity:

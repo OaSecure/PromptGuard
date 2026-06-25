@@ -5,7 +5,6 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-
 from app.runtime import resident_worker_process
 from app.runtime.paddle_worker_client import (
     PaddleOcrSubprocessRuntime,
