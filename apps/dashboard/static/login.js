@@ -11,35 +11,39 @@ function setMessage(message, kind = "status") {
     loginMessage.textContent = message;
     loginMessage.setAttribute("role", kind === "error" ? "alert" : "status");
     loginMessage.setAttribute("aria-live", kind === "error" ? "assertive" : "polite");
+    loginMessage.dataset.state = kind;
 }
 function setSubmitting(nextSubmitting) {
     submitting = nextSubmitting;
     if (loginButton) {
         loginButton.disabled = nextSubmitting;
-        loginButton.textContent = nextSubmitting ? "로그인 중" : "로그인";
+        loginButton.textContent = nextSubmitting ? "Signing in..." : "Login";
     }
 }
 function safeLoginErrorMessage(error) {
     if (error instanceof DashboardApiError) {
         if (error.status === 401)
-            return "아이디 또는 비밀번호가 올바르지 않습니다.";
+            return "The ID or password is incorrect.";
         if (error.status === 403)
-            return "대시보드 로그인 권한 또는 보안 토큰을 확인할 수 없습니다. 다시 시도해 주세요.";
+            return "Dashboard access or the security token could not be verified. Please try again.";
         if (error.status === 0)
-            return "서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.";
+            return "Cannot connect to the server. Please try again later.";
     }
-    return "로그인 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.";
+    return "An error occurred while signing in. Please try again later.";
 }
 function redirectToOverview() {
     window.location.href = overviewPath;
 }
 async function checkExistingSession() {
+    setMessage("Loading session...");
     try {
         await getDashboardSessionMe();
+        setMessage("Session found. Opening dashboard...", "success");
         redirectToOverview();
     }
     catch {
         // Staying on the login page is the safe fallback for missing or expired sessions.
+        setMessage("");
     }
 }
 loginForm?.addEventListener("submit", async (event) => {
@@ -50,14 +54,16 @@ loginForm?.addEventListener("submit", async (event) => {
     const loginId = String(formData.get("login_id") ?? "").trim();
     const password = String(formData.get("password") ?? "");
     if (!loginId || !password) {
-        setMessage("아이디와 비밀번호를 입력해 주세요.", "error");
+        setMessage("Please enter your ID and password.", "error");
         return;
     }
     setSubmitting(true);
-    setMessage("로그인 정보를 확인하고 있습니다.");
     try {
+        setMessage("Preparing secure sign-in...");
         await refreshDashboardCsrf();
+        setMessage("Checking your sign-in information.");
         await loginDashboardSession(loginId, password);
+        setMessage("Signed in. Opening dashboard...", "success");
         redirectToOverview();
     }
     catch (error) {

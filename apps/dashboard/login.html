@@ -1,30 +1,306 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ko">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>OASecure 로그인</title>
-    <link rel="stylesheet" href="./static/main.css" />
-  </head>
-  <body>
-    <main class="login-page">
-      <section class="login-card">
-        <p class="eyebrow">OASecure</p>
-        <h1 class="login-title">로그인</h1>
-        <form class="login-form" id="login-form">
-          <label>
-            아이디
-            <input name="login_id" type="text" autocomplete="username" />
-          </label>
-          <label>
-            비밀번호
-            <input name="password" type="password" autocomplete="current-password" />
-          </label>
-          <p class="login-message" id="login-message" role="status" aria-live="polite"></p>
-          <button class="login-button" type="submit">로그인</button>
-        </form>
-      </section>
-    </main>
-    <script type="module" src="./static/login.js"></script>
-  </body>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OASecure Login</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Pretendard", "Noto Sans KR", "Apple SD Gothic Neo", Arial, sans-serif;
+      background: linear-gradient(180deg, #b2dfdb 0%, #80cbc4 100%);
+      color: #111827;
+      overflow: hidden;
+    }
+
+    .ocean {
+      height: 40%;
+      width: 100%;
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      background: none;
+      z-index: -1;
+    }
+
+    .wave {
+      background: url('https://s3-us-west-2.amazonaws.com/s.cdpn.io/85486/wave.svg') repeat-x;
+      position: absolute;
+      bottom: 0;
+      width: 6400px;
+      height: 100%;
+      animation: wave 7s cubic-bezier(0.36, 0.45, 0.63, 0.53) infinite;
+      transform: translate3d(0, 0, 0);
+      opacity: 0.6;
+    }
+
+    .wave:nth-of-type(2) {
+      bottom: 10px;
+      animation: wave 10s cubic-bezier(0.36, 0.45, 0.63, 0.53) -0.125s infinite, swell 7s ease -1.25s infinite;
+      opacity: 0.4;
+    }
+
+    .wave:nth-of-type(3) {
+      bottom: 20px;
+      animation: wave 13s cubic-bezier(0.36, 0.45, 0.63, 0.53) -0.2s infinite, swell 5s ease -0.5s infinite;
+      opacity: 0.2;
+    }
+
+    @keyframes wave {
+      0% {
+        margin-left: 0;
+      }
+
+      100% {
+        margin-left: -1600px;
+      }
+    }
+
+    @keyframes swell {
+      0%, 100% {
+        transform: translate3d(0, -25px, 0);
+      }
+
+      50% {
+        transform: translate3d(0, 5px, 0);
+      }
+    }
+
+    .page {
+      width: 100%;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 32px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .login-card {
+      width: 100%;
+      max-width: 460px;
+      background: #020617;
+      backdrop-filter: blur(10px);
+      border-radius: 24px;
+      padding: 34px 40px 38px;
+      box-shadow: 0 24px 55px rgba(0, 0, 0, 0.3);
+      animation: cardIn 0.5s ease-out forwards;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    @keyframes cardIn {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .title-area {
+      text-align: center;
+      margin-bottom: 42px;
+    }
+
+    .brand-logo {
+      width: 160px;
+      height: auto;
+      display: block;
+      margin: 0 auto 18px;
+      object-fit: contain;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 48px;
+      line-height: 1;
+      font-weight: 900;
+      letter-spacing: -2px;
+      color: #80cbc4;
+    }
+
+    .form {
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    label {
+      font-size: 18px;
+      font-weight: 800;
+      color: #f3f4f6;
+    }
+
+    input {
+      width: 100%;
+      height: 52px;
+      border: 1px solid #4b5563;
+      border-radius: 12px;
+      padding: 0 16px;
+      font-size: 18px;
+      color: #ffffff;
+      background: #111827;
+      outline: none;
+      transition: all 0.2s ease;
+    }
+
+    input:hover {
+      transform: scale(1.01);
+      border-color: #80cbc4;
+    }
+
+    input:focus {
+      background: #111827;
+      border-color: #80cbc4;
+      box-shadow: 0 0 0 4px rgba(128, 203, 196, 0.2);
+    }
+
+    input:-webkit-autofill,
+    input:-webkit-autofill:hover,
+    input:-webkit-autofill:active {
+      -webkit-text-fill-color: #ffffff;
+      box-shadow: 0 0 0 1000px #111827 inset;
+      caret-color: #ffffff;
+      transition: background-color 9999s ease-out;
+    }
+
+    input:-webkit-autofill:focus {
+      -webkit-text-fill-color: #ffffff;
+      box-shadow: 0 0 0 1000px #111827 inset, 0 0 0 4px rgba(128, 203, 196, 0.2);
+      caret-color: #ffffff;
+      transition: background-color 9999s ease-out;
+    }
+
+    button {
+      width: 100%;
+      height: 56px;
+      margin-top: 36px;
+      border: none;
+      border-radius: 12px;
+      background: #1f2937;
+      color: #ffffff;
+      font-size: 18px;
+      font-weight: 800;
+      cursor: pointer;
+      box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+      transition: all 0.2s ease;
+    }
+
+    button:hover {
+      transform: translateY(-2px);
+      background: #00897b;
+      box-shadow: 0 15px 25px rgba(0, 0, 0, 0.3);
+    }
+
+    button:disabled {
+      cursor: wait;
+      opacity: 0.78;
+      transform: none;
+    }
+
+    .login-message {
+      min-height: 22px;
+      margin: -6px 0 -16px;
+      color: #9ca3af;
+      font-size: 14px;
+      font-weight: 700;
+      line-height: 1.55;
+      text-align: left;
+    }
+
+    .login-message[data-state="error"] {
+      color: #ff4d4f;
+    }
+
+    .login-message[data-state="success"] {
+      color: #34d399;
+    }
+
+    .confetti {
+      position: fixed;
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+      z-index: 99;
+      pointer-events: none;
+      animation: confettiMove 1s ease-out forwards;
+    }
+
+    @keyframes confettiMove {
+      from {
+        opacity: 1;
+        transform: translate(0, 0) scale(1) rotate(0deg);
+      }
+
+      to {
+        opacity: 0;
+        transform:
+          translate(var(--x), var(--y))
+          scale(0)
+          rotate(var(--rotate));
+      }
+    }
+
+    @media (max-width: 640px) {
+      .login-card {
+        padding: 32px 26px 34px;
+      }
+
+      h1 {
+        font-size: 42px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="ocean">
+    <div class="wave"></div>
+    <div class="wave"></div>
+    <div class="wave"></div>
+  </div>
+
+  <div class="page" id="page">
+    <div class="login-card">
+      <div class="title-area">
+        <img src="./public/images/oasecure%20BL.png" alt="OASecure" class="brand-logo" />
+        <h1 id="title">Sign In</h1>
+      </div>
+
+      <form class="form" id="login-form">
+        <div class="field">
+          <label for="userId">ID</label>
+          <input id="userId" name="login_id" type="text" autocomplete="username" />
+        </div>
+
+        <div class="field">
+          <label for="password">Password</label>
+          <input id="password" name="password" type="password" autocomplete="current-password" />
+        </div>
+        <p class="login-message" id="login-message" role="status" aria-live="polite"></p>
+
+        <button id="loginBtn" type="submit">Login</button>
+      </form>
+
+    </div>
+  </div>
+
+  <script type="module" src="./static/login.js"></script>
+</body>
 </html>
