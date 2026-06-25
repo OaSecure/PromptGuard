@@ -31,7 +31,7 @@ describe("file policy", () => {
     expect(excluded.reason).toBe("excluded_extension");
   });
 
-  it("rejects excluded and binary files", () => {
+  it("allows parser and OCR supported attachments while rejecting excluded and uninspectable files", () => {
     const decisions = validateFilePolicy(
       [
         { name: "report.pdf", size: 128, type: "application/pdf" },
@@ -46,11 +46,11 @@ describe("file policy", () => {
     const [trailingDot] = validateFilePolicy([{ name: "notes.", size: 128, type: "text/plain" }], DEFAULT_CONFIG.file_upload);
     expect(trailingDot.reason).toBe("unsupported_extension");
     expect(decisions.map((decision) => decision.reason)).toEqual([
+      undefined,
+      undefined,
       "excluded_extension",
-      "excluded_extension",
-      "excluded_extension",
-      "excluded_extension",
-      "non_text_mime"
+      undefined,
+      "non_inspectable_mime"
     ]);
   });
 

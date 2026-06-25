@@ -27,6 +27,9 @@ export function isAnalyzeResponse(value: unknown): value is AnalyzeResponse {
     value.content_unavailable_inputs.every(isContentUnavailableInput) &&
     Array.isArray(value.business_context_matches) &&
     value.business_context_matches.every(isBusinessContextMatch) &&
+    (value.context_risk_evidence === undefined ||
+      value.context_risk_evidence === null ||
+      isContextRiskEvidence(value.context_risk_evidence)) &&
     isNonEmptyString(value.client_request_id) &&
     isNonEmptyString(value.filter_config_revision)
   );
@@ -94,6 +97,42 @@ function isBusinessContextMatch(value: unknown): boolean {
   );
 }
 
+function isContextRiskEvidence(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.enabled === "boolean" &&
+    isContextRiskStatus(value.status) &&
+    isNonNegativeFiniteNumber(value.candidate_count) &&
+    isNonNegativeFiniteNumber(value.accepted_count) &&
+    Array.isArray(value.labels) &&
+    value.labels.every((item) => typeof item === "string") &&
+    isRecord(value.status_counts) &&
+    (value.highest_score_bucket === undefined ||
+      value.highest_score_bucket === null ||
+      isNonEmptyString(value.highest_score_bucket)) &&
+    (value.highest_confidence_bucket === undefined ||
+      value.highest_confidence_bucket === null ||
+      isNonEmptyString(value.highest_confidence_bucket)) &&
+    (value.failure_code === undefined || value.failure_code === null || isNonEmptyString(value.failure_code)) &&
+    isNonEmptyString(value.reason_code) &&
+    Array.isArray(value.classifier_model_versions) &&
+    value.classifier_model_versions.every((item) => typeof item === "string") &&
+    Array.isArray(value.verifier_model_versions) &&
+    value.verifier_model_versions.every((item) => typeof item === "string")
+  );
+}
+
+function isContextRiskStatus(value: unknown): boolean {
+  return (
+    value === "disabled" ||
+    value === "no_candidate" ||
+    value === "candidate" ||
+    value === "verified" ||
+    value === "timeout" ||
+    value === "failed"
+  );
+}
+
 function isDecisionAction(value: unknown): boolean {
   return value === "Allow" || value === "Warn" || value === "Mask" || value === "Block";
 }
@@ -103,7 +142,13 @@ function isRiskLevel(value: unknown): boolean {
 }
 
 function isDecisionBasis(value: unknown): boolean {
-  return value === "no_detection" || value === "detection" || value === "content_unavailable" || value === "metadata_only";
+  return (
+    value === "no_detection" ||
+    value === "detection" ||
+    value === "content_unavailable" ||
+    value === "metadata_only" ||
+    value === "context_risk"
+  );
 }
 
 function isNonEmptyString(value: unknown): value is string {

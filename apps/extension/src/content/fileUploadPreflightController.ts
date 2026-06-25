@@ -6,6 +6,7 @@ import { createClientRequestId } from "../shared/hashing";
 import { validateFilePolicy } from "../shared/filePolicy";
 import { isAnalyzeResponse } from "../shared/responseValidation";
 import type { AnalyzeInput, AnalyzeRequest, AnalyzeResponse, ExtensionConfigResponse, ExtensionContext, NormalizedError } from "../shared/types";
+import { safeDecisionEvidence } from "./decisionEvidence";
 import { createFileUploadSnapshots, type FileUploadAttempt } from "./fileUploadSnapshot";
 import { installFileUploadInterceptor, replayFileUploadAttempt, type FileUploadInterceptor } from "./fileUploadInterceptor";
 import { createPreflightOverlay, type PreflightOverlay } from "./preflightOverlay";
@@ -69,7 +70,7 @@ export function startFileUploadPreflightController(options: FileUploadPreflightC
 
   async function handleAttempt(attempt: FileUploadAttempt): Promise<void> {
     if (analyzing) {
-      overlay.show({ decision: "analyzing", message: "File inspection is already running.", actions: [] });
+      overlay.show({ decision: "analyzing", message: "이미 파일 검사 중입니다.", actions: [] });
       return;
     }
 
@@ -86,12 +87,12 @@ export function startFileUploadPreflightController(options: FileUploadPreflightC
 
     const attemptId = ++currentAttemptId;
     analyzing = true;
-    overlay.show({ decision: "analyzing", message: "Inspecting attached files.", actions: [] });
+    overlay.show({ decision: "analyzing", message: "파일 검사 중입니다.", actions: [] });
 
     try {
       const supportedFilesNeedingUpload = policyDecisions.some((decision) => decision.allowed);
       if (supportedFilesNeedingUpload && !options.uploadFile) {
-        showFailClosed("File inspection requires temporary file reference support. Files were not attached.", () => void handleAttempt(attempt));
+        showFailClosed("파일 검사를 위한 임시 참조를 만들지 못했습니다.", () => void handleAttempt(attempt));
         return;
       }
 
@@ -105,7 +106,7 @@ export function startFileUploadPreflightController(options: FileUploadPreflightC
         inputs.push(createFileReferenceInput({ fileRef: uploaded.file_ref, tempScopeId: uploaded.temp_scope_id, fileKind: uploaded.file_kind, extension: uploaded.extension_hint ?? decision.extension, mimeType: uploaded.mime_hint ?? snapshot.file.type, sizeBytes: snapshot.file.size, sizeBucket: uploaded.size_bucket }));
       }
       if (inputs.length === 0) {
-        showFailClosed("Selected files could not be inspected safely. Files were not attached.", () => void handleAttempt(attempt));
+        showFailClosed("선택한 파일을 안전하게 검사하지 못했습니다.", () => void handleAttempt(attempt));
         return;
       }
       const response = await withTimeout(
@@ -116,13 +117,13 @@ export function startFileUploadPreflightController(options: FileUploadPreflightC
         return;
       }
       if (!isAnalyzeResponse(response)) {
-        showFailClosed("File inspection failed. Files were not attached.", () => void handleAttempt(attempt));
+        showFailClosed("파일 검사에 실패했습니다.", () => void handleAttempt(attempt));
         return;
       }
       handleDecision(response, attempt);
     } catch {
       if (attemptId === currentAttemptId) {
-        showFailClosed("File inspection timed out or could not inspect the selected files.", () => void handleAttempt(attempt));
+        showFailClosed("파일 검사가 실패하거나 시간 초과되었습니다.", () => void handleAttempt(attempt));
       }
     } finally {
       if (attemptId === currentAttemptId) {
@@ -135,7 +136,7 @@ export function startFileUploadPreflightController(options: FileUploadPreflightC
     switch (response.action) {
       case "Allow":
         if (response.allow_original_send === false) {
-          showFailClosed("File inspection did not authorize attaching the original files.", () => void handleAttempt(attempt));
+          showFailClosed("원본 파일 첨부가 허용되지 않았습니다.", () => void handleAttempt(attempt));
           return;
         }
         replayOrFallback(attempt);
@@ -143,26 +144,28 @@ export function startFileUploadPreflightController(options: FileUploadPreflightC
       case "Warn":
         overlay.show({
           decision: "warn",
-          message: "PromptGuard found attached files that may need review.",
+          message: "첨부 전 확인하세요.",
+          evidence: safeDecisionEvidence(response),
           actions: [
             {
-              label: "Continue",
+              id: "continue",
+              label: "계속",
               variant: "primary",
               onClick: () => {
                 if (response.allow_original_send !== true) {
-                  showFailClosed("File inspection did not authorize attaching the original files.", () => void handleAttempt(attempt));
+                  showFailClosed("원본 파일 첨부가 허용되지 않았습니다.", () => void handleAttempt(attempt));
                   return;
                 }
                 replayOrFallback(attempt);
               }
             },
-            { label: "Cancel", variant: "secondary", onClick: overlay.hide }
+            { id: "cancel", label: "취소", variant: "secondary", onClick: overlay.hide }
           ]
         });
         return;
       case "Block":
       case "Mask":
-        showBlocked("PromptGuard blocked these attached files based on policy.");
+        showBlocked("민감한 내용을 제거한 뒤 다시 시도하세요.", safeDecisionEvidence(response));
         return;
     }
   }
@@ -177,17 +180,18 @@ export function startFileUploadPreflightController(options: FileUploadPreflightC
     if (!replayed) {
       overlay.show({
         decision: "error",
-        message: "File inspection passed. Please attach the files again because this page did not allow automatic reattach.",
-        actions: [{ label: "Cancel", variant: "secondary", onClick: overlay.hide }]
+        message: "검사는 통과했습니다. 파일을 다시 첨부해 주세요.",
+        actions: [{ id: "cancel", label: "취소", variant: "secondary", onClick: overlay.hide }]
       });
     }
   }
 
-  function showBlocked(message: string): void {
+  function showBlocked(message: string, evidence: string[] = []): void {
     overlay.show({
       decision: "block",
       message,
-      actions: [{ label: "Cancel", variant: "danger", onClick: overlay.hide }]
+      evidence,
+      actions: [{ id: "cancel", label: "취소", variant: "danger", onClick: overlay.hide }]
     });
   }
 
@@ -196,8 +200,8 @@ export function startFileUploadPreflightController(options: FileUploadPreflightC
       decision: "error",
       message,
       actions: [
-        { label: "Retry", variant: "secondary", onClick: retry },
-        { label: "Cancel", variant: "danger", onClick: overlay.hide }
+        { id: "retry", label: "다시 시도", variant: "secondary", onClick: retry },
+        { id: "cancel", label: "취소", variant: "danger", onClick: overlay.hide }
       ]
     });
   }
@@ -251,18 +255,18 @@ function serviceSelectors(config: ExtensionConfigResponse): { file_input: string
 function policyMessage(reason: string | undefined): string {
   switch (reason) {
     case "too_many_files":
-      return "Too many files selected for inspection.";
+      return "검사할 파일이 너무 많습니다.";
     case "file_too_large":
     case "batch_too_large":
-      return "Selected files exceed the configured inspection size limit.";
+      return "선택한 파일이 검사 용량 제한을 초과했습니다.";
     case "excluded_extension":
     case "unsupported_extension":
-    case "non_text_mime":
-      return "Only supported text-based files can be inspected in this MVP.";
+    case "non_inspectable_mime":
+      return "현재 검사할 수 없는 파일 형식입니다.";
     case "disabled":
-      return "File inspection is disabled by policy.";
+      return "정책에 따라 파일 검사가 비활성화되어 있습니다.";
     default:
-      return "Selected files could not be inspected.";
+      return "선택한 파일을 검사하지 못했습니다.";
   }
 }
 
@@ -301,7 +305,7 @@ function buildMetadataOnlyInputs(
         })
       ];
     }
-    if (decision.reason === "excluded_extension" || decision.reason === "unsupported_extension" || decision.reason === "non_text_mime") {
+    if (decision.reason === "excluded_extension" || decision.reason === "unsupported_extension" || decision.reason === "non_inspectable_mime") {
       return [
         createUnsupportedAttachmentInput({
           extension: decision.extension,

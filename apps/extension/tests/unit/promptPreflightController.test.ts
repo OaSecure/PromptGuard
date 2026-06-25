@@ -244,7 +244,7 @@ describe("prompt preflight controller", () => {
     blockController.disconnect();
   });
 
-  it("applies Mask without automatic replay and requires a new send attempt", async () => {
+  it("applies Mask and sends through the reviewed masked prompt action", async () => {
     const page = setupComposer("mask case");
     let analyzeCount = 0;
     const controller = startPromptPreflightController({
@@ -264,34 +264,151 @@ describe("prompt preflight controller", () => {
     expect(page.textarea.value).toBe("[masked]");
     expect(page.submits()).toBe(0);
 
-    clickOverlayAction("review-masked-prompt");
-    page.button.click();
+    clickOverlayAction("send-masked-prompt");
     await waitFor(() => page.submits() === 1);
 
     expect(page.submits()).toBe(1);
     controller.disconnect();
   });
 
-  it("does not replay masked text from the Mask overlay continue path", async () => {
+  it("does not render raw server text or internal context-risk codes while showing safe context evidence", async () => {
     const page = setupComposer("contact member@example.com");
     const controller = startPromptPreflightController({
       config: DEFAULT_CONFIG,
       getContext: () => context,
-      sendAnalyze: async () => responseFor("Mask", "contact [masked-email]", false, "PromptGuard decision", true)
+      sendAnalyze: async () => ({
+        ...responseFor("Warn", undefined, true, "server echoed secret-value", true),
+        context_risk_evidence: {
+          enabled: true,
+          status: "candidate",
+          candidate_count: 2,
+          accepted_count: 0,
+          labels: ["INTERNAL_OPERATION_CONTEXT", "SECRET_CREDENTIAL_CONTEXT"],
+          status_counts: {},
+          reason_code: "RISK_CONTEXT_LR_ONLY",
+          classifier_model_versions: [],
+          verifier_model_versions: []
+        }
+      })
     });
 
     page.button.click();
-    await waitFor(() => overlayDecision() === "mask");
-    clickOverlayAction("apply-mask");
     await waitFor(() => overlayDecision() === "warn");
 
-    expect(page.textarea.value).toBe("contact [masked-email]");
+    expect(overlayText()).toContain("주의");
+    expect(overlayText()).toContain("내부 운영 정보");
+    expect(overlayText()).toContain("인증 정보 또는 접근 권한");
+    expect(overlayText()).not.toContain("candidate");
+    expect(overlayText()).not.toContain("RISK_CONTEXT_LR_ONLY");
+    expect(overlayText()).not.toContain("INTERNAL_OPERATION_CONTEXT");
+    expect(overlayText()).not.toContain("SECRET_CREDENTIAL_CONTEXT");
+    expect(overlayText()).not.toContain("secret-value");
     expect(page.submits()).toBe(0);
+    controller.disconnect();
+  });
 
-    clickOverlayAction("review-masked-prompt");
+  it("describes context review timeouts without duplicating internal timeout reasons", async () => {
+    const page = setupComposer("context timeout evidence case");
+    const controller = startPromptPreflightController({
+      config: DEFAULT_CONFIG,
+      getContext: () => context,
+      sendAnalyze: async () => ({
+        ...responseFor("Warn", undefined, true, "server echoed secret-value", true),
+        context_risk_evidence: {
+          enabled: true,
+          status: "timeout",
+          candidate_count: 1,
+          accepted_count: 0,
+          labels: [],
+          status_counts: {},
+          failure_code: "EMBEDDING_TIMEOUT",
+          reason_code: "RISK_CONTEXT_LR_ONLY_VERIFIER_TIMEOUT",
+          classifier_model_versions: [],
+          verifier_model_versions: []
+        }
+      })
+    });
 
-    expect(page.textarea.value).toBe("contact [masked-email]");
-    expect(page.submits()).toBe(0);
+    page.button.click();
+    await waitFor(() => overlayDecision() === "warn");
+
+    expect(overlayText()).toContain("검사 시간이 초과되었습니다. 다시 시도해 주세요.");
+    expect(overlayText()).not.toContain("RISK_CONTEXT_LR_ONLY_VERIFIER_TIMEOUT");
+    expect(overlayText()).not.toContain("EMBEDDING_TIMEOUT");
+    expect(overlayText()).not.toContain("timed out");
+    controller.disconnect();
+  });
+
+  it("summarizes long multi-label context evidence without raw label codes", async () => {
+    const page = setupComposer("multi label context evidence case");
+    const controller = startPromptPreflightController({
+      config: DEFAULT_CONFIG,
+      getContext: () => context,
+      sendAnalyze: async () => ({
+        ...responseFor("Warn", undefined, true, "server echoed secret-value", true),
+        context_risk_evidence: {
+          enabled: true,
+          status: "candidate",
+          candidate_count: 5,
+          accepted_count: 0,
+          labels: [
+            "INTERNAL_OPERATION_CONTEXT",
+            "SECRET_CREDENTIAL_CONTEXT",
+            "PERSONAL_DATA_CONTEXT",
+            "BUSINESS_CONFIDENTIAL_CONTEXT",
+            "FINANCIAL_CONTEXT"
+          ],
+          status_counts: {},
+          reason_code: "RISK_CONTEXT_LR_ONLY",
+          classifier_model_versions: [],
+          verifier_model_versions: []
+        }
+      })
+    });
+
+    page.button.click();
+    await waitFor(() => overlayDecision() === "warn");
+
+    expect(overlayText()).toContain("내부 운영 정보, 인증 정보 또는 접근 권한, 개인정보 외 2개");
+    expect(overlayText()).not.toContain("BUSINESS_CONFIDENTIAL_CONTEXT");
+    expect(overlayText()).not.toContain("FINANCIAL_CONTEXT");
+    controller.disconnect();
+  });
+
+  it("renders real server context labels as user-facing category names", async () => {
+    const page = setupComposer("회원 병합 backfill context evidence case");
+    const controller = startPromptPreflightController({
+      config: DEFAULT_CONFIG,
+      getContext: () => context,
+      sendAnalyze: async () => ({
+        ...responseFor("Warn", undefined, true, "server echoed secret-value", true),
+        context_risk_evidence: {
+          enabled: true,
+          status: "verified",
+          candidate_count: 7,
+          accepted_count: 1,
+          labels: [
+            "BULK_SENSITIVE_RECORD_CONTEXT",
+            "CONFIDENTIAL_BUSINESS_CONTEXT",
+            "FINANCIAL_IDENTIFIER_CONTEXT",
+            "INTERNAL_OPERATION_CONTEXT",
+            "PROPRIETARY_TECHNICAL_CONTEXT",
+            "SECURITY_CONTROL_CONTEXT"
+          ],
+          status_counts: { confirmed: 1, failed: 0, rejected: 6, timeout: 0, uncertain: 0 },
+          reason_code: "RISK_CONTEXT_VERIFIER_CONFIRMED",
+          classifier_model_versions: [],
+          verifier_model_versions: ["context_verifier"]
+        }
+      })
+    });
+
+    page.button.click();
+    await waitFor(() => overlayDecision() === "warn");
+
+    expect(overlayText()).toContain("대량 민감 기록, 기밀 비즈니스 정보, 금융 식별 정보 외 3개");
+    expect(overlayText()).not.toContain("BULK_SENSITIVE_RECORD_CONTEXT");
+    expect(overlayText()).not.toContain("CONFIDENTIAL_BUSINESS_CONTEXT");
     controller.disconnect();
   });
 
