@@ -113,7 +113,8 @@ describe("file upload preflight controller", () => {
         file_kind: fileKind,
         extension_hint: extension,
         mime_hint: mime,
-        size_bucket: "small"
+        size_bucket: "small",
+        expires_at: "2026-06-25T00:00:00Z"
       }),
       sendAnalyze: async (request) => {
         captured = request;
