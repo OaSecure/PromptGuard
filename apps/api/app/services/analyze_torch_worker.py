@@ -72,29 +72,19 @@ class AnalyzeTorchWorker:
     def _evaluate_item(self, item: Any) -> tuple[dict[str, Any], dict[str, Any]] | AnalyzeClassifierOutcome | None:
         input_id = getattr(item, "input_id", "")
         content = getattr(item, "content", None)
-        if not isinstance(input_id, str) or not input_id.strip():
+        if not _is_non_empty_string(input_id):
             return _failed("TORCH_WORKER_CONTEXT_PAYLOAD_INVALID")
-        if not isinstance(content, str) or not content.strip():
+        if not _is_non_empty_string(content):
             return None
 
-        request = TorchWorkerRequest(task="context_pipeline", request_id=input_id)
-        result = self._execute(request, payload=_payload_for_text(input_id, content))
+        input_id_text = str(input_id)
+        content_text = str(content)
+        request = TorchWorkerRequest(task="context_pipeline", request_id=input_id_text)
+        result = self._execute(request, payload=_payload_for_text(input_id_text, content_text))
         if not result.ok:
-            logger.warning(
-                "analyze.torch_worker.item_failed task=%s error_code=%s",
-                result.task or request.task,
-                result.error_code or "TORCH_WORKER_CONTEXT_FAILED",
-                extra={
-                    "task": result.task or request.task,
-                    "context_risk_failure_code": result.error_code or "TORCH_WORKER_CONTEXT_FAILED",
-                },
-            )
+            _log_item_failure(result, request)
             return _failed(result.error_code or "TORCH_WORKER_CONTEXT_FAILED")
-        logger.info(
-            "analyze.torch_worker.item_succeeded task=%s",
-            result.task or request.task,
-            extra={"task": result.task or request.task},
-        )
+        _log_item_success(result, request)
         return (
             _metadata_mapping(result.metadata.get("classification")),
             _metadata_mapping(result.metadata.get("verification")),
@@ -161,6 +151,30 @@ def _payload_for_text(input_id: str, content: str) -> dict[str, Any]:
 
 def _metadata_mapping(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
+
+
+def _is_non_empty_string(value: Any) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
+def _log_item_failure(result: Any, request: TorchWorkerRequest) -> None:
+    logger.warning(
+        "analyze.torch_worker.item_failed task=%s error_code=%s",
+        result.task or request.task,
+        result.error_code or "TORCH_WORKER_CONTEXT_FAILED",
+        extra={
+            "task": result.task or request.task,
+            "context_risk_failure_code": result.error_code or "TORCH_WORKER_CONTEXT_FAILED",
+        },
+    )
+
+
+def _log_item_success(result: Any, request: TorchWorkerRequest) -> None:
+    logger.info(
+        "analyze.torch_worker.item_succeeded task=%s",
+        result.task or request.task,
+        extra={"task": result.task or request.task},
+    )
 
 
 def _failed(code: str) -> AnalyzeClassifierOutcome:
