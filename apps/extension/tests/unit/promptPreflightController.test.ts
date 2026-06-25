@@ -244,13 +244,15 @@ describe("prompt preflight controller", () => {
     blockController.disconnect();
   });
 
-  it("applies Mask and sends through the reviewed masked prompt action", async () => {
+  it("applies Mask, reinspects the masked prompt, and sends only after confirmation", async () => {
     const page = setupComposer("mask case");
     let analyzeCount = 0;
+    const requestIds: string[] = [];
     const controller = startPromptPreflightController({
       config: DEFAULT_CONFIG,
       getContext: () => context,
-      sendAnalyze: async () => {
+      sendAnalyze: async (request) => {
+        requestIds.push(request.client_request_id);
         analyzeCount += 1;
         return analyzeCount === 1 ? responseFor("Mask", "[masked]") : responseFor("Allow");
       }
@@ -259,15 +261,40 @@ describe("prompt preflight controller", () => {
     page.button.click();
     await waitFor(() => overlayDecision() === "mask");
     clickOverlayAction("apply-mask");
-    await waitFor(() => overlayDecision() === "warn");
+    await waitFor(() => analyzeCount === 2 && overlayText().includes("마스킹본 검사가 완료되었습니다."));
 
     expect(page.textarea.value).toBe("[masked]");
     expect(page.submits()).toBe(0);
+    expect(requestIds).toHaveLength(2);
+    expect(requestIds[0]).not.toBe(requestIds[1]);
 
     clickOverlayAction("send-masked-prompt");
     await waitFor(() => page.submits() === 1);
 
     expect(page.submits()).toBe(1);
+    controller.disconnect();
+  });
+
+  it("does not send when masked prompt reinspection blocks", async () => {
+    const page = setupComposer("mask then block case");
+    let analyzeCount = 0;
+    const controller = startPromptPreflightController({
+      config: DEFAULT_CONFIG,
+      getContext: () => context,
+      sendAnalyze: async () => {
+        analyzeCount += 1;
+        return analyzeCount === 1 ? responseFor("Mask", "[masked]") : responseFor("Block");
+      }
+    });
+
+    page.button.click();
+    await waitFor(() => overlayDecision() === "mask");
+    clickOverlayAction("apply-mask");
+    await waitFor(() => analyzeCount === 2 && overlayDecision() === "block");
+
+    expect(page.textarea.value).toBe("[masked]");
+    expect(page.submits()).toBe(0);
+    expect(overlayText()).toContain("민감한 내용을 제거한 뒤 다시 시도하세요.");
     controller.disconnect();
   });
 
