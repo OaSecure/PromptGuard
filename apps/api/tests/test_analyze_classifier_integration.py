@@ -668,12 +668,12 @@ def test_analyze_route_prefers_torch_worker_context_pipeline(monkeypatch) -> Non
     )
 
     assert response.status_code == 200
-    assert response.json()["action"] == "Warn"
+    assert response.json()["action"] == "Allow"
     assert seen == {"input_count": 1}
     assert "plain implementation note" not in _stored_payload(fake_session)
 
 
-def test_classifier_candidate_escalates_allow_to_warn_without_raw_leakage(monkeypatch) -> None:
+def test_classifier_candidate_keeps_allow_without_raw_leakage(monkeypatch) -> None:
     sentinel = "CLASSIFIER_RAW_SECRET_SENTINEL"
 
     def candidate_outcome(*_args, **_kwargs):
@@ -701,14 +701,14 @@ def test_classifier_candidate_escalates_allow_to_warn_without_raw_leakage(monkey
 
     assert response.status_code == 200
     body = response.json()
-    assert body["action"] == "Warn"
-    assert body["risk_score"] >= 40
-    assert body["risk_level"] == "medium"
+    assert body["action"] == "Allow"
+    assert body["risk_score"] == 0
+    assert body["risk_level"] == "low"
     assert body["allow_original_send"] is True
-    assert body["requires_user_confirmation"] is True
+    assert body["requires_user_confirmation"] is False
     assert "masked_prompt" not in body
     assert body["detections"] == []
-    assert body["input_results"][0]["decision_basis"] == "context_risk"
+    assert body["input_results"][0]["decision_basis"] == "no_detection"
     assert body["context_risk_evidence"]["status"] == "candidate"
     assert body["context_risk_evidence"]["candidate_count"] == 1
     stored = _stored_payload(fake_session)

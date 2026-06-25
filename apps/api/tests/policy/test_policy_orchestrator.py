@@ -109,22 +109,22 @@ def test_classifier_candidate_never_downgrades_existing_action(existing):
     assert PolicyOrchestrator().decide(_request(_rule(existing), ml=ml)).action == existing
 
 
-def test_classifier_candidate_upgrades_allow_to_warn_but_disabled_classifier_does_not():
+def test_classifier_candidate_without_verified_acceptance_does_not_upgrade_allow():
     orchestrator = PolicyOrchestrator()
     enabled = PolicyMlEvidence(classifier_enabled=True, classifier_has_candidates=True)
     disabled = PolicyMlEvidence(classifier_enabled=False, classifier_has_candidates=True)
-    assert orchestrator.decide(_request(ml=enabled)).action == "warn"
+    assert orchestrator.decide(_request(ml=enabled)).action == "allow"
     assert orchestrator.decide(_request(ml=disabled)).action == "allow"
 
 
-def test_classifier_candidate_uses_configured_context_action_without_mask_target():
+def test_candidate_context_evidence_without_acceptance_does_not_use_configured_context_action():
     ml = PolicyMlEvidence(classifier_enabled=True, classifier_has_candidates=True)
     settings = PolicyActionSettings(context_classifier_action="block")
 
     decision = PolicyOrchestrator().decide(_request_with_settings(settings, ml=ml))
 
-    assert decision.action == "block"
-    assert decision.reason_code == "RISK_CONTEXT_LR_ONLY"
+    assert decision.action == "allow"
+    assert decision.reason_code == "NO_RISK_DETECTED"
 
 
 def test_verified_context_evidence_uses_verifier_confirmed_reason():
@@ -224,8 +224,8 @@ def test_ml_failures_without_candidates_do_not_create_context_policy_decisions(f
 def test_verifier_failure_keeps_lr_candidate_warn_path():
     ml = PolicyMlEvidence(classifier_enabled=True, classifier_has_candidates=True, verifier_failed=True)
     decision = PolicyOrchestrator().decide(_request(ml=ml))
-    assert decision.action == "warn"
-    assert decision.reason_code == "RISK_CONTEXT_LR_ONLY"
+    assert decision.action == "allow"
+    assert decision.reason_code == "NO_RISK_DETECTED"
 
 
 def test_verifier_summary_has_no_new_policy_meaning():

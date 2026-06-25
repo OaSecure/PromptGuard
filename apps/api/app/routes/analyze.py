@@ -795,9 +795,9 @@ def input_results_with_context_risk_basis(
 def _has_context_risk_signal(context_risk_evidence: Any | None) -> bool:
     if context_risk_evidence is None:
         return False
-    candidate_count = getattr(context_risk_evidence, "candidate_count", 0)
     accepted_count = getattr(context_risk_evidence, "accepted_count", 0)
-    return _non_negative_count(candidate_count) > 0 or _non_negative_count(accepted_count) > 0
+    status = getattr(context_risk_evidence, "status", None)
+    return status == "verified" and _non_negative_count(accepted_count) > 0
 
 
 def _non_negative_count(value: Any) -> int:
