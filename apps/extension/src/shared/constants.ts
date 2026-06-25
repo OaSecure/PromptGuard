@@ -4,8 +4,10 @@ import type { ExtensionConfigResponse } from "./types";
 export const EXTENSION_VERSION = "0.4.0";
 /** Default policy version used before remote config has been synced. */
 export const DEFAULT_POLICY_VERSION = "v0.4.0-default";
-/** Default fail-closed inspection timeout in milliseconds. */
-export const DEFAULT_TIMEOUT_MS = 3000;
+/** Fallback inspect timeout used until remote config provides the server-owned value. */
+export const DEFAULT_ANALYZE_TIMEOUT_MS = 120_000;
+/** Legacy alias for call sites that still consume a single timeout field. */
+export const DEFAULT_TIMEOUT_MS = DEFAULT_ANALYZE_TIMEOUT_MS;
 /** Product runtime defaults to the configured real API; mock mode is opt-in. */
 export const DEFAULT_MOCK_MODE = false;
 
@@ -20,7 +22,7 @@ export const DEFAULT_CONFIG: ExtensionConfigResponse = {
   filter_config_revision: DEFAULT_POLICY_VERSION,
   request_timeouts: {
     config_request_ms: 5000,
-    analyze_request_ms: 8000
+    analyze_request_ms: DEFAULT_ANALYZE_TIMEOUT_MS
   },
   input_limits: {
     composer_text_bytes: 262_144,
@@ -78,9 +80,16 @@ export const DEFAULT_CONFIG: ExtensionConfigResponse = {
       ".ts",
       ".java",
       ".go",
-      ".rs"
+      ".rs",
+      ".pdf",
+      ".docx",
+      ".xlsx",
+      ".pptx",
+      ".png",
+      ".jpg",
+      ".jpeg"
     ],
-    excluded_extensions: [".pdf", ".docx", ".xlsx", ".pptx", ".zip", ".png", ".jpg", ".jpeg"]
+    excluded_extensions: [".zip"]
   },
   file_upload: {
     enabled: true,
@@ -105,9 +114,16 @@ export const DEFAULT_CONFIG: ExtensionConfigResponse = {
       ".ts",
       ".java",
       ".go",
-      ".rs"
+      ".rs",
+      ".pdf",
+      ".docx",
+      ".xlsx",
+      ".pptx",
+      ".png",
+      ".jpg",
+      ".jpeg"
     ],
-    excluded_extensions: [".pdf", ".docx", ".xlsx", ".pptx", ".zip", ".png", ".jpg", ".jpeg"]
+    excluded_extensions: [".zip"]
   },
 };
 
