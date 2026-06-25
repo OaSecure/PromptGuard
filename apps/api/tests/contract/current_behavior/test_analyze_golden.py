@@ -5,10 +5,13 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from app.atoms.models import PipelineFailure
 from app.core.tokens import create_access_token
+from app.ml.classifier.factory import ClassifierRuntimeProviderResult
 from app.models.events import AnalysisEvent, EventDetection, EventInput, IdempotencyKey
 from app.models.filters import FilterRule
 from app.routes import analyze as analyze_route
+from app.routes.analyze import get_classifier_runtime_provider
 from app.routes.auth import get_db_session
 from tests.contract.current_behavior.snapshot_helpers import assert_matches_snapshot, assert_storage_privacy
 
@@ -41,7 +44,15 @@ def client_for(rules):
     app, session = FastAPI(), FakeSession(rules)
     app.include_router(analyze_route.router)
     async def override_session(): yield session
+    def override_classifier_provider():
+        return ClassifierRuntimeProviderResult(
+            failure=PipelineFailure(
+                code="CLASSIFIER_RUNTIME_DISABLED",
+                message="classifier runtime disabled for snapshot tests",
+            )
+        )
     app.dependency_overrides[get_db_session] = override_session
+    app.dependency_overrides[get_classifier_runtime_provider] = override_classifier_provider
     return TestClient(app), session
 
 
