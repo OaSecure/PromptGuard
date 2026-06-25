@@ -9,9 +9,12 @@ import {
   filterFieldVisibility,
   filterFormActionSpecs,
   filterHeaderNavItems,
+  filterActionLabel,
   filterKindOptions,
+  filterKindLabel,
   filterRegexHelpItems,
   filterSensitivityOptions,
+  filterSeverityLabel,
   filterSeverityOptions,
   safeFilterMutationErrorMessage,
   type FilterFormState,
@@ -308,10 +311,10 @@ function renderRuleTable(): HTMLElement {
     const row = el("tr");
     row.append(
       cellBadge(rule.origin, "source-badge"),
-      el("td", undefined, rule.kind),
+      el("td", undefined, filterKindLabel(rule.kind)),
       ruleNameCell(rule),
-      cellBadge(rule.severity, "severity-badge"),
-      el("td", undefined, rule.action),
+      cellBadge(filterSeverityLabel(rule.severity), "severity-badge"),
+      el("td", undefined, filterActionLabel(rule.action)),
       el("td", undefined, rule.enabled ? "ON" : "OFF"),
       ruleActionCell(rule),
     );
