@@ -33,4 +33,38 @@ describe("preflight overlay", () => {
     expect(container?.querySelector("[data-promptguard-icon='warn']")?.textContent).toBe("!");
     overlay.destroy();
   });
+
+  it("uses distinct alert tones for warn, mask, and block states", () => {
+    const overlay = createPreflightOverlay(document);
+
+    overlay.show({ decision: "warn", message: "확인하세요.", evidence: ["경고"], actions: [] });
+    const warnContainer = document.getElementById("promptguard-preflight-overlay");
+    const warnEvidence = warnContainer?.querySelector("li") as HTMLElement | null;
+    const warnBorder = warnContainer?.style.border;
+    const warnBackground = warnEvidence?.style.background;
+    const warnIcon = warnContainer?.querySelector("[data-promptguard-icon='warn']")?.textContent;
+
+    overlay.show({ decision: "mask", message: "대체문이 준비됐습니다.", evidence: ["마스킹"], actions: [] });
+    const maskContainer = document.getElementById("promptguard-preflight-overlay");
+    const maskEvidence = maskContainer?.querySelector("li") as HTMLElement | null;
+    const maskBorder = maskContainer?.style.border;
+    const maskBackground = maskEvidence?.style.background;
+    const maskIcon = maskContainer?.querySelector("[data-promptguard-icon='mask']")?.textContent;
+
+    overlay.show({ decision: "block", message: "전송이 중지됐습니다.", evidence: ["차단"], actions: [] });
+    const blockContainer = document.getElementById("promptguard-preflight-overlay");
+    const blockEvidence = blockContainer?.querySelector("li") as HTMLElement | null;
+    const blockBorder = blockContainer?.style.border;
+    const blockBackground = blockEvidence?.style.background;
+    const blockIcon = blockContainer?.querySelector("[data-promptguard-icon='block']")?.textContent;
+
+    expect(warnBorder).not.toBe(maskBorder);
+    expect(maskBorder).not.toBe(blockBorder);
+    expect(warnBackground).not.toBe(maskBackground);
+    expect(maskBackground).not.toBe(blockBackground);
+    expect(warnIcon).toBe("!");
+    expect(maskIcon).toBe("◐");
+    expect(blockIcon).toBe("×");
+    overlay.destroy();
+  });
 });

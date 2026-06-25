@@ -25,6 +25,14 @@ export interface PreflightOverlay {
 }
 
 const CONTAINER_ID = "promptguard-preflight-overlay";
+const OVERLAY_SURFACE = "#ffffff";
+
+interface DecisionTone {
+  accent: string;
+  background: string;
+  border: string;
+  foreground: string;
+}
 
 /**
  * Creates or reuses the page-level PromptGuard overlay.
@@ -49,12 +57,13 @@ export function createPreflightOverlay(doc: Document = document): PreflightOverl
       container!.replaceChildren();
       container!.dataset.promptguardDecision = state.decision;
       container!.style.display = "block";
+      applyDecisionFrameStyle(container!, state.decision);
 
       const titleRow = doc.createElement("div");
       titleRow.style.display = "flex";
       titleRow.style.alignItems = "center";
-      titleRow.style.gap = "10px";
-      titleRow.style.marginBottom = "8px";
+      titleRow.style.gap = "9px";
+      titleRow.style.marginBottom = "7px";
       container!.appendChild(titleRow);
 
       const icon = doc.createElement("span");
@@ -67,7 +76,7 @@ export function createPreflightOverlay(doc: Document = document): PreflightOverl
       const title = doc.createElement("div");
       title.textContent = titleForDecision(state.decision);
       title.style.fontWeight = "700";
-      title.style.fontSize = "16px";
+      title.style.fontSize = "15.5px";
       title.style.lineHeight = "1.25";
       titleRow.appendChild(title);
 
@@ -75,7 +84,7 @@ export function createPreflightOverlay(doc: Document = document): PreflightOverl
       message.textContent = state.message;
       message.style.fontSize = "14.5px";
       message.style.lineHeight = "1.5";
-      message.style.marginBottom = "12px";
+      message.style.marginBottom = "13px";
       container!.appendChild(message);
 
       if (state.evidence?.length) {
@@ -89,7 +98,7 @@ export function createPreflightOverlay(doc: Document = document): PreflightOverl
         for (const item of state.evidence.slice(0, 4)) {
           const row = doc.createElement("li");
           row.textContent = item;
-          row.style.fontSize = "13.5px";
+          row.style.fontSize = "13px";
           row.style.lineHeight = "1.45";
           row.style.padding = "8px 10px";
           row.style.borderRadius = "6px";
@@ -132,7 +141,7 @@ function titleForDecision(decision: OverlayDecision): string {
     case "warn":
       return "주의: 검토 필요";
     case "mask":
-      return "마스킹: 대체문 준비";
+      return "마스킹: 대체문 준비됨";
     case "block":
       return "차단: 전송 중지";
     case "error":
@@ -145,9 +154,9 @@ function iconForDecision(decision: OverlayDecision): string {
     case "warn":
       return "!";
     case "mask":
-      return "M";
+      return "◐";
     case "block":
-      return "X";
+      return "×";
     case "error":
       return "!";
     case "analyzing":
@@ -160,19 +169,26 @@ function applyContainerStyle(container: HTMLElement): void {
   container.style.right = "18px";
   container.style.bottom = "18px";
   container.style.zIndex = "2147483647";
-  container.style.width = "min(390px, calc(100vw - 36px))";
+  container.style.width = "min(430px, calc(100vw - 36px))";
   container.style.boxSizing = "border-box";
-  container.style.padding = "16px";
-  container.style.border = "1px solid #1f2937";
-  container.style.borderRadius = "8px";
-  container.style.background = "#ffffff";
+  container.style.padding = "18px 16px 16px";
+  container.style.border = "1px solid #e5e7eb";
+  container.style.borderRadius = "12px";
+  container.style.background = OVERLAY_SURFACE;
   container.style.color = "#111827";
-  container.style.boxShadow = "0 12px 32px rgba(15, 23, 42, 0.22)";
+  container.style.boxShadow = "0 18px 44px rgba(15, 23, 42, 0.18)";
   container.style.fontFamily = "system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
   container.style.display = "none";
 }
 
+function applyDecisionFrameStyle(container: HTMLElement, decision: OverlayDecision): void {
+  const tone = toneForDecision(decision);
+  container.style.border = `1px solid ${tone.border}`;
+  container.style.boxShadow = `0 18px 44px rgba(15, 23, 42, 0.18), inset 3px 0 0 ${tone.accent}`;
+}
+
 function applyIconStyle(icon: HTMLElement, decision: OverlayDecision): void {
+  const tone = toneForDecision(decision);
   icon.style.display = "inline-flex";
   icon.style.alignItems = "center";
   icon.style.justifyContent = "center";
@@ -183,59 +199,57 @@ function applyIconStyle(icon: HTMLElement, decision: OverlayDecision): void {
   icon.style.fontSize = "14px";
   icon.style.fontWeight = "800";
   icon.style.lineHeight = "1";
-  icon.style.background = iconBackground(decision);
-  icon.style.color = iconColor(decision);
-  icon.style.border = iconBorder(decision);
-}
-
-function iconBackground(decision: OverlayDecision): string {
-  if (decision === "block" || decision === "error") {
-    return "#fee2e2";
-  }
-  if (decision === "warn" || decision === "mask") {
-    return "#fef3c7";
-  }
-  return "#e0f2fe";
-}
-
-function iconColor(decision: OverlayDecision): string {
-  if (decision === "block" || decision === "error") {
-    return "#991b1b";
-  }
-  if (decision === "warn" || decision === "mask") {
-    return "#92400e";
-  }
-  return "#075985";
-}
-
-function iconBorder(decision: OverlayDecision): string {
-  if (decision === "block" || decision === "error") {
-    return "1px solid #fecaca";
-  }
-  if (decision === "warn" || decision === "mask") {
-    return "1px solid #f59e0b";
-  }
-  return "1px solid #7dd3fc";
+  icon.style.background = tone.background;
+  icon.style.color = tone.foreground;
+  icon.style.border = `1px solid ${tone.border}`;
 }
 
 function evidenceBackground(decision: OverlayDecision): string {
-  if (decision === "block" || decision === "error") {
-    return "#fef2f2";
-  }
-  if (decision === "warn" || decision === "mask") {
-    return "#fffbeb";
-  }
-  return "#f8fafc";
+  return toneForDecision(decision).background;
 }
 
 function evidenceBorder(decision: OverlayDecision): string {
-  if (decision === "block" || decision === "error") {
-    return "1px solid #fecaca";
+  return `1px solid ${toneForDecision(decision).border}`;
+}
+
+function toneForDecision(decision: OverlayDecision): DecisionTone {
+  switch (decision) {
+    case "warn":
+      return {
+        accent: "#f59e0b",
+        background: "#fffbeb",
+        border: "#fcd34d",
+        foreground: "#92400e"
+      };
+    case "mask":
+      return {
+        accent: "#2563eb",
+        background: "#eff6ff",
+        border: "#bfdbfe",
+        foreground: "#1d4ed8"
+      };
+    case "block":
+      return {
+        accent: "#ef4444",
+        background: "#fef2f2",
+        border: "#fecaca",
+        foreground: "#b91c1c"
+      };
+    case "error":
+      return {
+        accent: "#dc2626",
+        background: "#fff1f2",
+        border: "#fecdd3",
+        foreground: "#be123c"
+      };
+    case "analyzing":
+      return {
+        accent: "#64748b",
+        background: "#f8fafc",
+        border: "#e2e8f0",
+        foreground: "#334155"
+      };
   }
-  if (decision === "warn" || decision === "mask") {
-    return "1px solid #fcd34d";
-  }
-  return "1px solid #e5e7eb";
 }
 
 function applyButtonStyle(button: HTMLButtonElement, variant: OverlayAction["variant"]): void {
