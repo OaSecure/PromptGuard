@@ -1,14 +1,17 @@
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from app.atoms.models import PipelineFailure
-from app.core.config import Settings
 from app.ml.classifier.loader import JoblibLrClassifierLoadError, load_joblib_lr_predictor
 from app.ml.classifier.manifest import ClassifierManifestLoadError, LoadedClassifierManifest, load_classifier_manifest
 from app.ml.classifier.models import ClassifierArtifactRef, ProbabilityPredictor
 from app.ml.classifier.runtime import LrClassifierRuntime
 from app.ml.classifier.service import ClassifierService
+
+if TYPE_CHECKING:
+    from app.core.config import Settings
 
 
 class ClassifierRuntimeBuildError(Exception):
@@ -99,7 +102,7 @@ def build_classifier_service_from_manifest(
 
 
 def build_classifier_service_from_settings(
-    settings: Settings,
+    settings: "Settings",
     *,
     builder: Callable[[Path], BuiltClassifierService] = build_classifier_service_from_manifest,
 ) -> ClassifierRuntimeProviderResult:

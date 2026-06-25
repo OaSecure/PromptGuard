@@ -5,7 +5,6 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.tokens import utc_now
@@ -20,7 +19,8 @@ from app.routes.filters import (
     _get_rule,
 )
 from app.routes.analyze import risk_level_for_score
-from app.services.filter_rules import RuleMatch, evaluate_filter_rules, score_for_matches
+from app.services.filter_rules import BUILT_IN_RULES, RuleMatch, evaluate_filter_rules, score_for_matches
+from app.services.filter_rules import load_manageable_filter_rules
 
 router = APIRouter(prefix="/dashboard/filters", tags=["dashboard-filters"])
 MAX_DRY_RUN_SAMPLE_LENGTH = 20_000
@@ -187,10 +187,11 @@ async def list_dashboard_filters(
     session: AsyncSession = Depends(get_db_session),
 ) -> list[DashboardFilterRuleResponse]:
     del current_admin
-    result = await session.execute(
-        select(FilterRule).where(FilterRule.archived_at.is_(None)).order_by(FilterRule.origin.asc(), FilterRule.kind.asc(), FilterRule.label.asc())
-    )
-    return [_dashboard_response(rule) for rule in result.scalars().all()]
+    rules = await load_manageable_filter_rules(session)
+    return [
+        _dashboard_response(rule)
+        for rule in sorted(rules, key=lambda item: (item.origin, item.kind, item.label))
+    ]
 
 
 @router.get("/{rule_id}", response_model=DashboardFilterRuleResponse)
@@ -200,7 +201,7 @@ async def get_dashboard_filter(
     session: AsyncSession = Depends(get_db_session),
 ) -> DashboardFilterRuleResponse:
     del current_admin
-    return _dashboard_response(await _get_rule(session, rule_id))
+    return _dashboard_response(await _get_dashboard_rule(session, rule_id))
 
 
 @router.post("", response_model=DashboardFilterRuleResponse, status_code=status.HTTP_201_CREATED)
@@ -223,7 +224,7 @@ async def update_dashboard_filter(
     current_admin: User = Depends(require_dashboard_admin_mutation),
     session: AsyncSession = Depends(get_db_session),
 ) -> DashboardFilterRuleResponse:
-    rule = await _get_rule(session, rule_id)
+    rule = await _get_dashboard_rule_for_update(session, rule_id, current_admin)
     updates = payload.model_dump(exclude_unset=True)
     _reject_forbidden_built_in_update(rule, updates)
     for field in updates:
@@ -270,7 +271,7 @@ async def disable_dashboard_filter(
 
 
 async def _set_dashboard_enabled(rule_id: uuid.UUID, enabled: bool, current_admin: User, session: AsyncSession) -> DashboardFilterRuleResponse:
-    rule = await _get_rule(session, rule_id)
+    rule = await _get_dashboard_rule_for_update(session, rule_id, current_admin)
     rule.enabled = enabled
     rule.version += 1
     rule.updated_by_user_id = current_admin.id
@@ -285,7 +286,7 @@ async def archive_dashboard_filter(
     current_admin: User = Depends(require_dashboard_admin_mutation),
     session: AsyncSession = Depends(get_db_session),
 ) -> None:
-    rule = await _get_rule(session, rule_id)
+    rule = await _get_dashboard_rule(session, rule_id)
     if rule.origin == "built_in":
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="built-in rules cannot be archived")
     rule.archived_at = utc_now()
@@ -294,6 +295,55 @@ async def archive_dashboard_filter(
     rule.updated_by_user_id = current_admin.id
     await session.commit()
     return None
+
+
+async def _get_dashboard_rule(session: AsyncSession, rule_id: uuid.UUID) -> FilterRule:
+    stored = await session.get(FilterRule, rule_id)
+    if stored is not None:
+        return stored
+    built_in = _built_in_rule_by_id(rule_id)
+    if built_in is not None:
+        return built_in
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="filter rule not found")
+
+
+async def _get_dashboard_rule_for_update(session: AsyncSession, rule_id: uuid.UUID, current_admin: User) -> FilterRule:
+    stored = await session.get(FilterRule, rule_id)
+    if stored is not None:
+        return stored
+    built_in = _built_in_rule_by_id(rule_id)
+    if built_in is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="filter rule not found")
+    override = _built_in_override_row(built_in, current_admin)
+    session.add(override)
+    return override
+
+
+def _built_in_rule_by_id(rule_id: uuid.UUID) -> FilterRule | None:
+    return next((rule for rule in BUILT_IN_RULES if rule.id == rule_id), None)
+
+
+def _built_in_override_row(rule: FilterRule, current_admin: User) -> FilterRule:
+    return FilterRule(
+        id=rule.id,
+        origin=rule.origin,
+        kind=rule.kind,
+        category=rule.category,
+        label=rule.label,
+        description=rule.description,
+        detector_key=rule.detector_key,
+        keyword=rule.keyword,
+        pattern=rule.pattern,
+        placeholder=rule.placeholder,
+        severity=rule.severity,
+        action=rule.action,
+        enabled=rule.enabled,
+        editable_fields=rule.editable_fields,
+        config_json=rule.config_json,
+        version=rule.version,
+        created_by_user_id=current_admin.id,
+        updated_by_user_id=current_admin.id,
+    )
 
 
 def _safe_keywords(rule: FilterRule, match: RuleMatch) -> list[str]:

@@ -13,22 +13,24 @@ export function extensionFromName(fileName: string): string {
 }
 
 /**
- * Classifies MIME types that are acceptable for the text-only MVP.
- *
- * Some source/config files use `application/*` MIME values even though they are
- * text, so the allowlist includes common text-oriented application types while
- * leaving binary-oriented types rejected.
+ * Classifies MIME types that the attachment inspection flow can send to the
+ * server parser/OCR boundary.
  */
-export function isLikelyTextMime(mimeType: string): boolean {
+export function isInspectableMime(mimeType: string): boolean {
   const normalized = mimeType.toLowerCase().split(";")[0].trim();
   return (
     normalized.startsWith("text/") ||
+    normalized.startsWith("image/") ||
     normalized === "application/json" ||
     normalized === "application/xml" ||
     normalized === "application/yaml" ||
     normalized === "application/x-yaml" ||
     normalized === "application/javascript" ||
     normalized === "application/ecmascript" ||
-    normalized === "application/sql"
+    normalized === "application/sql" ||
+    normalized === "application/pdf" ||
+    normalized === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+    normalized === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+    normalized === "application/vnd.openxmlformats-officedocument.presentationml.presentation"
   );
 }

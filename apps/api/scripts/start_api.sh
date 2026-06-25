@@ -1,4 +1,4 @@
 #!/bin/sh
 set -eu
 
-python -m app.db.startup
+/opt/venvs/api/bin/python -m app.db.startup

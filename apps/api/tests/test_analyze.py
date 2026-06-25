@@ -12,17 +12,22 @@ from sqlalchemy import Index
 from sqlalchemy.exc import IntegrityError
 
 from app.core.tokens import create_access_token
+from app.domain.policy import PolicyOrchestrator
 from app.domain.types.policy import PolicyDecision
+from app.atoms.models import PipelineFailure
+from app.ml.classifier.factory import ClassifierRuntimeProviderResult
 from app.models.events import AnalysisEvent, EventDetection, EventInput, IdempotencyKey
 from app.models.filters import FilterRule
+from app.models.policy_settings import PolicySettings
 from app.routes import analyze as analyze_route
 from app.routes.auth import get_db_session
 
 
 class _FakeSession:
-    def __init__(self, user, rules=None):
+    def __init__(self, user, rules=None, policy_settings=None):
         self.user = user
         self.rules = rules
+        self.policy_settings = policy_settings
         self.added = []
         self.commits = 0
         self.rollbacks = 0
@@ -36,6 +41,8 @@ class _FakeSession:
     async def execute(self, statement):
         if "FROM idempotency_keys" in str(statement):
             return _FakeResult([])
+        if "FROM policy_settings" in str(statement):
+            return _FakeResult([self.policy_settings] if self.policy_settings is not None else [])
         if self.rules is None:
             raise RuntimeError("filter rules not configured")
         return _FakeResult(self.rules)
@@ -98,10 +105,10 @@ def _filter_rule(**overrides):
     return FilterRule(**values)
 
 
-def _client(user=None, rules=None) -> tuple[TestClient, _FakeSession]:
+def _client(user=None, rules=None, policy_settings=None) -> tuple[TestClient, _FakeSession]:
     app = FastAPI()
     app.include_router(analyze_route.router)
-    fake_session = _FakeSession(user, rules)
+    fake_session = _FakeSession(user, rules, policy_settings)
 
     @app.exception_handler(RequestValidationError)
     async def request_validation_exception_handler(_request, exc):
@@ -119,6 +126,9 @@ def _client(user=None, rules=None) -> tuple[TestClient, _FakeSession]:
         yield fake_session
 
     app.dependency_overrides[get_db_session] = override_session
+    app.dependency_overrides[analyze_route.get_classifier_runtime_provider] = lambda: ClassifierRuntimeProviderResult(
+        failure=PipelineFailure(code="CLASSIFIER_RUNTIME_DISABLED", message="classifier runtime disabled")
+    )
     return TestClient(app), fake_session
 
 
@@ -210,6 +220,37 @@ def test_analyze_idempotency_schema_is_metadata_only() -> None:
     assert {"login_id", "client_request_id", "event_id", "created_at", "expires_at"}.issubset(columns)
     assert primary_key_columns == {"login_id", "client_request_id"}
     assert forbidden_columns.isdisjoint(columns)
+
+
+def test_analyze_uses_policy_settings_for_content_not_scanned_action_without_raw_storage() -> None:
+    user = _user()
+    settings = PolicySettings(
+        settings_key="default",
+        context_classifier_action="WARN",
+        content_not_scanned_action="BLOCK",
+        parser_or_ocr_failure_action="WARN",
+        empty_input_action="ALLOW",
+        unsupported_mask_fallback_action="BLOCK",
+        version=7,
+    )
+    client, session = _client(user, rules=[], policy_settings=settings)
+    item = {
+        "input_id": "file_1",
+        "kind": "unsupported_attachment",
+        "source": "attachment_chip",
+        "size_bytes": 42,
+        "content_included": False,
+        "content_unavailable_reason": "unsupported",
+    }
+
+    response = client.post("/prompts/analyze", headers=_bearer_header(user.id), json=_analyze_payload(item))
+    persisted = json.dumps([getattr(row, "__dict__", {}) for row in session.added], default=str)
+
+    assert response.status_code == 200
+    assert response.json()["action"] == "Block"
+    assert "content_not_scanned_action" not in persisted
+    assert "original_filename" not in persisted
+    assert "masked_prompt" not in persisted
 
 
 def test_event_metadata_schema_avoids_required_internal_identifiers() -> None:
@@ -430,7 +471,7 @@ def test_analyze_masks_email_and_phone_and_keeps_legacy_event_bridge_raw_free() 
     assert body["risk_score"] == 55
     assert body["risk_level"] == "medium"
     assert body["allow_original_send"] is False
-    assert body["requires_user_confirmation"] is False
+    assert body["requires_user_confirmation"] is True
     assert body["masked_prompt"] == "Contact [EMAIL_1] or [PHONE_1]."
     assert {item["type"] for item in body["detections"]} == {"EMAIL", "PHONE"}
     assert {item["input_id"] for item in body["detections"]} == {"in_1"}
@@ -474,6 +515,53 @@ def test_analyze_masks_email_and_phone_and_keeps_legacy_event_bridge_raw_free() 
     assert fake_session.commits == 1
 
 
+def test_analyze_mask_response_is_driven_by_policy_orchestrator_decision() -> None:
+    class RecordingPolicyOrchestrator:
+        def __init__(self) -> None:
+            self.requests = []
+            self.decisions = []
+            self.real = PolicyOrchestrator()
+
+        def decide(self, request):
+            self.requests.append(request)
+            decision = self.real.decide(request)
+            self.decisions.append(decision)
+            return decision
+
+    user = _user()
+    recorder = RecordingPolicyOrchestrator()
+    client, fake_session = _client(
+        user,
+        rules=[_filter_rule(keyword="mask marker", placeholder="MASK_MARKER", action="MASK", severity="medium")],
+    )
+    client.app.dependency_overrides[analyze_route.get_policy_orchestrator] = lambda: recorder
+    client.app.dependency_overrides[analyze_route.get_classifier_runtime_provider] = lambda: ClassifierRuntimeProviderResult(
+        failure=PipelineFailure(code="CLASSIFIER_RUNTIME_DISABLED", message="classifier runtime disabled")
+    )
+
+    response = client.post(
+        "/prompts/analyze",
+        headers=_bearer_header(user.id),
+        json=_analyze_payload(_text_input("in_1", "review mask marker before sending")),
+    )
+
+    body = response.json()
+    events = [item for item in fake_session.added if isinstance(item, AnalysisEvent)]
+
+    assert response.status_code == 200
+    assert len(recorder.requests) == 1
+    assert len(recorder.decisions) == 1
+    assert recorder.requests[0].rules[0].action == "mask"
+    assert recorder.requests[0].rules[0].masking_supported is True
+    assert recorder.requests[0].inputs[0].content_scanned is True
+    assert recorder.decisions[0].action == "mask"
+    assert body["action"] == "Mask"
+    assert body["allow_original_send"] is False
+    assert body["requires_user_confirmation"] is True
+    assert body["masked_prompt"] == "review [MASK_MARKER_1] before sending"
+    assert events[0].action == "MASK"
+
+
 def test_analyze_masks_rrn_and_card_as_high_risk() -> None:
     user = _user()
     client, fake_session = _client(user)
@@ -494,6 +582,31 @@ def test_analyze_masks_rrn_and_card_as_high_risk() -> None:
     assert body["masked_prompt"] == "rrn [RRN_1] card [CARD_1]"
     assert {item["type"] for item in body["detections"]} == {"RRN", "CARD"}
     assert {item.type for item in detection_rows} == {"RRN", "CARD"}
+
+
+def test_analyze_masks_korean_bank_account_without_treating_payroll_amounts_as_pii() -> None:
+    user = _user()
+    client, fake_session = _client(user)
+    text = "급여명세 행: 직원 한서윤, 사번 E-7742, 실지급액 ₩3,418,200, 공제액 ₩418,900, 계좌 국민은행 482719-02-774182. 급여 금액과 계좌를 분리해"
+
+    response = client.post(
+        "/prompts/analyze",
+        headers=_bearer_header(user.id),
+        json=_analyze_payload(_text_input("in_1", text)),
+    )
+
+    body = response.json()
+    detection_rows = [item for item in fake_session.added if isinstance(item, EventDetection)]
+
+    assert response.status_code == 200
+    assert body["action"] == "Mask"
+    assert {item["type"] for item in body["detections"]} == {"BANK_ACCOUNT"}
+    assert {item.type for item in detection_rows} == {"BANK_ACCOUNT"}
+    assert "₩3,418,200" in body["masked_prompt"]
+    assert "₩418,900" in body["masked_prompt"]
+    assert "[BANK_ACCOUNT_1]" in body["masked_prompt"]
+    assert "[PAYROLL_AMOUNT_1]" not in body["masked_prompt"]
+    assert "[CARD_1]" not in body["masked_prompt"]
 
 
 def test_analyze_accepts_content_unavailable_metadata_without_text_body() -> None:
@@ -520,9 +633,9 @@ def test_analyze_accepts_content_unavailable_metadata_without_text_body() -> Non
     input_rows = [item for item in fake_session.added if isinstance(item, EventInput)]
     encoded = json.dumps(body, ensure_ascii=False)
     assert response.status_code == 200
-    assert body["action"] == "Block"
-    assert body["allow_original_send"] is False
-    assert body["risk_level"] == "critical"
+    assert body["action"] == "Warn"
+    assert body["allow_original_send"] is True
+    assert body["requires_user_confirmation"] is True
     assert body["input_results"][1] == {
         "input_id": "in_2",
         "input_index": 1,
@@ -546,7 +659,7 @@ def test_analyze_accepts_content_unavailable_metadata_without_text_body() -> Non
     ]
     assert "2_500_000" not in encoded
     assert len(events) == 1
-    assert events[0].action == "BLOCK"
+    assert events[0].action == "WARN"
     assert len(input_rows) == 2
     assert input_rows[1].input_id == "in_2"
     assert input_rows[1].source == "converted_paste"
@@ -640,6 +753,25 @@ def test_analyze_respects_disabled_built_in_filter_rule() -> None:
     assert body["action"] == "Allow"
     assert body["detections"] == []
     assert detection_rows == []
+
+
+def test_analyze_merges_default_built_in_detectors_with_stored_custom_rules() -> None:
+    user = _user()
+    custom_rule = _filter_rule(keyword="Project Hermes", placeholder="INTERNAL_PROJECT")
+    client, fake_session = _client(user, rules=[custom_rule])
+
+    response = client.post(
+        "/prompts/analyze",
+        headers=_bearer_header(user.id),
+        json=_analyze_payload(_text_input("in_1", "Project Hermes contact admin@example.com")),
+    )
+
+    body = response.json()
+    detection_rows = [item for item in fake_session.added if isinstance(item, EventDetection)]
+
+    assert response.status_code == 200
+    assert {item["type"] for item in body["detections"]} == {"INTERNAL_PROJECT", "EMAIL"}
+    assert {item.type for item in detection_rows} == {"INTERNAL_PROJECT", "EMAIL"}
 
 
 def test_analyze_records_custom_keyword_filter_metadata_without_raw_value() -> None:
@@ -808,7 +940,7 @@ def test_analyze_rejects_legacy_file_text_without_echoing_content() -> None:
     assert fake_session.added == []
 
 
-def test_analyze_blocks_unavailable_input_even_when_text_would_mask() -> None:
+def test_analyze_preserves_mask_priority_over_unsupported_attachment_warn() -> None:
     user = _user()
     client, _ = _client(user)
     unavailable_input = {
@@ -828,11 +960,10 @@ def test_analyze_blocks_unavailable_input_even_when_text_would_mask() -> None:
 
     body = response.json()
     assert response.status_code == 200
-    assert body["action"] == "Block"
-    assert body["risk_level"] == "critical"
+    assert body["action"] == "Mask"
     assert body["allow_original_send"] is False
-    assert body["requires_user_confirmation"] is False
-    assert "masked_prompt" not in body
+    assert body["requires_user_confirmation"] is True
+    assert body["masked_prompt"] == "Contact [EMAIL_1]"
     assert body["content_unavailable_inputs"] == [
         {
             "input_id": "attachment_1",

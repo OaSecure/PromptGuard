@@ -1,4 +1,4 @@
-import { createAttachmentMetadataInput, createUnsupportedAttachmentInput } from "../shared/analyzeRequestBuilder";
+import { createAttachmentMetadataInput } from "../shared/analyzeRequestBuilder";
 import type { AnalyzeInput } from "../shared/types";
 
 /** Selector set used to find service-rendered attachment chips. */
@@ -26,12 +26,15 @@ export function resolveAttachmentChipScope(anchor: Element, fallbackRoot: Parent
  *
  * This path is used only when the page already exposes attachment chips and
  * the extension does not hold a raw `File` object for those attachments.
- * The collector prefers safe metadata attributes and falls back to
- * `unsupported_attachment` when metadata is too weak to classify.
+ * The collector prefers safe metadata attributes and ignores weak placeholder
+ * chips that do not prove a current attachment exists.
  */
 export function collectAttachmentChipInputs(root: ParentNode = document, selectors: AttachmentChipSelectors): AnalyzeInput[] {
   const chips = uniqueChipElements(root, selectors.attachment_chip);
-  return chips.map((chip, index) => buildAttachmentInput(chip, index));
+  return chips.flatMap((chip, index) => {
+    const input = buildAttachmentInput(chip, index);
+    return input ? [input] : [];
+  });
 }
 
 function uniqueChipElements(root: ParentNode, selectors: string[]): HTMLElement[] {
@@ -44,7 +47,7 @@ function uniqueChipElements(root: ParentNode, selectors: string[]): HTMLElement[
   return [...seen];
 }
 
-function buildAttachmentInput(element: HTMLElement, attachmentIndex: number): AnalyzeInput {
+function buildAttachmentInput(element: HTMLElement, attachmentIndex: number): AnalyzeInput | null {
   const extension = readStringAttribute(element, [
     "data-promptguard-extension",
     "data-extension",
@@ -74,12 +77,7 @@ function buildAttachmentInput(element: HTMLElement, attachmentIndex: number): An
     });
   }
 
-  return createUnsupportedAttachmentInput({
-    extension: "",
-    mimeType: "",
-    sizeBytes,
-    attachmentIndex
-  });
+  return null;
 }
 
 function inferAttachmentKind(element: HTMLElement, mimeType: string): string {

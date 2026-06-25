@@ -62,6 +62,8 @@ class EncryptedTemporaryFileStorage:
         try: return json.loads(self._path(ref, ".json").read_text(encoding="utf-8"))
         except FileNotFoundError as exc: raise TempFileError("TEMP_FILE_NOT_FOUND") from exc
         except Exception as exc: raise TempFileError("TEMP_FILE_CORRUPT") from exc
+    def manifest(self, ref: str) -> dict:
+        return self._manifest(ref)
     def _path(self, ref: str, suffix: str) -> Path: return self.root / f"{ref}{suffix}"
     @staticmethod
     def _write(target: Path, data: bytes) -> None:

@@ -1,7 +1,7 @@
 import { DashboardApiError, dashboardRequest } from "./dashboardApi.js";
 import { dashboardFallbackMessage } from "./dashboardFallback.js";
 import { markProtectedDashboardReady, runDashboardLogout } from "./dashboardSessionFlow.js";
-import { buildFilterDryRunPlan, buildFilterSavePlan, filterActionOptions, filterDryRunHelpText, filterFieldVisibility, filterFormActionSpecs, filterHeaderNavItems, filterKindOptions, filterRegexHelpItems, filterSensitivityOptions, filterSeverityOptions, safeFilterMutationErrorMessage, } from "./filtersPageModel.js";
+import { buildFilterDryRunPlan, buildFilterSavePlan, filterActionOptions, filterDryRunHelpText, filterFieldVisibility, filterFormActionSpecs, filterHeaderNavItems, filterActionLabel, filterKindOptions, filterKindLabel, filterRegexHelpItems, filterSensitivityOptions, filterSeverityLabel, filterSeverityOptions, safeFilterMutationErrorMessage, } from "./filtersPageModel.js";
 import { logoutDashboardSession, refreshDashboardCsrf } from "./session.js";
 const root = document.querySelector("#filters-app");
 let rules = [];
@@ -248,7 +248,7 @@ function renderRuleTable() {
     const tbody = el("tbody");
     for (const rule of rules) {
         const row = el("tr");
-        row.append(cellBadge(rule.origin, "source-badge"), el("td", undefined, rule.kind), ruleNameCell(rule), cellBadge(rule.severity, "severity-badge"), el("td", undefined, rule.action), el("td", undefined, rule.enabled ? "ON" : "OFF"), ruleActionCell(rule));
+        row.append(cellBadge(rule.origin, "source-badge"), el("td", undefined, filterKindLabel(rule.kind)), ruleNameCell(rule), cellBadge(filterSeverityLabel(rule.severity), "severity-badge"), el("td", undefined, filterActionLabel(rule.action)), el("td", undefined, rule.enabled ? "ON" : "OFF"), ruleActionCell(rule));
         row.addEventListener("click", () => {
             formState = formFromRule(rule);
             dryRunResult = null;

@@ -18,7 +18,7 @@ export type LimitExceededCode =
   | "MAX_COMPOSER_TEXT_BYTES"
   | "MAX_CONVERTED_PASTE_TEXT_BYTES";
 /** Input-result decision basis values returned by the MVP API. */
-export type AnalyzeDecisionBasis = "no_detection" | "detection" | "content_unavailable" | "metadata_only";
+export type AnalyzeDecisionBasis = "no_detection" | "detection" | "content_unavailable" | "metadata_only" | "context_risk";
 /** Coarse server-side file kind used without trusting client filenames. */
 export type AnalyzeFileKind = "plain_text" | "pdf" | "image" | "office_document" | "spreadsheet" | "slide" | "code" | "unknown";
 /** Coarse file size bucket; exact bytes remain runtime-only where possible. */
@@ -78,6 +78,22 @@ export interface BusinessContextMatch {
   evidence_counts: Record<string, number>;
 }
 
+/** Safe ML context-risk evidence returned without raw text, scores, or spans. */
+export interface ContextRiskEvidence {
+  enabled: boolean;
+  status: "disabled" | "no_candidate" | "candidate" | "verified" | "timeout" | "failed";
+  candidate_count: number;
+  accepted_count: number;
+  labels: string[];
+  status_counts: Record<string, number>;
+  highest_score_bucket?: string | null;
+  highest_confidence_bucket?: string | null;
+  failure_code?: string | null;
+  reason_code: string;
+  classifier_model_versions: string[];
+  verifier_model_versions: string[];
+}
+
 /** One unified Analyze request input item. */
 export interface AnalyzeInput {
   input_id: string;
@@ -87,6 +103,7 @@ export interface AnalyzeInput {
   content_included: boolean;
   content?: string;
   file_ref?: string;
+  temp_scope_id?: string;
   file_kind?: AnalyzeFileKind;
   mime?: string;
   extension?: string;
@@ -119,6 +136,7 @@ export interface AnalyzeResponse {
   input_results: AnalyzeInputResult[];
   content_unavailable_inputs: ContentUnavailableInput[];
   business_context_matches: BusinessContextMatch[];
+  context_risk_evidence?: ContextRiskEvidence | null;
   client_request_id: string;
   filter_config_revision: string;
   masked_prompt?: string;
@@ -137,10 +155,31 @@ export interface ExtensionContext {
 /** Remote or cached config that controls selectors, timeouts, and file policy. */
 export interface ExtensionConfigResponse {
   api_base_url: string;
+  filter_config_revision: string;
+  request_timeouts: ExtensionRequestTimeouts;
+  input_limits: ExtensionInputLimits;
+  attachment_policy: FileUploadPolicy;
+  /** Legacy compatibility field; prefer filter_config_revision. */
   policy_version: string;
+  /** Legacy compatibility field; prefer request_timeouts.analyze_request_ms. */
   timeout_ms: number;
   ai_service_configs: AiServiceConfig[];
+  /** Legacy compatibility field; prefer attachment_policy. */
   file_upload: FileUploadPolicy;
+}
+
+/** API timeout settings returned by /config/extension. */
+export interface ExtensionRequestTimeouts {
+  config_request_ms: number;
+  analyze_request_ms: number;
+}
+
+/** Byte limits returned by /config/extension. */
+export interface ExtensionInputLimits {
+  composer_text_bytes: number;
+  converted_paste_text_bytes: number;
+  file_text_scan_bytes: number;
+  analyze_request_bytes: number;
 }
 
 /** Selector and domain config for one supported AI service. */

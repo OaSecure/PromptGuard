@@ -1,3 +1,6 @@
+from collections.abc import Mapping
+from typing import cast
+
 from app.parser.models import (
     ParserAdapterCapability,
     ParserExecutionPlan,
@@ -7,13 +10,15 @@ from app.parser.models import (
     ParserPlanRequest,
     ParserPlanResolution,
     ParserPlanStep,
+    PlanKind,
+    StepKind,
     sanitized_failure,
 )
-
 
 PLAN_STEPS: dict[str, tuple[tuple[str, str, str], ...]] = {
     "wrap_text": (("wrap-text", "wrap_text", "always"),),
     "native_text": (("native-text", "native_text_extract", "always"),),
+    "pdf_native_ocr": (("pdf-native-ocr", "pdf_native_ocr", "always"),),
     "pdf_native_then_page_ocr": (
         ("pdf-native", "pdf_native_text_extract", "always"),
         ("pdf-coverage", "pdf_coverage_evaluate", "always"),
@@ -22,6 +27,7 @@ PLAN_STEPS: dict[str, tuple[tuple[str, str, str], ...]] = {
         ("ocr-fallback", "ocr_fallback", "fallback"),
         ("merge-blocks", "merge_blocks", "always"),
     ),
+    "pdf_native": (("pdf-native", "pdf_native_text_extract", "always"),),
     "image_ocr": (
         ("image-ocr-primary", "image_ocr", "always"),
         ("image-ocr-fallback", "ocr_fallback", "fallback"),
@@ -70,18 +76,19 @@ class ParserPlanResolver:
             return ParserPlanResolution(plan=ParserExecutionPlan(
                 plan_id=f"plan-{plan_kind}", plan_kind=plan_kind, steps=()
             ))
+        capability_by_kind: dict[str, ParserAdapterCapability] = {
+            kind: capability
+            for capability in request.capabilities
+            if capability.enabled
+            for kind in capability.step_kinds
+        }
+        plan_kind = self._select_available_plan_kind(request, plan_kind, capability_by_kind)
         if not request.config.enable_native_parsing and plan_kind not in {"image_ocr"}:
             return ParserPlanResolution(failure=sanitized_failure("PARSER_DISABLED"))
         if not request.config.enable_ocr and plan_kind in {"image_ocr", "pdf_native_then_page_ocr"}:
             return ParserPlanResolution(failure=sanitized_failure("OCR_DISABLED"))
 
         definitions = PLAN_STEPS[plan_kind]
-        capability_by_kind = {
-            kind: capability
-            for capability in request.capabilities
-            if capability.enabled
-            for kind in capability.step_kinds
-        }
         for _, step_kind, _ in definitions:
             capability = capability_by_kind.get(step_kind)
             if capability is None:
@@ -93,7 +100,7 @@ class ParserPlanResolver:
             ParserPlanStep(
                 step_id=step_id,
                 ordinal=ordinal,
-                step_kind=step_kind,
+                step_kind=cast(StepKind, step_kind),
                 capability_id=capability_by_kind[step_kind].capability_id,
                 execution_mode=mode,
             )
@@ -114,7 +121,32 @@ class ParserPlanResolver:
         ))
 
     @staticmethod
-    def _plan_kind(request: ParserPlanRequest):
+    def _select_available_plan_kind(
+        request: ParserPlanRequest,
+        plan_kind: PlanKind,
+        capability_by_kind: Mapping[str, ParserAdapterCapability],
+    ) -> PlanKind:
+        if plan_kind == "pdf_native_then_page_ocr" and "pdf_native_ocr" in capability_by_kind:
+            return "pdf_native_ocr"
+        if plan_kind == "pdf_native_then_page_ocr" and ParserPlanResolver._should_use_pdf_native_only(
+            request, capability_by_kind
+        ):
+            return "pdf_native"
+        return plan_kind
+
+    @staticmethod
+    def _should_use_pdf_native_only(
+        request: ParserPlanRequest,
+        capability_by_kind: Mapping[str, ParserAdapterCapability],
+    ) -> bool:
+        if request.payload.file_kind != "pdf" or "pdf_native_text_extract" not in capability_by_kind:
+            return False
+        if not request.config.enable_ocr:
+            return True
+        return any(step_kind not in capability_by_kind for _, step_kind, _ in PLAN_STEPS["pdf_native_then_page_ocr"])
+
+    @staticmethod
+    def _plan_kind(request: ParserPlanRequest) -> PlanKind:
         requirement = request.payload.extraction_requirement
         kind = request.payload.file_kind
         if requirement == "metadata_only":
@@ -125,7 +157,7 @@ class ParserPlanResolver:
             return "wrap_text"
         if kind == "unknown" or kind is None:
             return "unsupported"
-        mapping = {
+        mapping: dict[str, PlanKind] = {
             "plain_text": "native_text",
             "pdf": "pdf_native_then_page_ocr",
             "image": "image_ocr",

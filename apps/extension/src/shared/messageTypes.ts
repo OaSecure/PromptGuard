@@ -68,6 +68,7 @@ function isAnalyzeInput(value: unknown): boolean {
       value.content === undefined &&
       isFileReferenceSource(value.source) &&
       isSafeFileReference(value.file_ref) &&
+      isSafeTempScopeId(value.temp_scope_id) &&
       isAnalyzeFileKind(value.file_kind) &&
       (value.size_bucket === undefined || isAnalyzeSizeBucket(value.size_bucket)) &&
       (value.metadata === undefined || isSafeMetadata(value.metadata)) &&
@@ -121,6 +122,20 @@ function isAnalyzeSizeBucket(value: unknown): boolean {
 function isSafeFileReference(value: unknown): value is string {
   return (
     isNonEmptyString(value) &&
+    value.length <= 256 &&
+    !value.includes("/") &&
+    !value.includes("\\") &&
+    !value.includes(":") &&
+    !value.includes("..") &&
+    !value.includes("?") &&
+    !value.includes("#")
+  );
+}
+
+function isSafeTempScopeId(value: unknown): value is string {
+  return (
+    isNonEmptyString(value) &&
+    /^tscope_[A-Za-z0-9_-]{24,}$/.test(value) &&
     value.length <= 256 &&
     !value.includes("/") &&
     !value.includes("\\") &&

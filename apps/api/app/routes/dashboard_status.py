@@ -3,6 +3,7 @@ import ipaddress
 from pathlib import Path
 import socket
 from typing import Literal
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, Request, Response, status
 from pydantic import BaseModel
@@ -10,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db_session
+from app.core.config import get_settings
 from app.models.auth import User
 from app.models.filters import FilterRule
 from app.routes.dashboard_session import require_dashboard_admin_session
@@ -18,6 +20,7 @@ from app.routes.health import build_health
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 StatusValue = Literal["healthy", "degraded", "unhealthy", "unknown"]
+ExtensionApiUrlStatus = Literal["configured", "missing", "invalid"]
 
 
 class ExtensionConnectionInfo(BaseModel):
@@ -26,6 +29,10 @@ class ExtensionConnectionInfo(BaseModel):
     admin_local_api_origin: str
     external_api_origin: str | None
     api_port: str
+    extension_api_url: str | None
+    extension_api_url_status: ExtensionApiUrlStatus
+    extension_api_url_error: str | None
+    dashboard_public_url: str | None
 
 
 class DashboardStatusResponse(BaseModel):
@@ -107,8 +114,6 @@ def is_running_in_container() -> bool:
 
 
 def is_container_bridge_address(address: str) -> bool:
-    if not is_running_in_container():
-        return False
     try:
         parsed = ipaddress.ip_address(address)
     except ValueError:
@@ -143,6 +148,100 @@ def forwarded_origin(request: Request) -> str | None:
     return f"{proto}://{host}"
 
 
+def configured_public_api_origin() -> str | None:
+    configured = get_settings().api_public_url.strip()
+    if not configured:
+        return None
+    parsed = urlparse(configured)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        return None
+    if parsed.hostname in {"localhost", "127.0.0.1", "::1"}:
+        return None
+
+    host = parsed.hostname
+    if ":" in host and not host.startswith("["):
+        host = f"[{host}]"
+    if parsed.port is None:
+        return f"{parsed.scheme}://{host}"
+    return f"{parsed.scheme}://{host}:{parsed.port}"
+
+
+def configured_dashboard_public_url() -> str | None:
+    configured = get_settings().dashboard_public_url.strip()
+    if not configured:
+        return None
+    parsed = urlparse(configured)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        return None
+    if parsed.username or parsed.password or parsed.query or parsed.fragment:
+        return None
+    return configured
+
+
+def _normal_host(hostname: str) -> str:
+    return f"[{hostname}]" if ":" in hostname and not hostname.startswith("[") else hostname
+
+
+def _parse_extension_api_url(configured: str):
+    parsed = urlparse(configured)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        return parsed, "PROMPTGUARD_EXTENSION_API_URL must be an http or https URL."
+    return parsed, None
+
+
+def _extension_api_url_component_error(parsed) -> str | None:
+    if parsed.username or parsed.password:
+        return "PROMPTGUARD_EXTENSION_API_URL must not include credentials."
+    if parsed.query or parsed.fragment:
+        return "PROMPTGUARD_EXTENSION_API_URL must not include query strings or fragments."
+    if parsed.path not in {"", "/"}:
+        return "PROMPTGUARD_EXTENSION_API_URL must be the API origin only, without /dashboard/ or another path."
+    return None
+
+
+def _extension_api_url_host_error(hostname: str) -> str | None:
+    if hostname in {"localhost", "127.0.0.1", "::1"}:
+        return "localhost only points to the user's own computer and cannot be used as the Extension API URL."
+    try:
+        parsed_ip = ipaddress.ip_address(hostname)
+    except ValueError:
+        return None
+    if parsed_ip.is_loopback or parsed_ip.is_unspecified or parsed_ip.is_link_local:
+        return "PROMPTGUARD_EXTENSION_API_URL must be reachable from extension user computers."
+    if parsed_ip in ipaddress.ip_network("172.16.0.0/12"):
+        return "Docker bridge addresses cannot be used as the Extension API URL."
+    return None
+
+
+def _invalid_extension_api_url_reason(configured: str) -> str | None:
+    parsed, parse_error = _parse_extension_api_url(configured)
+    if parse_error is not None:
+        return parse_error
+    component_error = _extension_api_url_component_error(parsed)
+    if component_error is not None:
+        return component_error
+    host_error = _extension_api_url_host_error(parsed.hostname or "")
+    if host_error is not None:
+        return host_error
+    if parsed.port == 5432:
+        return "PostgreSQL port 5432 is not an HTTP API port."
+    return None
+
+
+def configured_extension_api_url_status() -> tuple[str | None, ExtensionApiUrlStatus, str | None]:
+    configured = get_settings().extension_api_url.strip()
+    if not configured:
+        return None, "missing", "PROMPTGUARD_EXTENSION_API_URL is not configured."
+    reason = _invalid_extension_api_url_reason(configured)
+    if reason is not None:
+        return None, "invalid", reason
+    parsed = urlparse(configured)
+    host = _normal_host(parsed.hostname or "")
+    if parsed.port is None:
+        return f"{parsed.scheme}://{host}", "configured", None
+    return f"{parsed.scheme}://{host}:{parsed.port}", "configured", None
+
+
 def build_extension_connection_info(request: Request) -> ExtensionConnectionInfo:
     port = request_port(request)
     scheme = request.url.scheme
@@ -154,12 +253,17 @@ def build_extension_connection_info(request: Request) -> ExtensionConnectionInfo
             excluded_origins.append(origin)
         else:
             internal_origins.append(origin)
+    extension_api_url, extension_api_url_status, extension_api_url_error = configured_extension_api_url_status()
     return ExtensionConnectionInfo(
         internal_api_origins=internal_origins,
         excluded_internal_api_origins=excluded_origins,
         admin_local_api_origin=request_origin(request),
-        external_api_origin=forwarded_origin(request),
+        external_api_origin=configured_public_api_origin() or forwarded_origin(request),
         api_port=port,
+        extension_api_url=extension_api_url,
+        extension_api_url_status=extension_api_url_status,
+        extension_api_url_error=extension_api_url_error,
+        dashboard_public_url=configured_dashboard_public_url(),
     )
 
 

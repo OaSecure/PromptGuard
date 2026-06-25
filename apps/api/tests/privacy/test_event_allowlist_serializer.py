@@ -7,6 +7,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.models.events import EventInput
+from app.domain.types.policy import ContextRiskEvidence
 from app.privacy.event_serializer import EventProjection, serialize_event_write
 
 EVENT_ID = UUID("10000000-0000-4000-8000-000000000001")
@@ -60,12 +61,51 @@ def test_file_reference_projection_contains_safe_metadata_without_file_ref():
     assert "file_ref" not in type(projection.inputs[0]).model_fields
 
 
+def test_context_risk_projection_is_raw_free_event_metadata():
+    item = SimpleNamespace(input_id="input-1", kind="text", source="composer", size_bytes=42,
+                           content_included=True, content="FORBIDDEN_CONTENT")
+    result = SimpleNamespace(input_id="input-1", input_index=0, kind="text", source="composer",
+                             content_included=True, content_scanned=True, decision_basis="context_risk",
+                             content_unavailable_reason=None, limit_exceeded=None)
+    projection = serialize_event_write(
+        event_id=EVENT_ID, user_id=USER_ID, login_id="user-1", payload=_payload(item), action="WARN",
+        risk_score=40, risk_level="medium", input_results=[result], matched_inputs=[],
+        context_risk_evidence=ContextRiskEvidence(
+            enabled=True,
+            status="candidate",
+            candidate_count=1,
+            accepted_count=0,
+            labels=["INTERNAL_OPERATION_CONTEXT"],
+            reason_code="RISK_CONTEXT_LR_ONLY",
+        ),
+        idempotency_expires_at=datetime(2030, 1, 1, tzinfo=UTC),
+    )
+    encoded = projection.model_dump_json()
+    assert "FORBIDDEN" not in encoded
+    assert projection.detections == []
+    assert projection.inputs[0].decision_basis == "context_risk"
+    assert projection.event.context_risk_evidence == {
+        "enabled": True,
+        "status": "candidate",
+        "candidate_count": 1,
+        "accepted_count": 0,
+        "labels": ["INTERNAL_OPERATION_CONTEXT"],
+        "status_counts": {},
+        "highest_score_bucket": None,
+        "highest_confidence_bucket": None,
+        "failure_code": None,
+        "reason_code": "RISK_CONTEXT_LR_ONLY",
+        "classifier_model_versions": [],
+        "verifier_model_versions": [],
+    }
+
+
 def test_persistence_dtos_reject_unknown_fields_and_orm_has_no_exact_size():
     with pytest.raises(ValidationError):
         EventProjection(
             id=EVENT_ID, user_id=USER_ID, login_id="user", client_request_id="req", action="ALLOW",
             risk_score=0, risk_level="low", filter_config_revision="cfg", service="chatgpt",
-            service_domain="chatgpt.com", platform="chrome", raw_prompt="forbidden",
+            service_domain="chatgpt.com", platform="chrome", context_risk_evidence=None, raw_prompt="forbidden",
         )
     assert "size_bytes" not in EventInput.__table__.columns
     assert "size_bucket" in EventInput.__table__.columns

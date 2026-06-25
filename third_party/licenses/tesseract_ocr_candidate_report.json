@@ -1,0 +1,302 @@
+{
+  "schema_version": "1",
+  "scope": "development_contract_pr10_b3_a",
+  "validation_phase": "pr10_b3_h_runtime_integration_preflight_gate",
+  "reviewed_at": "2026-06-22",
+  "status": "additional-validation-required",
+  "approved_for_dependency_addition": false,
+  "approved_for_default_distribution": false,
+  "engine_candidate": {
+    "name": "tesseract",
+    "version": "5.5.2",
+    "license_id": "Apache-2.0",
+    "official_release_url": "https://github.com/tesseract-ocr/tesseract/releases/tag/5.5.2",
+    "official_license_url": "https://github.com/tesseract-ocr/tesseract/blob/5.5.2/LICENSE",
+    "tag_object_sha": "9c516f4c6dc5b3a962dc7a2a39b5c3e21ce27466",
+    "release_assets": [],
+    "candidate_role": "source-and-license-review-only",
+    "verified_binary_artifact": false,
+    "source_archive_sha256_status": "artifact-inspection-required",
+    "commercial_use_verified": true,
+    "redistribution_verified": true,
+    "notice_obligations": "include Apache-2.0 license and preserve applicable notices"
+  },
+  "verified_linux_candidate": {
+    "candidate_role": "ci-verified-ubuntu-package-artifact",
+    "distribution": "ubuntu-24.04-runner",
+    "package": "tesseract-ocr 5.3.4-1build5 amd64",
+    "libtesseract_package": "libtesseract5 5.3.4-1build5 amd64",
+    "binary_path": "/usr/bin/tesseract",
+    "binary_sha256": "9f831cab7525c3dab04af41bda35182af7ea1df9dceeaaa2f3bf207ac45c06a5",
+    "leptonica_package": "liblept5 1.82.0-3build4 amd64",
+    "native_dependency_inventory_verified": true,
+    "offline_ocr_smoke_verified": true,
+    "runtime_network_deny_verified": true,
+    "evidence_run_id": 27927632968,
+    "production_artifact_pin": false,
+    "production_approval": false
+  },
+  "python_wrapper_candidate": {
+    "name": "pytesseract",
+    "version": "0.3.13",
+    "license_id": "Apache-2.0",
+    "package_source": "https://pypi.org/project/pytesseract/0.3.13/",
+    "wheel_sha256": "7a99c6c2ac598360693d83a416e36e0b33a67638bb9d77fdcac094a3589d4b34",
+    "direct_dependencies": ["packaging>=21.3", "Pillow>=8.0.0"],
+    "relationship": "optional-subprocess-wrapper",
+    "includes_tesseract_binary": false
+  },
+  "traineddata_repository": {
+    "name": "tesseract-ocr/tessdata",
+    "repository_commit": "ced78752cc61322fb554c280d13360b35b8684e4",
+    "license_id": "Apache-2.0",
+    "license_scope_evidence": "The official README states that all data in the repository are licensed under Apache-2.0.",
+    "license_url": "https://github.com/tesseract-ocr/tessdata/blob/main/LICENSE",
+    "readme_url": "https://github.com/tesseract-ocr/tessdata/blob/main/README.md"
+  },
+  "traineddata_artifact_gate": {
+    "pinned_repository_commit": "ced78752cc61322fb554c280d13360b35b8684e4",
+    "required_artifacts": ["kor.traineddata", "eng.traineddata"],
+    "required_artifact_reason": {
+      "kor.traineddata": "Korean OCR recognition data",
+      "eng.traineddata": "English and numeric OCR recognition data"
+    },
+    "individual_sha256_recorded": true,
+    "status": "ci-evidence-captured-additional-validation-required",
+    "approval_condition": "record SHA-256 from reviewed immutable artifacts before distribution or execution"
+  },
+  "traineddata_candidates": [
+    {
+      "language": "kor",
+      "filename": "kor.traineddata",
+      "language_scope": ["korean", "english", "numeric"],
+      "repository": "tesseract-ocr/tessdata",
+      "repository_commit": "ced78752cc61322fb554c280d13360b35b8684e4",
+      "source_url": "https://github.com/tesseract-ocr/tessdata/blob/ced78752cc61322fb554c280d13360b35b8684e4/kor.traineddata",
+      "license_id": "Apache-2.0",
+      "commercial_use_verified": true,
+      "redistribution_verified": true,
+      "sha256": "9520bfe9e3cfc38d4a808e036b0287c88a1d37fb80b9a0a23928ddccdd20595b",
+      "sha256_status": "verified-in-isolated-ci-run-27927632968",
+      "default_distribution": false
+    },
+    {
+      "language": "eng",
+      "filename": "eng.traineddata",
+      "language_scope": ["english", "numeric"],
+      "repository": "tesseract-ocr/tessdata",
+      "repository_commit": "ced78752cc61322fb554c280d13360b35b8684e4",
+      "source_url": "https://github.com/tesseract-ocr/tessdata/blob/ced78752cc61322fb554c280d13360b35b8684e4/eng.traineddata",
+      "license_id": "Apache-2.0",
+      "commercial_use_verified": true,
+      "redistribution_verified": true,
+      "sha256": "daa0c97d651c19fba3b25e81317cd697e9908c8208090c94c3905381c23fc047",
+      "sha256_status": "verified-in-isolated-ci-run-27927632968",
+      "default_distribution": false
+    }
+  ],
+  "native_dependency_review": {
+    "required": ["Leptonica"],
+    "optional_or_build_selected": ["zlib", "libpng", "libjpeg", "libtiff", "giflib", "openjpeg", "webp", "libarchive", "libcurl"],
+    "classification": {
+      "Leptonica": "required-engine-dependency",
+      "zlib": "build-dependent-codec-or-compression-candidate",
+      "libpng": "build-dependent-image-codec-candidate",
+      "libjpeg": "build-dependent-image-codec-candidate",
+      "libtiff": "build-dependent-image-codec-candidate",
+      "giflib": "build-dependent-image-codec-candidate",
+      "openjpeg": "build-dependent-image-codec-candidate",
+      "webp": "build-dependent-image-codec-candidate",
+      "libarchive": "build-dependent-archive-candidate",
+      "libcurl": "build-dependent-network-candidate"
+    },
+    "exact_platform_versions_recorded": true,
+    "leptonica_license": "BSD-style permissive license; exact packaged version and bundled codec inventory remain platform-specific",
+    "status": "ubuntu-ci-inventory-captured-other-platforms-blocked",
+    "evidence": [
+      "https://tesseract-ocr.github.io/tessdoc/Compiling.html",
+      "https://github.com/DanBloomberg/leptonica/blob/1.85.0/leptonica-license.txt"
+    ]
+  },
+  "platform_delivery": {
+    "linux": {
+      "candidates": ["distribution package", "pinned internally built source package"],
+      "status": "ubuntu-ci-evidence-captured-production-pin-required",
+      "validated_ci_package": "tesseract-ocr 5.3.4-1build5 amd64 on ubuntu-24.04",
+      "validated_binary": "/usr/bin/tesseract",
+      "blocker": "The Ubuntu runner package is Tesseract 5.3.4 rather than candidate 5.5.2 and is not a pinned production artifact"
+    },
+    "windows": {
+      "candidate": "third-party build or controlled internal build",
+      "status": "blocked/unverified",
+      "binary_provenance_verified": false,
+      "artifact_sha256_recorded": false,
+      "runtime_smoke_verified": false,
+      "blocker": "Tesseract GitHub release 5.5.2 publishes no binary assets; third-party provenance and bundled licenses require separate approval"
+    }
+  },
+  "offline_runtime_policy": {
+    "binary_path": "explicit-local-path-only",
+    "tessdata_path": "explicit-local-path-only",
+    "automatic_download": "forbidden",
+    "runtime_network": "forbidden",
+    "missing_artifact": "fail-closed",
+    "checksum_mismatch": "fail-before-execution"
+  },
+  "offline_fail_closed_gate": {
+    "status": "candidate-runtime-boundary-implemented-production-disabled",
+    "required_controls": [
+      "explicit-binary-path",
+      "explicit-tessdata-path",
+      "no-automatic-download",
+      "no-runtime-network",
+      "missing-binary-fail-closed",
+      "missing-tessdata-fail-closed",
+      "checksum-mismatch-fail-before-execution"
+    ],
+    "production_approval": false
+  },
+  "runtime_integration_preflight_gate": {
+    "status": "candidate-runtime-boundary-implemented-production-disabled",
+    "required_controls": [
+      "explicit-binary-path",
+      "explicit-tessdata-directory",
+      "allowed-language-allowlist",
+      "required-traineddata-exists",
+      "binary-checksum-verified",
+      "traineddata-checksum-verified",
+      "production-package-pin-verified",
+      "native-dependency-pins-verified",
+      "bounded-timeout-required",
+      "bounded-input-size-required",
+      "bounded-output-size-required",
+      "no-runtime-network",
+      "no-automatic-download",
+      "argv-invocation-only-no-shell-string",
+      "temporary-file-policy-and-cleanup-required",
+      "all-failures-fail-closed"
+    ],
+    "bounded_values_defined_in_this_gate": false,
+    "preflight_success_means": {
+      "runtime_integration_complete": false,
+      "ocr_execution_success": false,
+      "ocr_recognition_accuracy_validated": false,
+      "production_approval": false
+    },
+    "platform_evaluation": "linux-and-windows-independent",
+    "failure_cases": [
+      "binary-missing",
+      "traineddata-missing",
+      "timeout",
+      "unsupported-language",
+      "ocr-failed",
+      "network-access-attempted",
+      "binary-checksum-mismatch",
+      "traineddata-checksum-mismatch",
+      "invalid-or-untrusted-path",
+      "native-dependency-pin-mismatch",
+      "malformed-ocr-output",
+      "output-size-limit-exceeded",
+      "temporary-file-create-or-delete-failure",
+      "process-spawn-failure",
+      "unexpected-exit-code",
+      "unverified-windows-binary-selected"
+    ],
+    "security_and_privacy_controls": [
+      "no-ocr-source-text-logging",
+      "no-original-filename-logging",
+      "no-full-extracted-text-in-error-response",
+      "no-full-extracted-text-persistent-storage",
+      "no-raw-subprocess-stdout-or-stderr-logging",
+      "no-unnecessary-temporary-or-user-path-exposure",
+      "limited-error-codes-and-deidentified-metadata-only",
+      "no-shell-string-composition",
+      "no-ocr-input-to-external-service-or-network",
+      "no-partial-failure-result-in-log-response-or-storage"
+    ],
+    "production_approval": false
+  },
+  "isolated_validation_gate": {
+    "status": "additional-validation-required",
+    "execution_environment": ["ci-runner", "dedicated-remote-isolated-environment"],
+    "local_developer_machine_execution": "forbidden",
+    "required_validations": [
+      "kor-traineddata-sha256",
+      "eng-traineddata-sha256",
+      "linux-package-version-and-sha256",
+      "windows-binary-provenance",
+      "leptonica-and-codec-dependency-inventory",
+      "offline-ocr-smoke-test",
+      "runtime-network-deny-test"
+    ],
+    "local_prohibited_operations": [
+      "apt-install",
+      "chocolatey-install",
+      "pip-install",
+      "tessdata-download",
+      "ocr-execution",
+      "docker-build",
+      "heavy-validation"
+    ],
+    "fail_closed_acceptance_criteria": [
+      "missing-explicit-binary-path-fails",
+      "missing-explicit-tessdata-path-fails",
+      "missing-checksum-blocks-production-approval",
+      "checksum-mismatch-fails-before-execution",
+      "automatic-download-is-forbidden",
+      "runtime-network-is-forbidden"
+    ],
+    "evidence_required": "machine-readable results from an ephemeral CI runner or dedicated remote isolated environment",
+    "github_actions_workflow_added_in_this_pr": false,
+    "workflow_trigger": "workflow_dispatch-only",
+    "workflow_path": ".github/workflows/tesseract-isolated-validation.yml",
+    "workflow_implementation": "manual-ci-validation-workflow-evidenced-in-run-27927632968",
+    "artifact_installation_and_validation": "successful-in-manual-ci-run-27927632968",
+    "evidence_file": "third_party/licenses/tesseract_isolated_validation_evidence.json",
+    "evidence_run_url": "https://github.com/OaSecure/PromptGuard/actions/runs/27927632968",
+    "production_approval": false
+  },
+  "dependency_burden_comparison": {
+    "tesseract_runtime_shape": "external native executable plus Leptonica/codecs and two traineddata files",
+    "pytesseract_runtime_shape": "small optional Python subprocess wrapper depending on packaging and Pillow",
+    "conclusion": "Tesseract requires platform-specific native binary provenance and license inventory."
+  },
+  "blockers": [
+    "Tesseract 5.5.2 release has no official binary assets or published source archive SHA-256 in the release metadata.",
+    "The isolated Ubuntu runner validated Tesseract 5.3.4-1build5, not the engine candidate version 5.5.2.",
+    "Windows binary provenance remains unfixed because the official 5.5.2 release has no assets and no third-party or internal build was validated.",
+    "The captured Leptonica and codec inventory is scoped to one ephemeral Ubuntu runner and is not a pinned production artifact inventory.",
+    "The offline smoke test validated process execution, not OCR recognition accuracy or production runtime integration."
+  ],
+  "production_approval_gate": {
+    "status": "blocked-policy-requirements-not-satisfied",
+    "production_approval": false,
+    "linux_verified_candidate_is_production_approved": false,
+    "linux_and_windows_approval_must_not_be_combined": true,
+    "required_before_approval": {
+      "exact_linux_package_pin": "required-not-satisfied",
+      "native_dependency_version_pins": "required-not-satisfied",
+      "runtime_integration_validation": "required-not-satisfied",
+      "ocr_recognition_accuracy_validation": "required-not-satisfied"
+    },
+    "independent_blockers": {
+      "windows_binary_provenance_hash_runtime_smoke": "blocked/unverified",
+      "tesseract_5_5_2_binary_or_source_archive_sha256": "artifact-inspection-required"
+    }
+  },
+  "next_validation": {
+    "artifact_inspection_required": [
+      "select and pin a production Linux artifact matching the approved engine version",
+      "validate provenance for a selected Windows binary or explicitly exclude Windows distribution",
+      "review licenses and checksums for the selected production native dependency inventory",
+      "run recognition-accuracy and production-integration validation in an isolated environment"
+    ],
+    "local_heavy_work_not_performed": ["installation", "OCR execution", "model download", "Docker build", "native build"],
+    "required_location": "ci-runner-or-dedicated-remote-isolated-environment",
+    "follow_up_pr_boundary": [
+      "B3-K: OCR accuracy corpus/acceptance policy",
+      "B3-L: production artifact/native dependency pin decision",
+      "separate: Windows artifact validation or Windows support exclusion decision"
+    ]
+  }
+}

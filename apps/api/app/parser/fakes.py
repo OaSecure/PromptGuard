@@ -1,6 +1,8 @@
 import time
 
 from app.atoms.models import ParsedDocument
+from app.domain.types.common import PipelineFailure
+from app.domain.types.parser import OcrImageInput, OcrOptions, OcrResult, OcrTextBlock
 from app.parser.models import (
     FileParserResult,
     ParserBoundaryError,
@@ -97,3 +99,62 @@ class RaisingFileParserRunner:
 
     def run(self, payload: ParserWorkerPayload) -> FileParserResult:
         raise RuntimeError(self.exception_message)
+
+
+class FakePdfRenderer:
+    def __init__(self, fail_pages: set[int] | None = None) -> None:
+        self.fail_pages = fail_pages or set()
+        self.calls: list[int] = []
+
+    def render_page(self, runtime_ref: str, page: int) -> OcrImageInput:
+        self.calls.append(page)
+        if page in self.fail_pages:
+            raise RuntimeError("fake renderer failure")
+        return OcrImageInput(image_handle=f"fake-rendered-page-{page}", page=page)
+
+    def release(self, image: OcrImageInput) -> None:
+        return None
+
+
+class FakeOcrEngine:
+    engine_id = "fake-ocr"
+
+    def __init__(
+        self,
+        text_by_page: dict[int, str] | None = None,
+        fail_pages: set[int] | None = None,
+        exception_message: str | None = None,
+    ) -> None:
+        self.text_by_page = text_by_page or {}
+        self.fail_pages = fail_pages or set()
+        self.exception_message = exception_message
+        self.calls: list[int] = []
+
+    def recognize(self, image: OcrImageInput, options: OcrOptions) -> OcrResult:
+        page = image.page
+        if page is None:
+            raise ValueError("OCR_FAILED")
+        self.calls.append(page)
+        if self.exception_message is not None:
+            raise RuntimeError(self.exception_message)
+        if page in self.fail_pages:
+            return OcrResult(
+                status="failed",
+                engine_id=self.engine_id,
+                failure=PipelineFailure(
+                    code="OCR_FAILED",
+                    message="OCR_FAILED",
+                    metadata={"failure_code": "OCR_FAILED"},
+                ),
+            )
+        text = self.text_by_page.get(page, "")
+        blocks = [] if not text else [OcrTextBlock(
+            text=text,
+            confidence_bucket="unknown",
+            location={"page": page},
+        )]
+        return OcrResult(
+            status="text_found" if blocks else "no_text_detected",
+            blocks=blocks,
+            engine_id=self.engine_id,
+        )

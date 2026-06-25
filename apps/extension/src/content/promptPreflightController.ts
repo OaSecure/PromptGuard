@@ -1,9 +1,11 @@
 import { createAnalyzeRequest, createComposerInput, createConvertedPasteInput } from "../shared/analyzeRequestBuilder";
+import { analyzeTimeoutMs, filterConfigRevision } from "../shared/configAccessors";
 import { createClientRequestId } from "../shared/hashing";
 import type { AnalyzeInput } from "../shared/types";
 import { isAnalyzeResponse } from "../shared/responseValidation";
 import type { AnalyzeRequest, AnalyzeResponse, ExtensionConfigResponse, ExtensionContext, NormalizedError } from "../shared/types";
 import { collectAttachmentChipInputs, resolveAttachmentChipScope } from "./attachmentChipCapture";
+import { safeDecisionEvidence } from "./decisionEvidence";
 import { findBestInputCandidate, type DetectorSelectors } from "./domDetector";
 import { applyMaskedPrompt } from "./maskedTextInjector";
 import { createPreflightOverlay, type PreflightOverlay } from "./preflightOverlay";
@@ -52,6 +54,9 @@ export function startPromptPreflightController(options: PromptPreflightControlle
   let convertedPasteText: string | undefined;
   const requestIds = new WeakMap<SendAttempt, string>();
   const requestIdForAttempt = requestIdForAttemptFactory(requestIds);
+  const resetRequestIdForAttempt = (attempt: SendAttempt): void => {
+    requestIds.delete(attempt);
+  };
 
   const getPromptInput = (): PromptInputElement | null => findBestInputCandidate(doc, { input: selectors.input })?.element ?? null;
   const handlePaste = (event: ClipboardEvent): void => {
@@ -76,13 +81,13 @@ export function startPromptPreflightController(options: PromptPreflightControlle
 
   async function handleAttempt(attempt: SendAttempt): Promise<void> {
     if (analyzing) {
-      overlay.show({ decision: "analyzing", message: "Inspection is already running.", actions: [] });
+      overlay.show({ decision: "analyzing", message: "이미 검사 중입니다.", actions: [] });
       return;
     }
 
     const candidate = findBestInputCandidate(doc, { input: selectors.input });
     if (!candidate) {
-      showFailClosed("PromptGuard could not inspect this send.", () => void handleAttempt(attempt));
+      showFailClosed("전송 내용을 검사하지 못했습니다.", () => retryAttempt(attempt));
       return;
     }
 
@@ -90,7 +95,7 @@ export function startPromptPreflightController(options: PromptPreflightControlle
       candidate.element,
       attempt.method,
       options.getContext(),
-      options.config.policy_version,
+      filterConfigRevision(options.config),
       convertedPasteText,
       requestIdForAttempt(attempt),
       collectAttachmentChipInputs(resolveAttachmentChipScope(candidate.element, doc), { attachment_chip: selectors.attachment_chip })
@@ -100,7 +105,7 @@ export function startPromptPreflightController(options: PromptPreflightControlle
     const composerInput = request.inputs.find((item) => item.source === "composer");
     if (!composerInput || composerInput.size_bytes === 0) {
       recordPromptStatus(doc, "error", "empty-prompt");
-      showFailClosed("PromptGuard could not read this prompt. Prompt was not sent.", () => void handleAttempt(attempt));
+      showFailClosed("프롬프트를 읽지 못했습니다. 전송하지 않았습니다.", () => retryAttempt(attempt));
       return;
     }
     const attemptId = ++currentAttemptId;
@@ -108,20 +113,20 @@ export function startPromptPreflightController(options: PromptPreflightControlle
     const cancelAnalyzingOverlay = scheduleAnalyzingOverlay();
 
     try {
-      const response = await withTimeout(options.sendAnalyze(request), options.config.timeout_ms);
+      const response = await withTimeout(options.sendAnalyze(request), analyzeTimeoutMs(options.config));
       if (attemptId !== currentAttemptId) {
         return;
       }
       if (!isAnalyzeResponse(response)) {
         recordPromptStatus(doc, "error", "invalid-response");
-        showFailClosed("Inspection failed. Prompt was not sent.", () => void handleAttempt(attempt));
+        showFailClosed("검사에 실패했습니다. 전송하지 않았습니다.", () => retryAttempt(attempt));
         return;
       }
       handleDecision(response, candidate.element, attempt);
     } catch {
       if (attemptId === currentAttemptId) {
         recordPromptStatus(doc, "error", "inspection-failed");
-        showFailClosed("Inspection timed out or failed. Prompt was not sent.", () => void handleAttempt(attempt));
+        showFailClosed("검사가 실패하거나 시간 초과되었습니다.", () => retryAttempt(attempt));
       }
     } finally {
       cancelAnalyzingOverlay();
@@ -131,9 +136,9 @@ export function startPromptPreflightController(options: PromptPreflightControlle
     }
   }
 
-  function scheduleAnalyzingOverlay(): () => void {
+  function scheduleAnalyzingOverlay(message = "전송 전 검사 중입니다."): () => void {
     const timeoutId = window.setTimeout(() => {
-      overlay.show({ decision: "analyzing", message: "Inspecting prompt before send.", actions: [] });
+      overlay.show({ decision: "analyzing", message, actions: [] });
     }, ANALYZING_OVERLAY_DELAY_MS);
     return () => window.clearTimeout(timeoutId);
   }
@@ -143,7 +148,7 @@ export function startPromptPreflightController(options: PromptPreflightControlle
     switch (response.action) {
       case "Allow":
         if (response.allow_original_send === false) {
-          showFailClosed("Inspection did not authorize sending the original prompt.", () => void handleAttempt(attempt));
+          showFailClosed("원문 전송이 허용되지 않았습니다.", () => retryAttempt(attempt));
           return;
         }
         overlay.hide();
@@ -153,19 +158,21 @@ export function startPromptPreflightController(options: PromptPreflightControlle
         overlay.show({
           decision: "warn",
           message: safeDecisionMessage(response),
+          evidence: safeDecisionEvidence(response),
           actions: [
             {
-              label: "Continue",
+              id: "continue",
+              label: "계속",
               variant: "primary",
               onClick: () => {
                 if (response.allow_original_send !== true) {
-                  showFailClosed("Inspection did not authorize sending the original prompt.", () => void handleAttempt(attempt));
+                  showFailClosed("원문 전송이 허용되지 않았습니다.", () => retryAttempt(attempt));
                   return;
                 }
                 replay(attempt);
               }
             },
-            { label: "Cancel", variant: "secondary", onClick: overlay.hide }
+            { id: "cancel", label: "취소", variant: "secondary", onClick: overlay.hide }
           ]
         });
         return;
@@ -173,31 +180,22 @@ export function startPromptPreflightController(options: PromptPreflightControlle
         overlay.show({
           decision: "mask",
           message: safeDecisionMessage(response),
+          evidence: safeDecisionEvidence(response),
           actions: [
             {
-              label: "Apply mask",
+              id: "apply-mask",
+              label: "마스킹 적용",
               variant: "primary",
               onClick: () => {
                 const result = applyMaskedPrompt(input, response.masked_prompt);
                 if (result.applied) {
-                  if (response.requires_user_confirmation) {
-                    overlay.show({
-                      decision: "warn",
-                      message: "PromptGuard applied the mask. Review and confirm before sending.",
-                      actions: [
-                        { label: "Continue", variant: "primary", onClick: () => replay(attempt) },
-                        { label: "Cancel", variant: "secondary", onClick: overlay.hide }
-                      ]
-                    });
-                  } else {
-                    replay(attempt);
-                  }
+                  void reinspectMaskedPrompt(input, attempt);
                 } else {
-                  showFailClosed("Masked replacement could not be applied.", () => void handleAttempt(attempt));
+                  showFailClosed("마스킹을 적용하지 못했습니다.", () => retryAttempt(attempt));
                 }
               }
             },
-            { label: "Cancel", variant: "secondary", onClick: overlay.hide }
+            { id: "cancel", label: "취소", variant: "secondary", onClick: overlay.hide }
           ]
         });
         return;
@@ -205,13 +203,86 @@ export function startPromptPreflightController(options: PromptPreflightControlle
         overlay.show({
           decision: "block",
           message: safeDecisionMessage(response),
+          evidence: safeDecisionEvidence(response),
           actions: [
-            { label: "Retry", variant: "secondary", onClick: () => void handleAttempt(attempt) },
-            { label: "Cancel", variant: "danger", onClick: overlay.hide }
+            { id: "retry", label: "다시 시도", variant: "secondary", onClick: () => retryAttempt(attempt) },
+            { id: "cancel", label: "취소", variant: "danger", onClick: overlay.hide }
           ]
         });
         return;
     }
+  }
+
+  async function reinspectMaskedPrompt(input: PromptInputElement, attempt: SendAttempt): Promise<void> {
+    if (analyzing) {
+      overlay.show({ decision: "analyzing", message: "이미 검사 중입니다.", actions: [] });
+      return;
+    }
+
+    const request = buildPromptAnalyzeRequest(
+      input,
+      attempt.method,
+      options.getContext(),
+      filterConfigRevision(options.config),
+      undefined,
+      createClientRequestId("crq"),
+      collectAttachmentChipInputs(resolveAttachmentChipScope(input, doc), { attachment_chip: selectors.attachment_chip })
+    );
+    const composerInput = request.inputs.find((item) => item.source === "composer");
+    if (!composerInput || composerInput.size_bytes === 0) {
+      recordPromptStatus(doc, "error", "empty-masked-prompt");
+      showFailClosed("마스킹된 프롬프트를 읽지 못했습니다. 전송하지 않았습니다.", () => retryAttempt(attempt));
+      return;
+    }
+
+    const attemptId = ++currentAttemptId;
+    analyzing = true;
+    recordPromptAttempt(doc, request, "reinspecting-masked");
+    const cancelAnalyzingOverlay = scheduleAnalyzingOverlay("마스킹본을 다시 검사 중입니다.");
+
+    try {
+      const response = await withTimeout(options.sendAnalyze(request), analyzeTimeoutMs(options.config));
+      if (attemptId !== currentAttemptId) {
+        return;
+      }
+      if (!isAnalyzeResponse(response)) {
+        recordPromptStatus(doc, "error", "invalid-masked-response");
+        showFailClosed("마스킹본 검사에 실패했습니다. 전송하지 않았습니다.", () => retryAttempt(attempt));
+        return;
+      }
+      handleMaskedDecision(response, input, attempt);
+    } catch {
+      if (attemptId === currentAttemptId) {
+        recordPromptStatus(doc, "error", "masked-inspection-failed");
+        showFailClosed("마스킹본 검사가 실패하거나 시간 초과되었습니다.", () => retryAttempt(attempt));
+      }
+    } finally {
+      cancelAnalyzingOverlay();
+      if (attemptId === currentAttemptId) {
+        analyzing = false;
+      }
+    }
+  }
+
+  function handleMaskedDecision(response: AnalyzeResponse, input: PromptInputElement, attempt: SendAttempt): void {
+    if (response.action !== "Allow") {
+      handleDecision(response, input, attempt);
+      return;
+    }
+    if (response.allow_original_send === false) {
+      showFailClosed("마스킹본 전송이 허용되지 않았습니다.", () => retryAttempt(attempt));
+      return;
+    }
+    recordPromptStatus(doc, "allow");
+    overlay.show({
+      decision: "mask",
+      message: "마스킹본 검사가 완료되었습니다.",
+      evidence: safeDecisionEvidence(response),
+      actions: [
+        { id: "send-masked-prompt", label: "마스킹본 전송", variant: "primary", onClick: () => replay(attempt) },
+        { id: "cancel", label: "취소", variant: "secondary", onClick: overlay.hide }
+      ]
+    });
   }
 
   function replay(_attempt: SendAttempt): void {
@@ -222,7 +293,7 @@ export function startPromptPreflightController(options: PromptPreflightControlle
     const replayed = replaySendAttempt(doc, selectors.send_button);
     replaying = false;
     if (!replayed) {
-      showFailClosed("PromptGuard could not hand control back to the page.", () => undefined);
+      showFailClosed("페이지 전송 동작을 다시 실행하지 못했습니다.", () => undefined);
     }
   }
 
@@ -232,10 +303,15 @@ export function startPromptPreflightController(options: PromptPreflightControlle
       decision: "error",
       message,
       actions: [
-        { label: "Retry", variant: "secondary", onClick: retry },
-        { label: "Cancel", variant: "danger", onClick: overlay.hide }
+        { id: "retry", label: "다시 시도", variant: "secondary", onClick: retry },
+        { id: "cancel", label: "취소", variant: "danger", onClick: overlay.hide }
       ]
     });
+  }
+
+  function retryAttempt(attempt: SendAttempt): void {
+    resetRequestIdForAttempt(attempt);
+    void handleAttempt(attempt);
   }
 
   return {
@@ -278,13 +354,13 @@ function recordPromptStatus(doc: Document, status: string, reason?: string): voi
 function safeDecisionMessage(response: AnalyzeResponse): string {
   switch (response.action) {
     case "Warn":
-      return "PromptGuard found content that may need review.";
+      return "전송 전 확인하세요.";
     case "Mask":
-      return "PromptGuard can replace sensitive-looking content before you review and send again.";
+      return "마스킹 후 전송하세요.";
     case "Block":
-      return "PromptGuard blocked this prompt based on policy.";
+      return "민감한 내용을 제거한 뒤 다시 시도하세요.";
     case "Allow":
-      return "PromptGuard allowed this prompt.";
+      return "전송할 수 있습니다.";
   }
 }
 

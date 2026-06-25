@@ -408,6 +408,91 @@ describe("message router API auth boundary", () => {
       headers: expect.objectContaining({ Authorization: "Bearer new-access-token" })
     }));
   });
+
+  it("uploads temp files without original filename and with extension headers", async () => {
+    const storage = createStorage({
+      [STORAGE_KEYS.apiBaseUrl]: "https://api.promptguard.test",
+      [STORAGE_KEYS.mockMode]: false,
+      [STORAGE_KEYS.accessToken]: "test-access-token"
+    });
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({
+        file_ref: "fref_abcdefghijklmnopqrstuvwxyzABCDEF",
+        temp_scope_id: "tscope_abcdefghijklmnopqrstuvwxyz123456",
+        file_kind: "plain_text",
+        size_bucket: "small",
+        expires_at: "2026-06-24T00:00:00Z"
+      })
+    );
+    vi.stubGlobal("chrome", { storage: { local: storage } });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await routeMessage({
+      type: "TEMP_FILE_UPLOAD_REQUEST",
+      payload: {
+        file: new File(["PRIVATE_FILE_CONTENT"], "customer-secret.env", { type: "text/plain" }),
+        requestId: "frq_test",
+        fileKind: "plain_text",
+        extension: ".env",
+        mime: "text/plain"
+      }
+    });
+
+    expect(response).toMatchObject({ file_ref: "fref_abcdefghijklmnopqrstuvwxyzABCDEF" });
+    const request = (fetchMock.mock.calls as unknown as Array<[string, RequestInit]>)[0][1];
+    const body = request.body as FormData;
+    const uploaded = body.get("file") as File;
+    expect(fetchMock).toHaveBeenCalledWith("https://api.promptguard.test/files/temp", expect.objectContaining({
+      method: "POST",
+      headers: expect.objectContaining({
+        Authorization: "Bearer test-access-token",
+        "X-PromptGuard-Client": "chrome-extension",
+        "X-PromptGuard-Extension-Version": "0.4.0"
+      })
+    }));
+    expect(uploaded.name).toBe("upload.bin");
+    expect(JSON.stringify(response)).not.toContain("customer-secret.env");
+  });
+
+  it("refreshes temp upload after 401 and retries with the new access token", async () => {
+    const storage = createStorage({
+      [STORAGE_KEYS.apiBaseUrl]: "https://api.promptguard.test",
+      [STORAGE_KEYS.mockMode]: false,
+      [STORAGE_KEYS.accessToken]: "expired-access-token",
+      [STORAGE_KEYS.refreshToken]: "stored-refresh-token"
+    });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(statusResponse(401))
+      .mockResolvedValueOnce(jsonResponse({ access_token: "new-access-token" }))
+      .mockResolvedValueOnce(jsonResponse({
+        file_ref: "fref_abcdefghijklmnopqrstuvwxyzABCDEF",
+        temp_scope_id: "tscope_abcdefghijklmnopqrstuvwxyz123456",
+        file_kind: "plain_text",
+        size_bucket: "small",
+        expires_at: "2026-06-24T00:00:00Z"
+      }));
+    vi.stubGlobal("chrome", { storage: { local: storage } });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await routeMessage({
+      type: "TEMP_FILE_UPLOAD_REQUEST",
+      payload: {
+        file: new File(["PRIVATE_FILE_CONTENT"], "customer-secret.env", { type: "text/plain" }),
+        requestId: "frq_test",
+        fileKind: "plain_text",
+        extension: ".env",
+        mime: "text/plain"
+      }
+    });
+
+    expect(response).toMatchObject({ file_ref: "fref_abcdefghijklmnopqrstuvwxyzABCDEF" });
+    expect(fetchMock).toHaveBeenNthCalledWith(3, "https://api.promptguard.test/files/temp", expect.objectContaining({
+      method: "POST",
+      headers: expect.objectContaining({ Authorization: "Bearer new-access-token" })
+    }));
+    expect(storage.snapshot()[STORAGE_KEYS.accessToken]).toBe("new-access-token");
+  });
 });
 
 function createStorage(initial: Record<string, unknown>) {
@@ -495,7 +580,7 @@ function filesAnalyzeRequest(): AnalyzeRequest {
       locale: "ko-KR"
     },
     DEFAULT_CONFIG.policy_version,
-    [createFileReferenceInput({ fileRef: "fref_opaque_123", fileKind: "plain_text", extension: ".txt", mimeType: "text/plain", sizeBytes: 11 })]
+    [createFileReferenceInput({ fileRef: "fref_opaque_123", tempScopeId: "tscope_abcdefghijklmnopqrstuvwxyz123456", fileKind: "plain_text", extension: ".txt", mimeType: "text/plain", sizeBytes: 11 })]
   );
 }
 

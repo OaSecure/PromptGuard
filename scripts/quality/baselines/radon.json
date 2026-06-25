@@ -1,0 +1,134 @@
+{
+  "schema_version": 1,
+  "tool": "radon",
+  "findings": [
+    {
+      "fingerprint": "radon|apps/api/app/application/analyze/input_envelope.py|class|InputEnvelope||complexity=11",
+      "count": 1
+    },
+    {
+      "fingerprint": "radon|apps/api/app/atoms/builder.py|function|_consistent_rows||complexity=12",
+      "count": 1
+    },
+    {
+      "fingerprint": "radon|apps/api/app/atoms/builder.py|function|_is_table_block||complexity=13",
+      "count": 1
+    },
+    {
+      "fingerprint": "radon|apps/api/app/interfaces/http/analyze_request.py|class|LegacyAnalyzeInput||complexity=18",
+      "count": 1
+    },
+    {
+      "fingerprint": "radon|apps/api/app/interfaces/http/analyze_request.py|method|validate_contract||complexity=32",
+      "count": 1
+    },
+    {
+      "fingerprint": "radon|apps/api/app/ml/embedding/worker.py|function|_validated_dimension||complexity=11",
+      "count": 1
+    },
+    {
+      "fingerprint": "radon|apps/api/app/ml/embedding/worker.py|function|embed_atoms||complexity=17",
+      "count": 1
+    },
+    {
+      "fingerprint": "radon|apps/api/app/ml/segment_embedding/builder.py|function|_vectors_for_segment||complexity=11",
+      "count": 1
+    },
+    {
+      "fingerprint": "radon|apps/api/app/ml/verifier/runtime.py|method|verify||complexity=17",
+      "count": 1
+    },
+    {
+      "fingerprint": "radon|apps/api/app/normalization/normalizer.py|function|restore_original_range||complexity=11",
+      "count": 1
+    },
+    {
+      "fingerprint": "radon|apps/api/app/parser/adapters/office_foundation.py|method|_extract_xlsx||complexity=13",
+      "count": 1
+    },
+    {
+      "fingerprint": "radon|apps/api/app/parser/adapters/office_foundation.py|method|execute_step||complexity=13",
+      "count": 1
+    },
+    {
+      "fingerprint": "radon|apps/api/app/parser/adapters/pdf_foundation.py|method|execute_step||complexity=16",
+      "count": 1
+    },
+    {
+      "fingerprint": "radon|apps/api/app/parser/adapters/pdf_ocr_fake.py|class|PdfSelectedPageOcrIntegrator||complexity=11",
+      "count": 1
+    },
+    {
+      "fingerprint": "radon|apps/api/app/parser/adapters/pdf_ocr_fake.py|method|integrate||complexity=18",
+      "count": 1
+    },
+    {
+      "fingerprint": "radon|apps/api/app/parser/executor.py|method|execute||complexity=21",
+      "count": 1
+    },
+    {
+      "fingerprint": "radon|apps/api/app/parser/planning.py|method|resolve_plan||complexity=14",
+      "count": 1
+    },
+    {
+      "fingerprint": "radon|apps/api/app/parser/temp_file_resolver.py|method|resolve||complexity=11",
+      "count": 1
+    },
+    {
+      "fingerprint": "radon|apps/api/app/routes/admin_users.py|function|_load_user_aggregates||complexity=11",
+      "count": 1
+    },
+    {
+      "fingerprint": "radon|apps/api/app/routes/analyze.py|class|AnalyzeInput||complexity=14",
+      "count": 1
+    },
+    {
+      "fingerprint": "radon|apps/api/app/routes/analyze.py|function|analyze_prompt||complexity=21",
+      "count": 1
+    },
+    {
+      "fingerprint": "radon|apps/api/app/routes/analyze.py|method|validate_input_contract||complexity=23",
+      "count": 1
+    },
+    {
+      "fingerprint": "radon|apps/api/app/routes/dashboard_filters.py|function|_dashboard_rule_from_create||complexity=11",
+      "count": 1
+    },
+    {
+      "fingerprint": "radon|apps/api/app/routes/dashboard_filters.py|function|_safe_keywords||complexity=12",
+      "count": 1
+    },
+    {
+      "fingerprint": "radon|apps/api/app/routes/dashboard_filters.py|function|_validate_context_config||complexity=11",
+      "count": 1
+    },
+    {
+      "fingerprint": "radon|apps/api/app/routes/dashboard_filters.py|function|_validate_dashboard_create||complexity=13",
+      "count": 1
+    },
+    {
+      "fingerprint": "radon|apps/api/app/routes/dashboard_overview.py|function|dashboard_overview_response||complexity=18",
+      "count": 1
+    },
+    {
+      "fingerprint": "radon|apps/api/app/routes/stats.py|function|event_stats_response||complexity=13",
+      "count": 1
+    },
+    {
+      "fingerprint": "radon|apps/api/app/routes/stats.py|function|user_stats||complexity=12",
+      "count": 1
+    },
+    {
+      "fingerprint": "radon|apps/api/app/routes/temp_files.py|function|upload_temp_file||complexity=12",
+      "count": 1
+    },
+    {
+      "fingerprint": "radon|apps/api/app/services/analyze_classifier.py|function|evaluate_analyze_classifier||complexity=27",
+      "count": 1
+    },
+    {
+      "fingerprint": "radon|apps/api/app/services/filter_rules.py|function|_context_rule_match||complexity=12",
+      "count": 1
+    }
+  ]
+}

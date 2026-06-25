@@ -45,6 +45,15 @@ export function filterActionOptions() {
         { value: "BLOCK", label: "차단" },
     ];
 }
+export function filterKindLabel(value) {
+    return filterKindOptions().find((item) => item.value === value)?.label ?? value;
+}
+export function filterActionLabel(value) {
+    return filterActionOptions().find((item) => item.value === value)?.label ?? value;
+}
+export function filterSeverityLabel(value) {
+    return filterSeverityOptions().find((item) => item.value === value)?.label ?? value;
+}
 export function filterSensitivityOptions() {
     return [
         { value: "low", label: "낮음" },

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extensionFromName, isLikelyTextMime } from "../../src/shared/fileTypes";
+import { extensionFromName, isInspectableMime } from "../../src/shared/fileTypes";
 
 describe("file type helpers", () => {
   it("extracts lowercase extensions without storing original filenames", () => {
@@ -10,18 +10,20 @@ describe("file type helpers", () => {
     expect(extensionFromName("README")).toBe("");
   });
 
-  it("recognizes common text-oriented MIME types", () => {
-    expect(isLikelyTextMime("text/plain")).toBe(true);
-    expect(isLikelyTextMime("application/json")).toBe(true);
-    expect(isLikelyTextMime("application/yaml")).toBe(true);
-    expect(isLikelyTextMime("application/javascript")).toBe(true);
-    expect(isLikelyTextMime("application/sql")).toBe(true);
-    expect(isLikelyTextMime("application/json; charset=utf-8")).toBe(true);
+  it("recognizes MIME types that can be inspected by text, parser, or OCR paths", () => {
+    expect(isInspectableMime("text/plain")).toBe(true);
+    expect(isInspectableMime("application/json")).toBe(true);
+    expect(isInspectableMime("application/yaml")).toBe(true);
+    expect(isInspectableMime("application/javascript")).toBe(true);
+    expect(isInspectableMime("application/sql")).toBe(true);
+    expect(isInspectableMime("application/json; charset=utf-8")).toBe(true);
+    expect(isInspectableMime("application/pdf")).toBe(true);
+    expect(isInspectableMime("image/png")).toBe(true);
+    expect(isInspectableMime("application/vnd.openxmlformats-officedocument.wordprocessingml.document")).toBe(true);
   });
 
-  it("rejects binary-oriented MIME types", () => {
-    expect(isLikelyTextMime("application/octet-stream")).toBe(false);
-    expect(isLikelyTextMime("application/pdf")).toBe(false);
-    expect(isLikelyTextMime("image/png")).toBe(false);
+  it("rejects binary MIME types without a parser or OCR path", () => {
+    expect(isInspectableMime("application/octet-stream")).toBe(false);
+    expect(isInspectableMime("application/zip")).toBe(false);
   });
 });

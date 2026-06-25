@@ -244,45 +244,198 @@ describe("prompt preflight controller", () => {
     blockController.disconnect();
   });
 
-  it("applies Mask and sends masked text once without extra confirmation", async () => {
+  it("applies Mask, reinspects the masked prompt, and sends only after confirmation", async () => {
     const page = setupComposer("mask case");
+    let analyzeCount = 0;
+    const requestIds: string[] = [];
     const controller = startPromptPreflightController({
       config: DEFAULT_CONFIG,
       getContext: () => context,
-      sendAnalyze: async () => responseFor("Mask", "[masked]")
+      sendAnalyze: async (request) => {
+        requestIds.push(request.client_request_id);
+        analyzeCount += 1;
+        return analyzeCount === 1 ? responseFor("Mask", "[masked]") : responseFor("Allow");
+      }
     });
 
     page.button.click();
     await waitFor(() => overlayDecision() === "mask");
     clickOverlayAction("apply-mask");
-    await waitFor(() => page.submits() === 1);
+    await waitFor(() => analyzeCount === 2 && overlayText().includes("마스킹본 검사가 완료되었습니다."));
 
     expect(page.textarea.value).toBe("[masked]");
+    expect(page.submits()).toBe(0);
+    expect(requestIds).toHaveLength(2);
+    expect(requestIds[0]).not.toBe(requestIds[1]);
+
+    clickOverlayAction("send-masked-prompt");
+    await waitFor(() => page.submits() === 1);
+
     expect(page.submits()).toBe(1);
     controller.disconnect();
   });
 
-  it("applies Mask, then requires explicit confirmation before replaying masked text when requested", async () => {
-    const page = setupComposer("contact member@example.com");
+  it("does not send when masked prompt reinspection blocks", async () => {
+    const page = setupComposer("mask then block case");
+    let analyzeCount = 0;
     const controller = startPromptPreflightController({
       config: DEFAULT_CONFIG,
       getContext: () => context,
-      sendAnalyze: async () => responseFor("Mask", "contact [masked-email]", false, "PromptGuard decision", true)
+      sendAnalyze: async () => {
+        analyzeCount += 1;
+        return analyzeCount === 1 ? responseFor("Mask", "[masked]") : responseFor("Block");
+      }
     });
 
     page.button.click();
     await waitFor(() => overlayDecision() === "mask");
     clickOverlayAction("apply-mask");
+    await waitFor(() => analyzeCount === 2 && overlayDecision() === "block");
+
+    expect(page.textarea.value).toBe("[masked]");
+    expect(page.submits()).toBe(0);
+    expect(overlayText()).toContain("민감한 내용을 제거한 뒤 다시 시도하세요.");
+    controller.disconnect();
+  });
+
+  it("does not render raw server text or internal context-risk codes while showing safe context evidence", async () => {
+    const page = setupComposer("contact member@example.com");
+    const controller = startPromptPreflightController({
+      config: DEFAULT_CONFIG,
+      getContext: () => context,
+      sendAnalyze: async () => ({
+        ...responseFor("Warn", undefined, true, "server echoed secret-value", true),
+        context_risk_evidence: {
+          enabled: true,
+          status: "candidate",
+          candidate_count: 2,
+          accepted_count: 0,
+          labels: ["INTERNAL_OPERATION_CONTEXT", "SECRET_CREDENTIAL_CONTEXT"],
+          status_counts: {},
+          reason_code: "RISK_CONTEXT_LR_ONLY",
+          classifier_model_versions: [],
+          verifier_model_versions: []
+        }
+      })
+    });
+
+    page.button.click();
     await waitFor(() => overlayDecision() === "warn");
 
-    expect(page.textarea.value).toBe("contact [masked-email]");
+    expect(overlayText()).toContain("주의");
+    expect(overlayText()).toContain("내부 운영 정보");
+    expect(overlayText()).toContain("인증 정보 또는 접근 권한");
+    expect(overlayText()).not.toContain("candidate");
+    expect(overlayText()).not.toContain("RISK_CONTEXT_LR_ONLY");
+    expect(overlayText()).not.toContain("INTERNAL_OPERATION_CONTEXT");
+    expect(overlayText()).not.toContain("SECRET_CREDENTIAL_CONTEXT");
+    expect(overlayText()).not.toContain("secret-value");
     expect(page.submits()).toBe(0);
+    controller.disconnect();
+  });
 
-    clickOverlayAction("continue");
-    await waitFor(() => page.submits() === 1);
+  it("describes context review timeouts without duplicating internal timeout reasons", async () => {
+    const page = setupComposer("context timeout evidence case");
+    const controller = startPromptPreflightController({
+      config: DEFAULT_CONFIG,
+      getContext: () => context,
+      sendAnalyze: async () => ({
+        ...responseFor("Warn", undefined, true, "server echoed secret-value", true),
+        context_risk_evidence: {
+          enabled: true,
+          status: "timeout",
+          candidate_count: 1,
+          accepted_count: 0,
+          labels: [],
+          status_counts: {},
+          failure_code: "EMBEDDING_TIMEOUT",
+          reason_code: "RISK_CONTEXT_LR_ONLY_VERIFIER_TIMEOUT",
+          classifier_model_versions: [],
+          verifier_model_versions: []
+        }
+      })
+    });
 
-    expect(page.textarea.value).toBe("contact [masked-email]");
-    expect(page.submits()).toBe(1);
+    page.button.click();
+    await waitFor(() => overlayDecision() === "warn");
+
+    expect(overlayText()).toContain("검사 시간이 초과되었습니다. 다시 시도해 주세요.");
+    expect(overlayText()).not.toContain("RISK_CONTEXT_LR_ONLY_VERIFIER_TIMEOUT");
+    expect(overlayText()).not.toContain("EMBEDDING_TIMEOUT");
+    expect(overlayText()).not.toContain("timed out");
+    controller.disconnect();
+  });
+
+  it("summarizes long multi-label context evidence without raw label codes", async () => {
+    const page = setupComposer("multi label context evidence case");
+    const controller = startPromptPreflightController({
+      config: DEFAULT_CONFIG,
+      getContext: () => context,
+      sendAnalyze: async () => ({
+        ...responseFor("Warn", undefined, true, "server echoed secret-value", true),
+        context_risk_evidence: {
+          enabled: true,
+          status: "candidate",
+          candidate_count: 5,
+          accepted_count: 0,
+          labels: [
+            "INTERNAL_OPERATION_CONTEXT",
+            "SECRET_CREDENTIAL_CONTEXT",
+            "PERSONAL_DATA_CONTEXT",
+            "BUSINESS_CONFIDENTIAL_CONTEXT",
+            "FINANCIAL_CONTEXT"
+          ],
+          status_counts: {},
+          reason_code: "RISK_CONTEXT_LR_ONLY",
+          classifier_model_versions: [],
+          verifier_model_versions: []
+        }
+      })
+    });
+
+    page.button.click();
+    await waitFor(() => overlayDecision() === "warn");
+
+    expect(overlayText()).toContain("내부 운영 정보, 인증 정보 또는 접근 권한, 개인정보 외 2개");
+    expect(overlayText()).not.toContain("BUSINESS_CONFIDENTIAL_CONTEXT");
+    expect(overlayText()).not.toContain("FINANCIAL_CONTEXT");
+    controller.disconnect();
+  });
+
+  it("renders real server context labels as user-facing category names", async () => {
+    const page = setupComposer("회원 병합 backfill context evidence case");
+    const controller = startPromptPreflightController({
+      config: DEFAULT_CONFIG,
+      getContext: () => context,
+      sendAnalyze: async () => ({
+        ...responseFor("Warn", undefined, true, "server echoed secret-value", true),
+        context_risk_evidence: {
+          enabled: true,
+          status: "verified",
+          candidate_count: 7,
+          accepted_count: 1,
+          labels: [
+            "BULK_SENSITIVE_RECORD_CONTEXT",
+            "CONFIDENTIAL_BUSINESS_CONTEXT",
+            "FINANCIAL_IDENTIFIER_CONTEXT",
+            "INTERNAL_OPERATION_CONTEXT",
+            "PROPRIETARY_TECHNICAL_CONTEXT",
+            "SECURITY_CONTROL_CONTEXT"
+          ],
+          status_counts: { confirmed: 1, failed: 0, rejected: 6, timeout: 0, uncertain: 0 },
+          reason_code: "RISK_CONTEXT_VERIFIER_CONFIRMED",
+          classifier_model_versions: [],
+          verifier_model_versions: ["context_verifier"]
+        }
+      })
+    });
+
+    page.button.click();
+    await waitFor(() => overlayDecision() === "warn");
+
+    expect(overlayText()).toContain("대량 민감 기록, 기밀 비즈니스 정보, 금융 식별 정보 외 3개");
+    expect(overlayText()).not.toContain("BULK_SENSITIVE_RECORD_CONTEXT");
+    expect(overlayText()).not.toContain("CONFIDENTIAL_BUSINESS_CONTEXT");
     controller.disconnect();
   });
 
@@ -301,7 +454,7 @@ describe("prompt preflight controller", () => {
 
     const timeoutPage = setupComposer("timeout case");
     const timeoutController = startPromptPreflightController({
-      config: { ...DEFAULT_CONFIG, timeout_ms: 1 },
+      config: { ...DEFAULT_CONFIG, request_timeouts: { ...DEFAULT_CONFIG.request_timeouts, analyze_request_ms: 1 }, timeout_ms: 1 },
       getContext: () => context,
       sendAnalyze: async () => new Promise(() => undefined)
     });
@@ -310,6 +463,31 @@ describe("prompt preflight controller", () => {
     await waitFor(() => overlayDecision() === "error");
     expect(timeoutPage.submits()).toBe(0);
     timeoutController.disconnect();
+  });
+
+  it("retries Block with a fresh client_request_id and sends after a later Allow", async () => {
+    const page = setupComposer("block retry case");
+    const requestIds: string[] = [];
+    let attempt = 0;
+    const controller = startPromptPreflightController({
+      config: DEFAULT_CONFIG,
+      getContext: () => context,
+      sendAnalyze: async (request) => {
+        requestIds.push(request.client_request_id);
+        attempt += 1;
+        return attempt === 1 ? responseFor("Block") : responseFor("Allow");
+      }
+    });
+
+    page.button.click();
+    await waitFor(() => overlayDecision() === "block");
+    clickOverlayAction("retry");
+    await waitFor(() => page.submits() === 1);
+
+    expect(requestIds).toHaveLength(2);
+    expect(requestIds[0]).not.toBe(requestIds[1]);
+    expect(page.submits()).toBe(1);
+    controller.disconnect();
   });
 
   it("fails closed for malformed Analyze responses", async () => {
@@ -331,7 +509,7 @@ describe("prompt preflight controller", () => {
     controller.disconnect();
   });
 
-  it("reuses the same client_request_id when the same blocked send attempt is retried", async () => {
+  it("uses a fresh client_request_id when a failed inspection is retried", async () => {
     const page = setupComposer("retry case");
     const requestIds: string[] = [];
     let attempt = 0;
@@ -351,7 +529,7 @@ describe("prompt preflight controller", () => {
     await waitFor(() => page.submits() === 1);
 
     expect(requestIds).toHaveLength(2);
-    expect(requestIds[0]).toBe(requestIds[1]);
+    expect(requestIds[0]).not.toBe(requestIds[1]);
     controller.disconnect();
   });
 

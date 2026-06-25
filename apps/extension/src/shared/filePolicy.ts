@@ -1,5 +1,5 @@
 import type { FileUploadPolicy } from "./types";
-import { extensionFromName, isLikelyTextMime } from "./fileTypes";
+import { extensionFromName, isInspectableMime } from "./fileTypes";
 
 /** File metadata used for policy checks before content is read. */
 export interface FilePolicyInput {
@@ -12,15 +12,16 @@ export interface FilePolicyInput {
 export interface FilePolicyDecision {
   allowed: boolean;
   extension: string;
-  reason?: "disabled" | "too_many_files" | "file_too_large" | "batch_too_large" | "excluded_extension" | "unsupported_extension" | "non_text_mime";
+  reason?: "disabled" | "too_many_files" | "file_too_large" | "batch_too_large" | "excluded_extension" | "unsupported_extension" | "non_inspectable_mime";
 }
 
 /**
  * Decides which files are safe to pass into the attachment inspection flow.
  *
- * The policy check runs before any upload/temp handoff, so unsupported files,
- * oversized batches, and non-text MIME types are rejected without touching
- * file content.
+ * The policy check runs before upload/temp handoff, so excluded files and
+ * oversized batches are rejected without touching file content. Images and
+ * parser-supported documents are allowed through so the server OCR/parser
+ * boundary can inspect them.
  */
 export function validateFilePolicy(files: FilePolicyInput[], policy: FileUploadPolicy): FilePolicyDecision[] {
   if (!policy.enabled) {
@@ -50,8 +51,8 @@ export function validateFilePolicy(files: FilePolicyInput[], policy: FileUploadP
     if (!allowedExtensions.has(extension)) {
       return { allowed: false, extension, reason: "unsupported_extension" };
     }
-    if (file.type && !isLikelyTextMime(file.type)) {
-      return { allowed: false, extension, reason: "non_text_mime" };
+    if (file.type && !isInspectableMime(file.type)) {
+      return { allowed: false, extension, reason: "non_inspectable_mime" };
     }
     return { allowed: true, extension };
   });

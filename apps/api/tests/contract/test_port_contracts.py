@@ -3,12 +3,12 @@ from typing import Protocol, runtime_checkable
 from app.domain.types.parser import FileParserResult, OcrResult, ParserWorkerPayload
 from app.ports.events import EventWriterPort
 from app.ports.ml import EmbeddingModelPort, SegmentClassifierPort, VerifierModelPort
-from app.ports.ocr import OcrEnginePort
+from app.ports.ocr import OcrEnginePort, PdfRendererPort
 from app.ports.parser import FileParserRunnerPort
 
 
 def test_ports_are_protocols():
-    for port in (FileParserRunnerPort, OcrEnginePort, EmbeddingModelPort, SegmentClassifierPort, VerifierModelPort, EventWriterPort):
+    for port in (FileParserRunnerPort, OcrEnginePort, PdfRendererPort, EmbeddingModelPort, SegmentClassifierPort, VerifierModelPort, EventWriterPort):
         assert port._is_protocol
 
 

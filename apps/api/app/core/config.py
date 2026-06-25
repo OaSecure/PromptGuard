@@ -4,14 +4,22 @@ from pathlib import Path
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.runtime.defaults import DEFAULT_ML_INFERENCE_QUEUE_TIMEOUT_MS
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     environment: str = Field(default="development", alias="PROMPTGUARD_ENV")
     api_public_url: str = Field(default="http://localhost:8000", alias="PROMPTGUARD_API_PUBLIC_URL")
-    dashboard_public_url: str = Field(default="http://localhost:3000", alias="PROMPTGUARD_DASHBOARD_PUBLIC_URL")
-    cors_origins: str = Field(default="http://localhost:3000", alias="PROMPTGUARD_CORS_ORIGINS")
+    extension_api_url: str = Field(default="", alias="PROMPTGUARD_EXTENSION_API_URL")
+    dashboard_public_url: str = Field(default="http://localhost:8000/dashboard/", alias="PROMPTGUARD_DASHBOARD_PUBLIC_URL")
+    dashboard_static_dir: str = Field(default="/opt/promptguard/dashboard", alias="PROMPTGUARD_DASHBOARD_STATIC_DIR")
+    cors_origins: str = Field(default="http://localhost:8000", alias="PROMPTGUARD_CORS_ORIGINS")
+    cors_extension_origin_regex: str = Field(
+        default=r"^chrome-extension://[a-p]{32}$",
+        alias="PROMPTGUARD_CORS_EXTENSION_ORIGIN_REGEX",
+    )
 
     database_url: str = Field(default="", alias="DATABASE_URL")
     redis_url: str = Field(default="", alias="REDIS_URL")
@@ -43,12 +51,41 @@ class Settings(BaseSettings):
     ml_inference_queue_enabled: bool = Field(default=True, alias="PROMPTGUARD_ML_INFERENCE_QUEUE_ENABLED")
     ml_inference_queue_max_workers: int = Field(default=1, alias="PROMPTGUARD_ML_INFERENCE_QUEUE_MAX_WORKERS")
     ml_inference_queue_max_queue_size: int = Field(default=32, alias="PROMPTGUARD_ML_INFERENCE_QUEUE_MAX_QUEUE_SIZE")
-    ml_inference_queue_timeout_ms: int = Field(default=3000, alias="PROMPTGUARD_ML_INFERENCE_QUEUE_TIMEOUT_MS")
+    ml_inference_queue_timeout_ms: int = Field(
+        default=DEFAULT_ML_INFERENCE_QUEUE_TIMEOUT_MS,
+        alias="PROMPTGUARD_ML_INFERENCE_QUEUE_TIMEOUT_MS",
+    )
     ml_inference_gpu_capacity_enabled: bool = Field(default=False, alias="PROMPTGUARD_ML_INFERENCE_GPU_CAPACITY_ENABLED")
     ml_inference_gpu_reserved_memory_mb: int = Field(default=1024, alias="PROMPTGUARD_ML_INFERENCE_GPU_RESERVED_MEMORY_MB")
     ml_inference_gpu_memory_per_worker_mb: int = Field(default=2048, alias="PROMPTGUARD_ML_INFERENCE_GPU_MEMORY_PER_WORKER_MB")
     verifier_runtime_enabled: bool = Field(default=False, alias="PROMPTGUARD_VERIFIER_RUNTIME_ENABLED")
     verifier_manifest_path: str = Field(default="", alias="PROMPTGUARD_VERIFIER_MANIFEST_PATH")
+    torch_worker_payload_dir: str = Field(
+        default="/tmp/promptguard-torch-payloads",
+        alias="PROMPTGUARD_TORCH_WORKER_PAYLOAD_DIR",
+    )
+    torch_worker_python_path: str = Field(
+        default="/opt/venvs/torch/bin/python",
+        alias="PROMPTGUARD_TORCH_WORKER_PYTHON_PATH",
+    )
+    torch_worker_script_path: str = Field(
+        default="/app/scripts/torch_context_worker.py",
+        alias="PROMPTGUARD_TORCH_WORKER_SCRIPT_PATH",
+    )
+    paddle_worker_payload_dir: str = Field(
+        default="/tmp/promptguard-paddle-payloads",
+        alias="PROMPTGUARD_PADDLE_WORKER_PAYLOAD_DIR",
+    )
+    paddle_worker_python_path: str = Field(
+        default="/opt/venvs/paddle/bin/python",
+        alias="PROMPTGUARD_PADDLE_WORKER_PYTHON_PATH",
+    )
+    paddle_worker_script_path: str = Field(
+        default="/app/scripts/paddle_ocr_worker.py",
+        alias="PROMPTGUARD_PADDLE_WORKER_SCRIPT_PATH",
+    )
+    worker_readiness_required: bool = Field(default=True, alias="PROMPTGUARD_WORKER_READINESS_REQUIRED")
+    worker_readiness_timeout_ms: int = Field(default=15_000, alias="PROMPTGUARD_WORKER_READINESS_TIMEOUT_MS")
     temp_file_encryption_key: str = Field(default="", alias="PROMPTGUARD_TEMP_FILE_ENCRYPTION_KEY")
     temp_file_dir: str = Field(default=".promptguard-temp", alias="PROMPTGUARD_TEMP_FILE_DIR")
     temp_file_ttl_seconds: int = Field(default=900, gt=0, alias="PROMPTGUARD_TEMP_FILE_TTL_SECONDS")
@@ -59,6 +96,10 @@ class Settings(BaseSettings):
         if "*" in origins:
             raise ValueError("PROMPTGUARD_CORS_ORIGINS must not contain '*' when credentials are allowed")
         return origins
+
+    def cors_extension_origin_regex_value(self) -> str | None:
+        regex = self.cors_extension_origin_regex.strip()
+        return regex or None
 
     def classifier_manifest_path_value(self) -> Path | None:
         path = self.classifier_manifest_path.strip()

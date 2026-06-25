@@ -3,6 +3,8 @@ from typing import Any
 
 from app.atoms.builder import build_atoms
 from app.atoms.models import AtomBuildRequest, ParsedBlock, ParsedDocument, PipelineFailure
+from app.core.config import DEFAULT_ML_INFERENCE_QUEUE_TIMEOUT_MS
+from app.domain.types.policy import ContextRiskEvidence, build_context_risk_evidence
 from app.mapping import (
     LexicalSignal as MappingLexicalSignal,
     SignalMappingPolicy,
@@ -38,7 +40,7 @@ CLASSIFIER_RUNTIME_DISABLED = "CLASSIFIER_RUNTIME_DISABLED"
 ANALYZE_CLASSIFIER_FAILED = "ANALYZE_CLASSIFIER_FAILED"
 NORMALIZATION_FAILED = "NORMALIZATION_FAILED"
 LEXICAL_SCAN_FAILED = "LEXICAL_SCAN_FAILED"
-DEFAULT_ANALYZE_ML_INFERENCE_TIMEOUT_MS = 3000
+DEFAULT_ANALYZE_ML_INFERENCE_TIMEOUT_MS = DEFAULT_ML_INFERENCE_QUEUE_TIMEOUT_MS
 
 _MAPPING_SIGNAL_TYPES = {
     "pii_span",
@@ -58,17 +60,18 @@ class AnalyzeClassifierOutcome:
     has_candidates: bool = False
     failure: PipelineFailure | None = None
     verifier_summaries: list[dict[str, Any]] = field(default_factory=list)
+    context_risk: ContextRiskEvidence = field(default_factory=ContextRiskEvidence)
 
 
 @dataclass(frozen=True)
 class AnalyzeVerifierConfig:
     service: RobertaVerifierService
     artifact: VerifierArtifactRef
-    timeout_ms: int = 3000
+    timeout_ms: int = DEFAULT_ANALYZE_ML_INFERENCE_TIMEOUT_MS
 
 
 def evaluate_analyze_classifier(
-    text_inputs: list[tuple[int, object]],
+    text_inputs: list[tuple[int, Any]],
     provider_result: ClassifierRuntimeProviderResult,
     embedding_loader: AtomEmbeddingModelLoader | None,
     *,
@@ -80,12 +83,11 @@ def evaluate_analyze_classifier(
     if _is_disabled(provider_result):
         return AnalyzeClassifierOutcome(enabled=False)
     if not provider_result.available or provider_result.bundle is None:
-        return AnalyzeClassifierOutcome(
-            enabled=True,
-            failure=provider_result.failure or _failure(ANALYZE_CLASSIFIER_FAILED),
-        )
+        failure = provider_result.failure or _failure(ANALYZE_CLASSIFIER_FAILED)
+        return _outcome(enabled=True, failure=failure)
 
     has_candidates = False
+    classification_summaries: list[dict[str, Any]] = []
     verifier_summaries: list[dict[str, Any]] = []
     for _index, item in text_inputs:
         input_id = getattr(item, "input_id", "")
@@ -96,7 +98,7 @@ def evaluate_analyze_classifier(
         document = _document_for_input(item)
         normalized_document = normalize_document(NormalizerRequest(document=document))
         if normalized_document.failures:
-            return AnalyzeClassifierOutcome(enabled=True, failure=_failure(NORMALIZATION_FAILED))
+            return _outcome(enabled=True, failure=_failure(NORMALIZATION_FAILED))
 
         scan_result = scan_lexical_signals(
             LexicalScanRequest(
@@ -105,11 +107,11 @@ def evaluate_analyze_classifier(
             )
         )
         if scan_result.failures:
-            return AnalyzeClassifierOutcome(enabled=True, failure=_failure(LEXICAL_SCAN_FAILED))
+            return _outcome(enabled=True, failure=_failure(LEXICAL_SCAN_FAILED))
 
         atom_result = build_atoms(AtomBuildRequest(document=document))
         if atom_result.failures:
-            return AnalyzeClassifierOutcome(enabled=True, failure=atom_result.failures[0])
+            return _outcome(enabled=True, failure=atom_result.failures[0])
         if not atom_result.atoms:
             continue
 
@@ -118,7 +120,7 @@ def evaluate_analyze_classifier(
             loader=embedding_loader,
         )
         if embedding_result.failure is not None:
-            return AnalyzeClassifierOutcome(enabled=True, failure=embedding_result.failure)
+            return _outcome(enabled=True, failure=embedding_result.failure)
 
         segment_result = build_segments(
             SegmentBuildRequest(
@@ -129,7 +131,7 @@ def evaluate_analyze_classifier(
             )
         )
         if segment_result.failure is not None:
-            return AnalyzeClassifierOutcome(enabled=True, failure=segment_result.failure)
+            return _outcome(enabled=True, failure=segment_result.failure)
 
         mapping_result = map_signals_to_segments(
             SignalMappingRequest(
@@ -141,7 +143,7 @@ def evaluate_analyze_classifier(
             )
         )
         if mapping_result.failure is not None:
-            return AnalyzeClassifierOutcome(enabled=True, failure=mapping_result.failure)
+            return _outcome(enabled=True, failure=mapping_result.failure)
 
         segment_embedding_result = build_segment_embeddings(
             SegmentEmbeddingBuildRequest(
@@ -153,7 +155,7 @@ def evaluate_analyze_classifier(
             )
         )
         if segment_embedding_result.failure is not None:
-            return AnalyzeClassifierOutcome(enabled=True, failure=segment_embedding_result.failure)
+            return _outcome(enabled=True, failure=segment_embedding_result.failure)
 
         classification_request = SegmentClassificationRequest(
             input_id=input_id,
@@ -168,11 +170,16 @@ def evaluate_analyze_classifier(
             inference_timeout_ms,
         )
         if isinstance(classification_result, PipelineFailure):
-            return AnalyzeClassifierOutcome(enabled=True, failure=classification_result)
+            return _outcome(enabled=True, failure=classification_result, classification_summaries=classification_summaries)
         if classification_result.failure is not None:
-            return AnalyzeClassifierOutcome(enabled=True, failure=classification_result.failure)
+            return _outcome(
+                enabled=True,
+                failure=classification_result.failure,
+                classification_summaries=classification_summaries,
+            )
 
         summary = project_classification_signal_summary(classification_result)
+        classification_summaries.append(summary)
         has_candidates = has_candidates or bool(summary["has_candidates"])
         if summary["has_candidates"] and verifier_config is not None:
             segment_text_by_id = {segment.segment_id: segment.text for segment in segment_result.segments}
@@ -194,22 +201,53 @@ def evaluate_analyze_classifier(
                 inference_timeout_ms,
             )
             if isinstance(verification_result, PipelineFailure):
-                return AnalyzeClassifierOutcome(
+                return _outcome(
                     enabled=True,
                     has_candidates=True,
                     failure=verification_result,
+                    classification_summaries=classification_summaries,
                     verifier_summaries=verifier_summaries,
                 )
             if verification_result.failure is not None:
-                return AnalyzeClassifierOutcome(
+                return _outcome(
                     enabled=True,
                     has_candidates=True,
                     failure=verification_result.failure,
+                    classification_summaries=classification_summaries,
                     verifier_summaries=verifier_summaries,
                 )
             verifier_summaries.append(project_verification_signal_summary(verification_result))
 
-    return AnalyzeClassifierOutcome(enabled=True, has_candidates=has_candidates, verifier_summaries=verifier_summaries)
+    return _outcome(
+        enabled=True,
+        has_candidates=has_candidates,
+        classification_summaries=classification_summaries,
+        verifier_summaries=verifier_summaries,
+    )
+
+
+def _outcome(
+    *,
+    enabled: bool,
+    has_candidates: bool = False,
+    failure: PipelineFailure | None = None,
+    classification_summaries: list[dict[str, Any]] | None = None,
+    verifier_summaries: list[dict[str, Any]] | None = None,
+) -> AnalyzeClassifierOutcome:
+    failure_code = failure.code if failure is not None else None
+    context_risk = build_context_risk_evidence(
+        enabled=enabled,
+        classification_summaries=classification_summaries,
+        verifier_summaries=verifier_summaries,
+        failure_code=failure_code,
+    )
+    return AnalyzeClassifierOutcome(
+        enabled=enabled,
+        has_candidates=has_candidates or context_risk.candidate_count > 0,
+        failure=failure,
+        verifier_summaries=verifier_summaries or [],
+        context_risk=context_risk,
+    )
 
 
 def _is_disabled(provider_result: ClassifierRuntimeProviderResult) -> bool:

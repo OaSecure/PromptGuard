@@ -33,17 +33,37 @@ describe("attachment chip capture", () => {
     expect(JSON.stringify(inputs)).not.toContain("customer-secret.png");
   });
 
-  it("falls back to unsupported attachment when chip metadata is unavailable", () => {
+  it("ignores placeholder chips when metadata is unavailable", () => {
     document.body.innerHTML = `<div data-promptguard-attachment-chip>financial-report.pdf</div>`;
 
     const inputs = collectAttachmentChipInputs(document, { attachment_chip: ["[data-promptguard-attachment-chip]"] });
 
+    expect(inputs).toEqual([]);
+    expect(JSON.stringify(inputs)).not.toContain("financial-report.pdf");
+  });
+
+  it("captures image chips that expose an image signal without leaking labels", () => {
+    document.body.innerHTML = `
+      <div data-testid="attachment-item">
+        <img alt="uploaded preview" src="data:image/png;base64,AA==" />
+        customer-secret.png
+      </div>
+    `;
+
+    const inputs = collectAttachmentChipInputs(document, { attachment_chip: ["[data-testid='attachment-item']"] });
+
     expect(inputs).toHaveLength(1);
     expect(inputs[0]).toMatchObject({
-      kind: "unsupported_attachment",
+      kind: "attachment_metadata",
       source: "attachment_chip",
-      content_included: false
+      content_included: false,
+      metadata: {
+        extension: "",
+        mime: "image/unknown",
+        attachment_kind: "image",
+        attachment_index: 0
+      }
     });
-    expect(JSON.stringify(inputs)).not.toContain("financial-report.pdf");
+    expect(JSON.stringify(inputs)).not.toContain("customer-secret.png");
   });
 });

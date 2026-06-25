@@ -1,3 +1,6 @@
+import logging
+import os
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,18 +12,26 @@ from app.routes.analyze import router as analyze_router
 from app.routes.auth import router as auth_router
 from app.routes.dashboard_filters import router as dashboard_filters_router
 from app.routes.dashboard_overview import router as dashboard_overview_router
+from app.routes.dashboard_policy_settings import router as dashboard_policy_settings_router
 from app.routes.dashboard_session import router as dashboard_session_router
+from app.routes.dashboard_static import register_dashboard_static
 from app.routes.dashboard_status import router as dashboard_status_router
 from app.routes.events import router as events_router
+from app.routes.extension_config import router as extension_config_router
 from app.routes.filters import router as filters_router
 from app.routes.health import router as health_router
 from app.routes.setup import router as setup_router
 from app.routes.stats import router as stats_router
 from app.routes.status import router as status_router
-from app.routes.temp_files import router as temp_files_router, validate_temp_storage_settings
+from app.routes.temp_files import router as temp_files_router
+from app.routes.temp_files import validate_temp_storage_settings
 
 settings = get_settings()
 validate_temp_storage_settings()
+
+LOG_LEVEL = os.getenv("PROMPTGUARD_LOG_LEVEL", "INFO").upper()
+logging.basicConfig(level=getattr(logging, LOG_LEVEL, logging.INFO))
+logging.getLogger("app").setLevel(getattr(logging, LOG_LEVEL, logging.INFO))
 
 app = FastAPI(
     title="PromptGuard API",
@@ -47,9 +58,16 @@ async def request_validation_exception_handler(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list(),
+    allow_origin_regex=settings.cors_extension_origin_regex_value(),
     allow_credentials=True,
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-CSRF-Token"],
+    allow_headers=[
+        "Authorization",
+        "Content-Type",
+        "X-CSRF-Token",
+        "X-PromptGuard-Client",
+        "X-PromptGuard-Extension-Version",
+    ],
 )
 
 app.include_router(admin_users_router)
@@ -57,12 +75,15 @@ app.include_router(analyze_router)
 app.include_router(auth_router)
 app.include_router(dashboard_filters_router)
 app.include_router(dashboard_overview_router)
+app.include_router(dashboard_policy_settings_router)
 app.include_router(dashboard_session_router)
 app.include_router(dashboard_status_router)
 app.include_router(events_router)
+app.include_router(extension_config_router)
 app.include_router(filters_router)
 app.include_router(health_router)
 app.include_router(setup_router)
 app.include_router(stats_router)
 app.include_router(status_router)
 app.include_router(temp_files_router)
+register_dashboard_static(app)

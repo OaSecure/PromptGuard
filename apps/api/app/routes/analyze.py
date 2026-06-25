@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
 import json
+import logging
 import re
 import uuid
-from datetime import datetime, timedelta
+from datetime import timedelta
 from functools import lru_cache
+from types import SimpleNamespace
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -13,9 +15,14 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.application.analyze.parser_payload import build_file_reference_parser_worker_payload
 from app.application.analyze.policy_adapter import build_policy_request, get_policy_orchestrator, to_legacy_action
+from app.atoms.models import ParsedDocument
 from app.core.config import Settings, get_settings
 from app.core.tokens import utc_now
+from app.domain.types.common import ReasonCode
+from app.events.writer import SqlAlchemyEventWriter
+from app.events.writer import load_idempotency_event_id as load_idempotency_key
 from app.interfaces.http.analyze_request import LegacyAnalyzeRequest, adapt_legacy_analyze_request
 from app.interfaces.http.response_adapter import AnalyzeInputResult, AnalyzeResponse, build_analyze_response
 from app.masking.placeholder import apply_placeholders
@@ -24,14 +31,19 @@ from app.ml.embedding import create_qwen3_backend
 from app.ml.embedding.loader import AtomEmbeddingModelLoader
 from app.ml.gpu_capacity import GpuWorkerCapacityPolicy, TorchCudaGpuCapacityProbe, resolve_gpu_worker_capacity
 from app.ml.verifier import VerifierServiceBuildError, build_verifier_service_from_manifest
-from app.runtime.ml_inference_queue import MlInferenceQueue
 from app.models.auth import User
 from app.models.filters import FilterRule
-from app.events.writer import SqlAlchemyEventWriter, load_idempotency_event_id as load_idempotency_key
-from app.privacy import serialize_event_write
+from app.parser.models import FileParserResult, TempFileAccessContext
 from app.ports.policy import PolicyOrchestratorPort
+from app.privacy import serialize_event_write
 from app.routes.auth import get_db_session, require_active_user
+from app.routes.temp_files import get_temp_storage
+from app.runtime.ml_inference_queue import MlInferenceQueue
+from app.runtime.parser_worker import ParserWorkerPool
+from app.runtime.parser_worker_factory import build_parser_worker_pool
+from app.runtime.worker_clients import cached_torch_worker_client
 from app.services.analyze_classifier import AnalyzeClassifierOutcome, AnalyzeVerifierConfig, evaluate_analyze_classifier
+from app.services.analyze_torch_worker import AnalyzeTorchWorker, build_analyze_torch_worker
 from app.services.filter_rules import (
     RuleMatch,
     detections_for_masking,
@@ -39,8 +51,10 @@ from app.services.filter_rules import (
     load_active_filter_rules,
     score_for_matches,
 )
+from app.services.policy_settings import get_policy_settings_row, policy_action_settings_from_row
 
 router = APIRouter(prefix="/prompts", tags=["prompts"])
+logger = logging.getLogger(__name__)
 
 MAX_ANALYZE_REQUEST_BYTES = 2_097_152
 MAX_COMPOSER_TEXT_BYTES = 262_144
@@ -58,6 +72,7 @@ SECRET_LIKE_ID_RE = re.compile(
 
 ACTION_MASK = "MASK"
 ACTION_BLOCK = "BLOCK"
+InputDecisionBasis = Literal["no_detection", "detection", "content_unavailable", "metadata_only", "context_risk"]
 
 TEXT_SOURCES = ("composer", "converted_paste")
 CONTENT_UNAVAILABLE_REASONS = ("oversized", "unsupported", "metadata_only", "unavailable")
@@ -260,21 +275,20 @@ def unavailable_inputs(payload: AnalyzeRequest) -> list[tuple[int, AnalyzeInput]
     return [(index, item) for index, item in enumerate(payload.inputs) if not item.content_included]
 
 
-def input_results_for_payload(payload: AnalyzeRequest, detection_input_indexes: set[int]) -> list[AnalyzeInputResult]:
+def input_results_for_payload(
+    payload: AnalyzeRequest,
+    detection_input_indexes: set[int],
+    parser_results: dict[int, FileParserResult] | None = None,
+) -> list[AnalyzeInputResult]:
     results: list[AnalyzeInputResult] = []
+    parser_results = parser_results or {}
     for index, item in enumerate(payload.inputs):
-        if item.content_included:
-            content_scanned = item.kind == "text"
-            decision_basis = "detection" if index in detection_input_indexes else "no_detection"
-        elif item.kind == "file_reference":
-            content_scanned = False
-            decision_basis = "content_unavailable"
-        elif item.kind == "attachment_metadata":
-            content_scanned = False
-            decision_basis = "metadata_only"
-        else:
-            content_scanned = False
-            decision_basis = "content_unavailable"
+        content_scanned, decision_basis = _input_scan_result(
+            item,
+            index=index,
+            detection_input_indexes=detection_input_indexes,
+            parser_result=parser_results.get(index),
+        )
 
         results.append(
             AnalyzeInputResult(
@@ -292,9 +306,63 @@ def input_results_for_payload(payload: AnalyzeRequest, detection_input_indexes: 
     return results
 
 
+def policy_evidence_codes_for_payload(
+    payload: LegacyAnalyzeRequest,
+    parser_results: dict[int, FileParserResult] | None = None,
+) -> list[ReasonCode]:
+    parser_results = parser_results or {}
+    codes: list[ReasonCode] = []
+    for index, item in enumerate(payload.inputs):
+        parser_result = parser_results.get(index)
+        if _parser_failed(parser_result):
+            _append_once(codes, "PARSER_OR_OCR_FAILED")
+            continue
+        if _parser_scanned(parser_result):
+            continue
+        if item.kind == "unsupported_attachment" or item.content_unavailable_reason == "unsupported":
+            _append_once(codes, "UNSUPPORTED_FILE")
+            continue
+        if not item.content_included:
+            _append_once(codes, "CONTENT_NOT_SCANNED")
+    return codes
+
+
+def _parser_failed(parser_result: FileParserResult | None) -> bool:
+    if parser_result is None:
+        return False
+    return parser_result.failure is not None or parser_result.parser_status in {"failed", "timeout", "too_large", "encrypted"}
+
+
+def _parser_scanned(parser_result: FileParserResult | None) -> bool:
+    return parser_result is not None and parser_result.parser_status == "parsed" and parser_result.document is not None
+
+
+def _append_once(codes: list[ReasonCode], code: ReasonCode) -> None:
+    if code not in codes:
+        codes.append(code)
+
+
+def _input_scan_result(
+    item: Any,
+    *,
+    index: int,
+    detection_input_indexes: set[int],
+    parser_result: FileParserResult | None,
+) -> tuple[bool, InputDecisionBasis]:
+    if parser_result is not None and parser_result.parser_status == "parsed" and parser_result.document is not None:
+        return True, "detection" if index in detection_input_indexes else "no_detection"
+    if item.content_included:
+        return item.kind == "text", "detection" if index in detection_input_indexes else "no_detection"
+    if item.kind == "attachment_metadata":
+        return False, "metadata_only"
+    return False, "content_unavailable"
+
+
 def score_for_final_action(score: int, action: str) -> int:
     if action == ACTION_BLOCK:
         return max(score, 95)
+    if action == "WARN":
+        return max(score, 40)
     return score
 
 
@@ -306,6 +374,11 @@ def duplicate_request_error() -> HTTPException:
             "message": "Duplicate Analyze request cannot be safely replayed. Retry with a new client_request_id.",
         },
     )
+
+
+def raise_if_duplicate_request(existing_idempotency_key: object | None) -> None:
+    if existing_idempotency_key is not None:
+        raise duplicate_request_error()
 
 
 def is_idempotency_conflict(error: IntegrityError) -> bool:
@@ -352,7 +425,11 @@ def _build_analyze_verifier_config_from_settings(
         bundle = builder(manifest_path)
     except VerifierServiceBuildError:
         return None
-    return AnalyzeVerifierConfig(service=bundle.service, artifact=bundle.artifact)
+    return AnalyzeVerifierConfig(
+        service=bundle.service,
+        artifact=bundle.artifact,
+        timeout_ms=settings.ml_inference_queue_timeout_ms,
+    )
 
 
 @lru_cache(maxsize=8)
@@ -393,6 +470,14 @@ def get_ml_inference_queue(settings: Settings = Depends(get_settings)) -> MlInfe
     )
 
 
+def get_paddle_inference_queue(settings: Settings = Depends(get_settings)) -> MlInferenceQueue | None:
+    return _cached_ml_inference_queue(
+        settings.ml_inference_queue_enabled,
+        _resolve_ml_inference_max_workers(settings),
+        settings.ml_inference_queue_max_queue_size,
+    )
+
+
 def _resolve_ml_inference_max_workers(settings: Settings) -> int:
     decision = resolve_gpu_worker_capacity(
         GpuWorkerCapacityPolicy(
@@ -407,6 +492,106 @@ def _resolve_ml_inference_max_workers(settings: Settings) -> int:
     return decision.worker_count
 
 
+def get_parser_worker_pool(
+    settings: Settings = Depends(get_settings),
+    storage=Depends(get_temp_storage),
+    paddle_inference_queue: MlInferenceQueue | None = Depends(get_paddle_inference_queue),
+) -> ParserWorkerPool | None:
+    return build_parser_worker_pool(
+        storage,
+        max_workers=settings.ml_inference_queue_max_workers,
+        max_queue_size=settings.ml_inference_queue_max_queue_size,
+        paddle_worker_python_path=settings.paddle_worker_python_path,
+        paddle_worker_script_path=settings.paddle_worker_script_path,
+        paddle_worker_payload_dir=settings.paddle_worker_payload_dir,
+        paddle_inference_queue=paddle_inference_queue,
+    )
+
+
+def get_analyze_torch_worker(
+    settings: Settings = Depends(get_settings),
+    inference_queue: MlInferenceQueue | None = Depends(get_ml_inference_queue),
+) -> AnalyzeTorchWorker | None:
+    if not settings.classifier_runtime_enabled or not settings.verifier_runtime_enabled:
+        return None
+    if settings.classifier_manifest_path_value() is None or settings.verifier_manifest_path_value() is None:
+        return None
+    client = cached_torch_worker_client(
+        settings.torch_worker_python_path,
+        settings.torch_worker_script_path,
+        settings.torch_worker_payload_dir,
+        settings.ml_inference_queue_timeout_ms,
+        settings.ml_inference_queue_max_queue_size,
+    )
+    return build_analyze_torch_worker(
+        client,
+        inference_queue=inference_queue,
+        inference_timeout_ms=settings.ml_inference_queue_timeout_ms,
+    )
+
+
+def parser_results_for_payload(
+    payload: LegacyAnalyzeRequest,
+    *,
+    current_user: User,
+    parser_worker_pool: ParserWorkerPool | None,
+    timeout_ms: int,
+) -> dict[int, FileParserResult]:
+    if parser_worker_pool is None:
+        return {}
+    results: dict[int, FileParserResult] = {}
+    for index, item in enumerate(payload.inputs):
+        if item.kind != "file_reference":
+            continue
+        access_context = TempFileAccessContext(
+            authenticated_subject_id=str(current_user.id),
+            session_id=str(current_user.id),
+            request_id=payload.client_request_id,
+            temp_scope_id=item.temp_scope_id,
+        )
+        parser_payload = build_file_reference_parser_worker_payload(
+            payload.client_request_id,
+            item,
+            access_context=access_context,
+        )
+        results[index] = parser_worker_pool.execute(parser_payload, timeout_ms=timeout_ms)
+    return results
+
+
+def parsed_file_matches(
+    payload: LegacyAnalyzeRequest,
+    parser_results: dict[int, FileParserResult],
+    rules: list[FilterRule],
+) -> list[tuple[int, Any, list[RuleMatch]]]:
+    matched: list[tuple[int, Any, list[RuleMatch]]] = []
+    for index, result in parser_results.items():
+        document = result.document
+        if result.parser_status != "parsed" or document is None:
+            continue
+        text = _runtime_text_from_document(document)
+        if not text:
+            continue
+        item = payload.inputs[index]
+        matches = evaluate_filter_rules(text, rules)
+        if matches:
+            matched.append((index, _parsed_file_match_item(item, text), matches))
+    return matched
+
+
+def _runtime_text_from_document(document: ParsedDocument) -> str:
+    return "\n".join(block.text for block in document.blocks if block.text)
+
+
+def _parsed_file_match_item(item: Any, content: str) -> SimpleNamespace:
+    return SimpleNamespace(
+        input_id=item.input_id,
+        kind=item.kind,
+        source=item.source,
+        content=content,
+        content_included=False,
+    )
+
+
 @router.post("/analyze", response_model=AnalyzeResponse, response_model_exclude_none=True)
 async def analyze_prompt(
     payload: LegacyAnalyzeRequest,
@@ -416,40 +601,84 @@ async def analyze_prompt(
     embedding_loader: AtomEmbeddingModelLoader | None = Depends(get_atom_embedding_loader),
     verifier_config: AnalyzeVerifierConfig | None = Depends(get_analyze_verifier_config),
     inference_queue: MlInferenceQueue | None = Depends(get_ml_inference_queue),
+    parser_worker_pool: ParserWorkerPool | None = Depends(get_parser_worker_pool),
+    analyze_torch_worker: AnalyzeTorchWorker | None = Depends(get_analyze_torch_worker),
     settings: Settings = Depends(get_settings),
     policy_orchestrator: PolicyOrchestratorPort = Depends(get_policy_orchestrator),
 ) -> AnalyzeResponse:
     adapted_request = adapt_legacy_analyze_request(payload, current_user.login_id)
     payload = adapted_request.legacy_view
+    if not payload.inputs:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Analyze request must include inputs")
     request_id = payload.client_request_id
     event_id = uuid.uuid4()
     checked_at = utc_now()
+    logger.info(
+        "analyze.request.accepted",
+        extra={
+            "request_id": request_id,
+            "input_count": len(payload.inputs),
+            "text_input_count": _text_input_count(payload),
+        },
+    )
     existing_idempotency_key = await load_idempotency_key(session, current_user.login_id, payload.client_request_id)
-    if existing_idempotency_key is not None:
-        raise duplicate_request_error()
+    raise_if_duplicate_request(existing_idempotency_key)
 
     rules = await load_active_filter_rules(session)
     text_inputs = included_text_inputs(payload)
     matched_inputs = matched_text_inputs(text_inputs, rules)
+    parser_results = parser_results_for_payload(
+        payload,
+        current_user=current_user,
+        parser_worker_pool=parser_worker_pool,
+        timeout_ms=settings.ml_inference_queue_timeout_ms,
+    )
+    logger.info(
+        "analyze.parser.completed",
+        extra={
+            "request_id": request_id,
+            "parser_result_count": len(parser_results),
+            "parser_failed_count": sum(1 for result in parser_results.values() if _parser_failed(result)),
+            "parser_scanned_count": sum(1 for result in parser_results.values() if _parser_scanned(result)),
+        },
+    )
+    matched_inputs.extend(parsed_file_matches(payload, parser_results, rules))
     matches = [match for _index, _item, item_matches in matched_inputs for match in item_matches]
     detection_target = first_composer_input([(index, item) for index, item, item_matches in matched_inputs if item_matches])
     risk_score = score_for_matches(matches)
-    classifier_outcome = (
-        AnalyzeClassifierOutcome(enabled=False)
-        if classifier_provider.failure is not None and classifier_provider.failure.code == "CLASSIFIER_RUNTIME_DISABLED"
-        else evaluate_analyze_classifier(
-            text_inputs,
-            classifier_provider,
-            embedding_loader,
-            verifier_config=verifier_config,
-            inference_queue=inference_queue,
-            inference_timeout_ms=settings.ml_inference_queue_timeout_ms,
-        )
+    classifier_outcome = _evaluate_context_classifier(
+        request_id=request_id,
+        text_inputs=text_inputs,
+        classifier_provider=classifier_provider,
+        embedding_loader=embedding_loader,
+        verifier_config=verifier_config,
+        inference_queue=inference_queue,
+        analyze_torch_worker=analyze_torch_worker,
+        inference_timeout_ms=settings.ml_inference_queue_timeout_ms,
     )
-    policy_request = build_policy_request(request_id, payload.inputs, matched_inputs, classifier_outcome)
-    action = to_legacy_action(policy_orchestrator.decide(policy_request).action)
-    risk_score = score_for_final_action(risk_score, action)
-    risk_level = risk_level_for_score(risk_score)
+    log_context_risk_completed(request_id, classifier_outcome)
+    detection_input_indexes = {index for index, _item, item_matches in matched_inputs if item_matches}
+    input_results = input_results_for_payload(payload, detection_input_indexes, parser_results)
+    action_settings = policy_action_settings_from_row(await get_policy_settings_row(session))
+    policy_request = build_policy_request(
+        request_id,
+        payload.inputs,
+        matched_inputs,
+        classifier_outcome,
+        input_results=input_results,
+        evidence_codes=policy_evidence_codes_for_payload(payload, parser_results),
+        action_settings=action_settings,
+        filter_rules=rules,
+    )
+    policy_decision = policy_orchestrator.decide(policy_request)
+    action = to_legacy_action(policy_decision.action)
+    input_results = input_results_with_context_risk_basis(
+        input_results,
+        policy_decision.reason_code,
+        context_risk_evidence=getattr(classifier_outcome, "context_risk", None),
+    )
+    log_policy_decided(request_id, action, policy_decision, classifier_outcome)
+    risk_score, risk_level = final_risk_score_and_level(risk_score, action)
     masking_matches = []
     if detection_target is not None:
         masking_matches = next(
@@ -459,22 +688,16 @@ async def analyze_prompt(
     masking_detections = detections_for_masking(masking_matches)
     composer_text = detection_target[1].content if detection_target is not None else None
     masked = apply_placeholders(composer_text, masking_detections) if action == ACTION_MASK and masking_detections and composer_text else None
-    detection_input_indexes = {index for index, _item, item_matches in matched_inputs if item_matches}
-    input_results = input_results_for_payload(payload, detection_input_indexes)
 
     event_projection = serialize_event_write(
         event_id=event_id, user_id=current_user.id, login_id=current_user.login_id,
         payload=payload, action=action, risk_score=risk_score, risk_level=risk_level,
         input_results=input_results, matched_inputs=matched_inputs,
         idempotency_expires_at=checked_at + IDEMPOTENCY_TTL,
+        context_risk_evidence=getattr(classifier_outcome, "context_risk", None),
     )
     current_user.last_event_at = checked_at
-    try:
-        await SqlAlchemyEventWriter(session).write(event_projection)
-    except IntegrityError as exc:
-        if is_idempotency_conflict(exc):
-            raise duplicate_request_error() from exc
-        raise
+    await _write_event_projection(session, event_projection, request_id=request_id, event_id=event_id, action=action)
 
     return build_analyze_response(
         event_id=event_id, request_id=request_id, checked_at=checked_at, action=action,
@@ -482,4 +705,173 @@ async def analyze_prompt(
         matched_inputs=matched_inputs, input_results=input_results,
         masked_prompt=masked.text if masked is not None else None,
         masked_source=detection_target[1].source if detection_target is not None else None,
+        classifier_outcome=classifier_outcome,
+    )
+
+
+def final_risk_score_and_level(risk_score: int, action: str) -> tuple[int, str]:
+    score = score_for_final_action(risk_score, action)
+    return score, risk_level_for_score(score)
+
+
+def log_context_risk_completed(request_id: str, classifier_outcome: AnalyzeClassifierOutcome) -> None:
+    evidence = getattr(classifier_outcome, "context_risk", None)
+    logger.info(
+        "analyze.context_risk.completed status=%s candidates=%s accepted=%s failure_code=%s reason_code=%s",
+        getattr(evidence, "status", "no_candidate"),
+        getattr(evidence, "candidate_count", 0),
+        getattr(evidence, "accepted_count", 0),
+        getattr(evidence, "failure_code", None) or "none",
+        getattr(evidence, "reason_code", "NO_RISK_DETECTED"),
+        extra={"request_id": request_id, **_context_risk_log_fields(classifier_outcome)},
+    )
+
+
+def log_policy_decided(
+    request_id: str,
+    action: str,
+    policy_decision: Any,
+    classifier_outcome: AnalyzeClassifierOutcome,
+) -> None:
+    evidence = getattr(classifier_outcome, "context_risk", None)
+    logger.info(
+        "analyze.policy.decided action=%s reason_code=%s severity=%s context_status=%s context_failure_code=%s",
+        action,
+        policy_decision.reason_code,
+        policy_decision.severity,
+        getattr(evidence, "status", "no_candidate"),
+        getattr(evidence, "failure_code", None) or "none",
+        extra={
+            "request_id": request_id,
+            "action": action,
+            "reason_code": policy_decision.reason_code,
+            "severity": policy_decision.severity,
+            **_context_risk_log_fields(classifier_outcome),
+        },
+    )
+
+
+def _context_risk_log_fields(classifier_outcome: AnalyzeClassifierOutcome) -> dict[str, Any]:
+    evidence = getattr(classifier_outcome, "context_risk", None)
+    if evidence is None:
+        return {
+            "context_risk_enabled": bool(getattr(classifier_outcome, "enabled", False)),
+            "context_risk_status": "candidate" if getattr(classifier_outcome, "has_candidates", False) else "no_candidate",
+            "context_risk_candidate_count": 1 if getattr(classifier_outcome, "has_candidates", False) else 0,
+            "context_risk_accepted_count": 0,
+            "context_risk_labels": [],
+            "context_risk_failure_code": getattr(getattr(classifier_outcome, "failure", None), "code", None),
+            "context_risk_reason_code": "RISK_CONTEXT_LR_ONLY"
+            if getattr(classifier_outcome, "has_candidates", False)
+            else "NO_RISK_DETECTED",
+        }
+    return {
+        "context_risk_enabled": evidence.enabled,
+        "context_risk_status": evidence.status,
+        "context_risk_candidate_count": evidence.candidate_count,
+        "context_risk_accepted_count": evidence.accepted_count,
+        "context_risk_labels": evidence.labels,
+        "context_risk_failure_code": evidence.failure_code,
+        "context_risk_reason_code": evidence.reason_code,
+    }
+
+
+def input_results_with_context_risk_basis(
+    input_results: list[AnalyzeInputResult],
+    reason_code: str,
+    *,
+    context_risk_evidence: Any | None = None,
+) -> list[AnalyzeInputResult]:
+    if not str(reason_code).startswith("RISK_CONTEXT_"):
+        return input_results
+    if not _has_context_risk_signal(context_risk_evidence):
+        return input_results
+    return [
+        item.model_copy(update={"decision_basis": _context_decision_basis(item)})
+        for item in input_results
+    ]
+
+
+def _has_context_risk_signal(context_risk_evidence: Any | None) -> bool:
+    if context_risk_evidence is None:
+        return False
+    accepted_count = getattr(context_risk_evidence, "accepted_count", 0)
+    status = getattr(context_risk_evidence, "status", None)
+    return status == "verified" and _non_negative_count(accepted_count) > 0
+
+
+def _non_negative_count(value: Any) -> int:
+    return value if isinstance(value, int) and value > 0 else 0
+
+
+def _context_decision_basis(item: AnalyzeInputResult) -> str:
+    if item.decision_basis == "no_detection" and item.content_scanned:
+        return "context_risk"
+    return item.decision_basis
+
+
+def _text_input_count(payload: LegacyAnalyzeRequest) -> int:
+    return sum(
+        1
+        for item in payload.inputs
+        if item.kind == "text" and item.content_included and item.content is not None
+    )
+
+
+def _evaluate_context_classifier(
+    *,
+    request_id: str,
+    text_inputs: list[tuple[int, Any]],
+    classifier_provider: ClassifierRuntimeProviderResult,
+    embedding_loader: AtomEmbeddingModelLoader | None,
+    verifier_config: AnalyzeVerifierConfig | None,
+    inference_queue: MlInferenceQueue | None,
+    analyze_torch_worker: AnalyzeTorchWorker | None,
+    inference_timeout_ms: int,
+) -> AnalyzeClassifierOutcome:
+    if classifier_provider.failure is not None and classifier_provider.failure.code == "CLASSIFIER_RUNTIME_DISABLED":
+        logger.info(
+            "analyze.context_risk.route route=disabled reason=classifier_runtime_disabled",
+            extra={"request_id": request_id, "context_runtime_route": "disabled"},
+        )
+        return AnalyzeClassifierOutcome(enabled=False)
+    if analyze_torch_worker is not None:
+        logger.info(
+            "analyze.context_risk.route route=torch_worker text_input_count=%s",
+            len(text_inputs),
+            extra={"request_id": request_id, "context_runtime_route": "torch_worker", "text_input_count": len(text_inputs)},
+        )
+        return analyze_torch_worker.evaluate(text_inputs)
+    logger.info(
+        "analyze.context_risk.route route=in_process text_input_count=%s",
+        len(text_inputs),
+        extra={"request_id": request_id, "context_runtime_route": "in_process", "text_input_count": len(text_inputs)},
+    )
+    return evaluate_analyze_classifier(
+        text_inputs,
+        classifier_provider,
+        embedding_loader,
+        verifier_config=verifier_config,
+        inference_queue=inference_queue,
+        inference_timeout_ms=inference_timeout_ms,
+    )
+
+
+async def _write_event_projection(
+    session: AsyncSession,
+    event_projection: Any,
+    *,
+    request_id: str,
+    event_id: uuid.UUID,
+    action: str,
+) -> None:
+    try:
+        await SqlAlchemyEventWriter(session).write(event_projection)
+    except IntegrityError as exc:
+        if is_idempotency_conflict(exc):
+            raise duplicate_request_error() from exc
+        raise
+    logger.info(
+        "analyze.event.write_succeeded",
+        extra={"request_id": request_id, "event_id": str(event_id), "action": action},
     )

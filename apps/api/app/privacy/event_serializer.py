@@ -32,6 +32,7 @@ class EventProjection(_PersistenceModel):
     service: str
     service_domain: str
     platform: str
+    context_risk_evidence: dict[str, Any] | None = None
 
 
 class EventInputProjection(_PersistenceModel):
@@ -44,7 +45,7 @@ class EventInputProjection(_PersistenceModel):
     size_bucket: SizeBucket
     content_included: bool
     content_scanned: bool
-    decision_basis: Literal["no_detection", "detection", "content_unavailable", "metadata_only"]
+    decision_basis: Literal["no_detection", "detection", "content_unavailable", "metadata_only", "context_risk"]
     content_unavailable_reason: str | None = None
     limit_exceeded: str | None = None
 
@@ -52,8 +53,8 @@ class EventInputProjection(_PersistenceModel):
 class EventDetectionProjection(_PersistenceModel):
     id: uuid.UUID
     event_id: uuid.UUID
-    input_id: str
-    input_index: int = Field(ge=0)
+    input_id: str | None = None
+    input_index: int | None = Field(default=None, ge=0)
     kind: str
     input_source: str
     filter_rule_id: str | None = None
@@ -90,7 +91,7 @@ class EventWriteProjection(_PersistenceModel):
 def serialize_event_write(
     *, event_id: uuid.UUID, user_id: uuid.UUID, login_id: str, payload: Any, action: str,
     risk_score: int, risk_level: str, input_results: list[Any], matched_inputs: list[tuple[int, Any, list[Any]]],
-    idempotency_expires_at: datetime,
+    idempotency_expires_at: datetime, context_risk_evidence: Any | None = None,
 ) -> EventWriteProjection:
     inputs_by_index = dict(enumerate(payload.inputs))
     input_rows = [
@@ -124,6 +125,7 @@ def serialize_event_write(
             action=action, risk_score=risk_score, risk_level=risk_level,
             filter_config_revision=payload.filter_config_revision, service=payload.context.ai_service,
             service_domain=payload.context.ai_service_domain, platform=payload.context.browser,
+            context_risk_evidence=_safe_context_risk_evidence(context_risk_evidence),
         ),
         inputs=input_rows,
         detections=detection_rows,
@@ -143,3 +145,53 @@ def _safe_evidence(value: Any) -> SafeEvidenceProjection:
         matched_pattern_ids=[item for item in value.get("matched_pattern_ids", []) if isinstance(item, str)],
         matched_condition_count=value.get("matched_condition_count") if isinstance(value.get("matched_condition_count"), int) else None,
     )
+
+
+def _safe_context_risk_evidence(evidence: Any | None) -> dict[str, Any] | None:
+    if evidence is None or not getattr(evidence, "enabled", False):
+        return None
+    status = getattr(evidence, "status", "disabled")
+    if status in {"disabled", "no_candidate"}:
+        return None
+    return {
+        "enabled": True,
+        "status": status if isinstance(status, str) else "candidate",
+        "candidate_count": _safe_non_negative_int(getattr(evidence, "candidate_count", 0)),
+        "accepted_count": _safe_non_negative_int(getattr(evidence, "accepted_count", 0)),
+        "labels": _safe_str_list(getattr(evidence, "labels", [])),
+        "status_counts": _safe_int_map(getattr(evidence, "status_counts", {})),
+        "highest_score_bucket": _safe_optional_str(getattr(evidence, "highest_score_bucket", None)),
+        "highest_confidence_bucket": _safe_optional_str(getattr(evidence, "highest_confidence_bucket", None)),
+        "failure_code": _safe_optional_str(getattr(evidence, "failure_code", None)),
+        "reason_code": _safe_str(getattr(evidence, "reason_code", None), "RISK_CONTEXT_LR_ONLY"),
+        "classifier_model_versions": _safe_str_list(getattr(evidence, "classifier_model_versions", [])),
+        "verifier_model_versions": _safe_str_list(getattr(evidence, "verifier_model_versions", [])),
+    }
+
+
+def _safe_int_map(value: Any) -> dict[str, int]:
+    if not isinstance(value, dict):
+        return {}
+    return {
+        key: item
+        for key, item in value.items()
+        if isinstance(key, str) and isinstance(item, int) and item >= 0
+    }
+
+
+def _safe_non_negative_int(value: Any) -> int:
+    return value if isinstance(value, int) and value >= 0 else 0
+
+
+def _safe_optional_str(value: Any) -> str | None:
+    return value if isinstance(value, str) else None
+
+
+def _safe_str(value: Any, default: str) -> str:
+    return value if isinstance(value, str) else default
+
+
+def _safe_str_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, str)]

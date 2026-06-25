@@ -120,6 +120,20 @@ function mockAnalyze(request: AnalyzeRequest): AnalyzeResponse {
     input_results: buildInputResults(request.inputs, action),
     content_unavailable_inputs: buildContentUnavailableInputs(request.inputs),
     business_context_matches: [],
+    context_risk_evidence: {
+      enabled: true,
+      status: action === "Warn" ? "candidate" : "no_candidate",
+      candidate_count: action === "Warn" ? 1 : 0,
+      accepted_count: 0,
+      labels: [],
+      status_counts: {},
+      highest_score_bucket: action === "Warn" ? "high" : null,
+      highest_confidence_bucket: null,
+      failure_code: null,
+      reason_code: action === "Warn" ? "RISK_CONTEXT_LR_ONLY" : "NO_RISK_DETECTED",
+      classifier_model_versions: [],
+      verifier_model_versions: []
+    },
     client_request_id: request.client_request_id,
     filter_config_revision: request.filter_config_revision,
     masked_prompt: action === "Mask" ? maskPromptForMockAnalyze(composerText) : undefined

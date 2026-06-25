@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.core.tokens import create_access_token
+from app.core.config import get_settings
 from app.routes import dashboard_status
 from app.routes.auth import get_db_session
 
@@ -117,7 +118,11 @@ def test_dashboard_status_with_user_role_returns_403(monkeypatch) -> None:
 def test_dashboard_status_with_admin_returns_flat_allowlist(monkeypatch) -> None:
     user = _user()
     monkeypatch.setattr(dashboard_status, "collect_server_ipv4_addresses", lambda: ["192.168.0.10"])
+    monkeypatch.delenv("PROMPTGUARD_EXTENSION_API_URL", raising=False)
+    monkeypatch.setenv("PROMPTGUARD_DASHBOARD_PUBLIC_URL", "http://localhost:8000/dashboard/")
+    get_settings.cache_clear()
     response = _client(monkeypatch, user=user).get("/dashboard/status", headers={"host": "localhost:8000"})
+    get_settings.cache_clear()
 
     body = response.json()
     assert response.status_code == 200
@@ -146,6 +151,10 @@ def test_dashboard_status_with_admin_returns_flat_allowlist(monkeypatch) -> None
         "admin_local_api_origin": "http://localhost:8000",
         "external_api_origin": None,
         "api_port": "8000",
+        "extension_api_url": None,
+        "extension_api_url_status": "missing",
+        "extension_api_url_error": "PROMPTGUARD_EXTENSION_API_URL is not configured.",
+        "dashboard_public_url": "http://localhost:8000/dashboard/",
     }
 
 
@@ -162,13 +171,110 @@ def test_dashboard_status_reports_forwarded_external_origin(monkeypatch) -> None
     )
 
     assert response.status_code == 200
-    assert response.json()["extension_connection"] == {
-        "internal_api_origins": ["http://10.1.2.3:8000"],
-        "excluded_internal_api_origins": [],
-        "admin_local_api_origin": "http://localhost:8000",
-        "external_api_origin": "https://promptguard.example.com",
-        "api_port": "8000",
-    }
+    body = response.json()["extension_connection"]
+    assert body["internal_api_origins"] == ["http://10.1.2.3:8000"]
+    assert body["excluded_internal_api_origins"] == []
+    assert body["admin_local_api_origin"] == "http://localhost:8000"
+    assert body["external_api_origin"] == "https://promptguard.example.com"
+    assert body["api_port"] == "8000"
+
+
+def test_dashboard_status_uses_configured_public_api_origin_without_path_or_credentials(monkeypatch) -> None:
+    user = _user()
+    monkeypatch.setattr(dashboard_status, "collect_server_ipv4_addresses", lambda: ["10.1.2.3"])
+    monkeypatch.setenv("PROMPTGUARD_API_PUBLIC_URL", "https://user:pass@promptguard.example.com:9443/app?token=secret")
+    get_settings.cache_clear()
+    try:
+        response = _client(monkeypatch, user=user).get("/dashboard/status", headers={"host": "localhost:8000"})
+    finally:
+        get_settings.cache_clear()
+
+    assert response.status_code == 200
+    assert response.json()["extension_connection"]["external_api_origin"] == "https://promptguard.example.com:9443"
+    encoded = json.dumps(response.json(), ensure_ascii=False)
+    assert "user:pass" not in encoded
+    assert "token=secret" not in encoded
+    assert "/app" not in encoded
+
+
+def test_dashboard_status_reports_configured_extension_api_url(monkeypatch) -> None:
+    user = _user()
+    monkeypatch.setenv("PROMPTGUARD_EXTENSION_API_URL", "https://promptguard.example.com:9443")
+    get_settings.cache_clear()
+    try:
+        response = _client(monkeypatch, user=user).get("/dashboard/status")
+    finally:
+        get_settings.cache_clear()
+
+    body = response.json()["extension_connection"]
+    assert response.status_code == 200
+    assert body["extension_api_url"] == "https://promptguard.example.com:9443"
+    assert body["extension_api_url_status"] == "configured"
+    assert body["extension_api_url_error"] is None
+
+
+def test_dashboard_status_rejects_localhost_extension_api_url(monkeypatch) -> None:
+    user = _user()
+    monkeypatch.setenv("PROMPTGUARD_EXTENSION_API_URL", "http://localhost:8000")
+    get_settings.cache_clear()
+    try:
+        response = _client(monkeypatch, user=user).get("/dashboard/status")
+    finally:
+        get_settings.cache_clear()
+
+    body = response.json()["extension_connection"]
+    assert response.status_code == 200
+    assert body["extension_api_url"] is None
+    assert body["extension_api_url_status"] == "invalid"
+    assert "localhost" in body["extension_api_url_error"]
+
+
+def test_dashboard_status_rejects_dashboard_path_as_extension_api_url(monkeypatch) -> None:
+    user = _user()
+    monkeypatch.setenv("PROMPTGUARD_EXTENSION_API_URL", "https://promptguard.example.com/dashboard/")
+    get_settings.cache_clear()
+    try:
+        response = _client(monkeypatch, user=user).get("/dashboard/status")
+    finally:
+        get_settings.cache_clear()
+
+    body = response.json()["extension_connection"]
+    assert response.status_code == 200
+    assert body["extension_api_url"] is None
+    assert body["extension_api_url_status"] == "invalid"
+    assert "/dashboard/" in body["extension_api_url_error"]
+
+
+def test_dashboard_status_rejects_docker_bridge_extension_api_url(monkeypatch) -> None:
+    user = _user()
+    monkeypatch.setenv("PROMPTGUARD_EXTENSION_API_URL", "http://172.19.0.3:8000")
+    get_settings.cache_clear()
+    try:
+        response = _client(monkeypatch, user=user).get("/dashboard/status")
+    finally:
+        get_settings.cache_clear()
+
+    body = response.json()["extension_connection"]
+    assert response.status_code == 200
+    assert body["extension_api_url"] is None
+    assert body["extension_api_url_status"] == "invalid"
+    assert "Docker bridge" in body["extension_api_url_error"]
+
+
+def test_dashboard_status_rejects_database_port_as_extension_api_url(monkeypatch) -> None:
+    user = _user()
+    monkeypatch.setenv("PROMPTGUARD_EXTENSION_API_URL", "http://192.168.0.10:5432")
+    get_settings.cache_clear()
+    try:
+        response = _client(monkeypatch, user=user).get("/dashboard/status")
+    finally:
+        get_settings.cache_clear()
+
+    body = response.json()["extension_connection"]
+    assert response.status_code == 200
+    assert body["extension_api_url"] is None
+    assert body["extension_api_url_status"] == "invalid"
+    assert "5432" in body["extension_api_url_error"]
 
 
 def test_dashboard_status_excludes_docker_bridge_origin_from_recommended_extension_urls(monkeypatch) -> None:

@@ -1,0 +1,62 @@
+{
+  "components": [
+    {
+      "dependency_path": [
+        "PromptGuard",
+        "pypdf==6.13.3"
+      ],
+      "dependency_type": "direct",
+      "license_id": "BSD-3-Clause",
+      "name": "pypdf",
+      "package_source": "PyPI",
+      "transitive_dependencies": [],
+      "transitive_dependency_status": "none_for_default_install_on_python_3_14",
+      "version": "6.13.3"
+    },
+    {
+      "artifact_sha256": {
+        "manylinux_2_17_x86_64": "3ba127750bc3f4161461538d532d74491cd976f584f1753a6cee9cb821338ec1",
+        "win_amd64": "58da5b51fb7884c7d21a05062ab13edb011d1a08dfd9694f3d5d685df62796b9"
+      },
+      "dependency_path": [
+        "PromptGuard",
+        "pypdfium2==5.10.1"
+      ],
+      "dependency_type": "direct",
+      "license_id": "BSD-3-Clause OR Apache-2.0",
+      "name": "pypdfium2",
+      "package_source": "PyPI",
+      "transitive_dependencies": [],
+      "transitive_dependency_status": "none_for_binary_wheel_runtime",
+      "version": "5.10.1"
+    },
+    {
+      "bundled_by": "pypdfium2==5.10.1",
+      "bundled_license_inventory": [
+        "abseil",
+        "agg23",
+        "fast_float",
+        "freetype",
+        "icu",
+        "lcms",
+        "libjpeg-turbo",
+        "libopenjpeg",
+        "libpng",
+        "libtiff",
+        "zlib"
+      ],
+      "dependency_path": [
+        "PromptGuard",
+        "pypdfium2==5.10.1",
+        "PDFium==151.0.7891.0"
+      ],
+      "dependency_type": "bundled_native_runtime",
+      "license_id": "BSD-3-Clause",
+      "name": "PDFium",
+      "package_source": "pdfium-binaries via pypdfium2 wheel",
+      "version": "151.0.7891.0"
+    }
+  ],
+  "schema_version": "2",
+  "scope": "parser_ocr"
+}

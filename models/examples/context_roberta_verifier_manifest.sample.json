@@ -1,0 +1,26 @@
+{
+  "manifest_version": "context_lr_roberta_active_best_f1_2026_06_23",
+  "selected": {
+    "verifier_dir": "models/context_verifier_klue_roberta_base_lrmined_v287_global002_compactv2_lpft_focal_1p2ep",
+    "target_labels_json": "models/context_target_labels.sample.json",
+    "label_definitions_json": "models/context_label_definitions.sample.json",
+    "verifier_threshold_mode": "labelwise",
+    "verifier_thresholds": {
+      "SECRET_CREDENTIAL_CONTEXT": 0.915,
+      "PERSONAL_DATA_CONTEXT": 0.48,
+      "FINANCIAL_IDENTIFIER_CONTEXT": 0.67,
+      "CONFIDENTIAL_BUSINESS_CONTEXT": 0.64,
+      "PROPRIETARY_TECHNICAL_CONTEXT": 0.715,
+      "SECURITY_CONTROL_CONTEXT": 0.715,
+      "INTERNAL_OPERATION_CONTEXT": 0.725,
+      "BULK_SENSITIVE_RECORD_CONTEXT": 0.685
+    },
+    "max_length_tokens": 384,
+    "chunk_policy": {
+      "chunk_chars": 900,
+      "chunk_overlap": 120,
+      "max_chunks": 8,
+      "pooling": "max verifier score per label across chunks"
+    }
+  }
+}

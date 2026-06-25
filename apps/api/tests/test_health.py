@@ -152,3 +152,92 @@ async def test_check_filter_config_reports_loadable_default_config() -> None:
     assert result["name"] == "filter_config"
     assert result["status"] == "healthy"
     assert result["required"] is True
+
+
+@pytest.mark.anyio
+async def test_check_torch_worker_reports_disabled_when_runtime_is_not_required(monkeypatch) -> None:
+    monkeypatch.setattr(
+        health,
+        "get_settings",
+        lambda: SimpleNamespace(
+            worker_readiness_required=True,
+            classifier_runtime_enabled=False,
+            verifier_runtime_enabled=False,
+        ),
+    )
+
+    result = await health.check_torch_worker()
+
+    assert result["name"] == "torch_worker"
+    assert result["status"] == "disabled"
+    assert result["required"] is False
+
+
+@pytest.mark.anyio
+async def test_check_paddle_worker_reports_ready_with_warm_status(monkeypatch) -> None:
+    class Snapshot:
+        process_running = True
+        warm = True
+        in_flight_or_queued = 0
+        last_failure_code = None
+
+    class Client:
+        def readiness_probe(self):
+            return SimpleNamespace(ok=True)
+
+        def status_snapshot(self):
+            return Snapshot()
+
+    monkeypatch.setattr(
+        health,
+        "get_settings",
+            lambda: SimpleNamespace(
+                worker_readiness_required=True,
+                worker_readiness_timeout_ms=15000,
+                ml_inference_queue_max_queue_size=32,
+                paddle_worker_python_path="/opt/venvs/paddle/bin/python",
+                paddle_worker_script_path="/app/scripts/paddle_ocr_worker.py",
+                paddle_worker_payload_dir="/tmp/paddle",
+        ),
+    )
+    monkeypatch.setattr(health, "cached_paddle_worker_client", lambda *_args: Client())
+
+    result = await health.check_paddle_worker()
+
+    assert result["name"] == "paddle_worker"
+    assert result["status"] == "healthy"
+    assert result["required"] is True
+    assert result["code"] == "PADDLE_WORKER_READY"
+    assert "warm=true" in result["message"]
+    assert "queue_depth=0" in result["message"]
+
+
+@pytest.mark.anyio
+async def test_check_paddle_worker_failure_is_required_unhealthy(monkeypatch) -> None:
+    class Client:
+        def readiness_probe(self):
+            return SimpleNamespace(ok=False, error_code="PADDLE_WORKER_INVALID_RESPONSE")
+
+        def status_snapshot(self):
+            return None
+
+    monkeypatch.setattr(
+        health,
+        "get_settings",
+            lambda: SimpleNamespace(
+                worker_readiness_required=True,
+                worker_readiness_timeout_ms=15000,
+                ml_inference_queue_max_queue_size=32,
+                paddle_worker_python_path="/opt/venvs/paddle/bin/python",
+                paddle_worker_script_path="/app/scripts/paddle_ocr_worker.py",
+                paddle_worker_payload_dir="/tmp/paddle",
+        ),
+    )
+    monkeypatch.setattr(health, "cached_paddle_worker_client", lambda *_args: Client())
+
+    result = await health.check_paddle_worker()
+
+    assert result["name"] == "paddle_worker"
+    assert result["status"] == "unhealthy"
+    assert result["required"] is True
+    assert result["code"] == "PADDLE_WORKER_INVALID_RESPONSE"

@@ -1,0 +1,42 @@
+{
+  "SECRET_CREDENTIAL_CONTEXT": {
+    "positive": "YES for filled secret values: API keys, bearer tokens, passwords, private keys, webhook/signing secrets, connection strings, or secret config values.",
+    "negative": "NO for empty fields, placeholders, redacted or removed values, policy text, lint warnings, or credential words without a filled value.",
+    "boundary": "Require an actual credential-like value, not just the term key, token, password, or secret."
+  },
+  "PERSONAL_DATA_CONTEXT": {
+    "positive": "YES when a natural person can be identified or re-identified: name, phone, email, address, birth date, government id, health/biometric/political/criminal data, employee tied to action/state/time, or pseudonymous id tied to behavior, location, risk, eligibility, finance, or employment.",
+    "negative": "NO for company-only records, service accounts, security roles, payment artifacts, schema/field lists, masking policy text, or standalone ids with no person or re-identification context.",
+    "boundary": "Ask whether the row points to a person. Business, payment, and security artifacts are not PERSONAL unless tied to a person or re-identifiable person-like subject."
+  },
+  "FINANCIAL_IDENTIFIER_CONTEXT": {
+    "positive": "YES for concrete payment or financial identifiers: account numbers, card numbers, approval numbers, transaction ids, payment keys, virtual accounts, wallet ids, or payout accounts.",
+    "negative": "NO for amounts, payment status, lifecycle docs, empty forms, column definitions, or masking rules without actual identifier values.",
+    "boundary": "Require an actual financial/payment identifier value."
+  },
+  "CONFIDENTIAL_BUSINESS_CONTEXT": {
+    "positive": "YES for non-public business material: strategy, roadmap, launch plan, budget, staffing plan, churn/retention metrics, ARPU/LTV targets, pricing, discounts, margins, rebates, renewal risk, forecasts, vendor terms, or customer account terms.",
+    "negative": "NO for public marketing, generic business concepts, public prices, or educational accounting/business explanations without specific non-public company facts.",
+    "boundary": "Require private business strategy, economics, roadmap, terms, or metrics."
+  },
+  "PROPRIETARY_TECHNICAL_CONTEXT": {
+    "positive": "YES for non-public technical mechanism or decision output: algorithm, model/ranking/scoring logic, thresholds, features or weights, allocation rules, personalization logic, fallback order, classifier logic, implementation design, or internal score/bucket/eligibility/moderation/risk output.",
+    "negative": "NO for generic ML concepts, business metrics/prices, incident or deploy state alone, IAM/RBAC/WAF/access-control values, identifiers alone, public fields, or numeric scores without private system-decision meaning.",
+    "boundary": "Ask whether it reveals how an internal system decides or works. Operations, business terms, security controls, and identifiers are not PROPRIETARY by themselves."
+  },
+  "SECURITY_CONTROL_CONTEXT": {
+    "positive": "YES for active internal security-control values: IAM/RBAC memberships, firewall/WAF rules, allowlists, VPN ranges, security groups, ACLs, policy values, or role-permission mappings.",
+    "negative": "NO for conceptual security docs, public examples, reserved IPs, empty request forms, or generic best practices.",
+    "boundary": "Require an active internal access-control or enforcement value."
+  },
+  "INTERNAL_OPERATION_CONTEXT": {
+    "positive": "YES for live internal operational state: incident status, deploy wave, rollback state, queue backlog, pager handoff, batch state, service health, outage timeline, or mitigation progress.",
+    "negative": "NO for generic runbooks, status taxonomies, postmortem templates, deployment procedures, SRE concepts, or empty forms without current state.",
+    "boundary": "Require current internal operation state, not procedure text."
+  },
+  "BULK_SENSITIVE_RECORD_CONTEXT": {
+    "positive": "YES for many row-level sensitive records: bulk exports, rosters, ledgers, batch files, mass personal/financial identifiers, or large pseudonymous record processing.",
+    "negative": "NO for aggregate metrics, capacity stats, pipeline counts, dashboards without row-level records, or one to three person/payment cases.",
+    "boundary": "Require row-level bulk processing, not merely a large number."
+  }
+}

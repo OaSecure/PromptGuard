@@ -97,6 +97,168 @@ BUILT_IN_RULES: list[FilterRule] = [
         editable_fields={"severity": True, "action": True, "enabled": True},
         version=1,
     ),
+    FilterRule(
+        id=uuid.UUID("00000000-0000-4000-8000-000000000105"),
+        origin="built_in",
+        kind="detector",
+        category="Payment",
+        label="Korean Bank Account",
+        description="Detects Korean bank account numbers near bank/account context.",
+        detector_key="BANK_ACCOUNT",
+        placeholder="BANK_ACCOUNT",
+        severity="high",
+        action="MASK",
+        enabled=True,
+        editable_fields={"severity": True, "action": True, "enabled": True},
+        version=1,
+    ),
+    FilterRule(
+        id=uuid.UUID("00000000-0000-4000-8000-000000000106"),
+        origin="built_in",
+        kind="regex",
+        category="Secret",
+        label="Public API Key or Token",
+        description="Detects exposed API keys, access tokens, webhook tokens, and private-key headers.",
+        pattern=(
+            r"(?i)(?:"
+            r"sk-[A-Za-z0-9_-]{20,}|"
+            r"gh[pousr]_[A-Za-z0-9_]{20,}|"
+            r"github_pat_[A-Za-z0-9_]{22,}|"
+            r"xox[baprs]-[A-Za-z0-9-]{20,}|"
+            r"AKIA[0-9A-Z]{16}|"
+            r"AIza[0-9A-Za-z_-]{35}|"
+            r"SG\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}|"
+            r"-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----|"
+            r"(?:api[_-]?key|access[_-]?token|secret[_-]?key|client[_-]?secret|bearer)\s*[:=]\s*['\"]?[A-Za-z0-9._~+/=-]{16,}"
+            r")"
+        ),
+        placeholder="API_SECRET",
+        severity="critical",
+        action="BLOCK",
+        enabled=True,
+        editable_fields={"severity": True, "action": True, "enabled": True},
+        version=1,
+    ),
+    FilterRule(
+        id=uuid.UUID("00000000-0000-4000-8000-000000000201"),
+        origin="built_in",
+        kind="detector",
+        category="Context Risk",
+        label="계정/인증 정보 맥락",
+        description="Controls ML-confirmed secret or credential context.",
+        detector_key="SECRET_CREDENTIAL_CONTEXT",
+        placeholder="SECRET_CREDENTIAL_CONTEXT",
+        severity="critical",
+        action="BLOCK",
+        enabled=True,
+        editable_fields={"severity": True, "action": True, "enabled": True},
+        version=1,
+    ),
+    FilterRule(
+        id=uuid.UUID("00000000-0000-4000-8000-000000000202"),
+        origin="built_in",
+        kind="detector",
+        category="Context Risk",
+        label="개인정보 맥락",
+        description="Controls ML-confirmed personal data context.",
+        detector_key="PERSONAL_DATA_CONTEXT",
+        placeholder="PERSONAL_DATA_CONTEXT",
+        severity="high",
+        action="WARN",
+        enabled=True,
+        editable_fields={"severity": True, "action": True, "enabled": True},
+        version=1,
+    ),
+    FilterRule(
+        id=uuid.UUID("00000000-0000-4000-8000-000000000203"),
+        origin="built_in",
+        kind="detector",
+        category="Context Risk",
+        label="금융 식별 정보 맥락",
+        description="Controls ML-confirmed financial identifier context.",
+        detector_key="FINANCIAL_IDENTIFIER_CONTEXT",
+        placeholder="FINANCIAL_IDENTIFIER_CONTEXT",
+        severity="high",
+        action="WARN",
+        enabled=True,
+        editable_fields={"severity": True, "action": True, "enabled": True},
+        version=1,
+    ),
+    FilterRule(
+        id=uuid.UUID("00000000-0000-4000-8000-000000000204"),
+        origin="built_in",
+        kind="detector",
+        category="Context Risk",
+        label="기밀 비즈니스 정보 맥락",
+        description="Controls ML-confirmed confidential business context.",
+        detector_key="CONFIDENTIAL_BUSINESS_CONTEXT",
+        placeholder="CONFIDENTIAL_BUSINESS_CONTEXT",
+        severity="critical",
+        action="BLOCK",
+        enabled=True,
+        editable_fields={"severity": True, "action": True, "enabled": True},
+        version=1,
+    ),
+    FilterRule(
+        id=uuid.UUID("00000000-0000-4000-8000-000000000205"),
+        origin="built_in",
+        kind="detector",
+        category="Context Risk",
+        label="전용 기술 정보 맥락",
+        description="Controls ML-confirmed proprietary technical context.",
+        detector_key="PROPRIETARY_TECHNICAL_CONTEXT",
+        placeholder="PROPRIETARY_TECHNICAL_CONTEXT",
+        severity="critical",
+        action="BLOCK",
+        enabled=True,
+        editable_fields={"severity": True, "action": True, "enabled": True},
+        version=1,
+    ),
+    FilterRule(
+        id=uuid.UUID("00000000-0000-4000-8000-000000000206"),
+        origin="built_in",
+        kind="detector",
+        category="Context Risk",
+        label="보안 통제 정보 맥락",
+        description="Controls ML-confirmed security control context.",
+        detector_key="SECURITY_CONTROL_CONTEXT",
+        placeholder="SECURITY_CONTROL_CONTEXT",
+        severity="critical",
+        action="BLOCK",
+        enabled=True,
+        editable_fields={"severity": True, "action": True, "enabled": True},
+        version=1,
+    ),
+    FilterRule(
+        id=uuid.UUID("00000000-0000-4000-8000-000000000207"),
+        origin="built_in",
+        kind="detector",
+        category="Context Risk",
+        label="내부 운영 정보 맥락",
+        description="Controls ML-confirmed internal operation context.",
+        detector_key="INTERNAL_OPERATION_CONTEXT",
+        placeholder="INTERNAL_OPERATION_CONTEXT",
+        severity="high",
+        action="WARN",
+        enabled=True,
+        editable_fields={"severity": True, "action": True, "enabled": True},
+        version=1,
+    ),
+    FilterRule(
+        id=uuid.UUID("00000000-0000-4000-8000-000000000208"),
+        origin="built_in",
+        kind="detector",
+        category="Context Risk",
+        label="대량 민감 기록 맥락",
+        description="Controls ML-confirmed bulk sensitive record context.",
+        detector_key="BULK_SENSITIVE_RECORD_CONTEXT",
+        placeholder="BULK_SENSITIVE_RECORD_CONTEXT",
+        severity="critical",
+        action="BLOCK",
+        enabled=True,
+        editable_fields={"severity": True, "action": True, "enabled": True},
+        version=1,
+    ),
 ]
 
 
@@ -108,8 +270,58 @@ async def load_active_filter_rules(session: AsyncSession) -> list[FilterRule]:
     except Exception:
         return [rule for rule in BUILT_IN_RULES if rule.enabled]
 
-    rules = list(result.scalars().all())
-    return rules or [rule for rule in BUILT_IN_RULES if rule.enabled]
+    return _merge_built_in_and_stored_rules(list(result.scalars().all()))
+
+
+async def load_manageable_filter_rules(session: AsyncSession) -> list[FilterRule]:
+    try:
+        result = await session.execute(select(FilterRule).where(FilterRule.archived_at.is_(None)))
+    except Exception:
+        return [rule for rule in BUILT_IN_RULES if rule.archived_at is None]
+
+    return _merge_built_in_and_stored_rules(list(result.scalars().all()), active_only=False)
+
+
+def _merge_built_in_and_stored_rules(stored_rules: list[FilterRule], *, active_only: bool = True) -> list[FilterRule]:
+    active_stored = _active_rules(stored_rules)
+    stored_built_in_by_key = _stored_built_in_overrides(active_stored)
+    merged = [_rule_with_override(rule, stored_built_in_by_key) for rule in BUILT_IN_RULES]
+    merged.extend(_custom_rules(active_stored))
+    if active_only:
+        return [rule for rule in merged if rule.enabled]
+    return merged
+
+
+def _active_rules(rules: list[FilterRule]) -> list[FilterRule]:
+    return [rule for rule in rules if rule.archived_at is None]
+
+
+def _stored_built_in_overrides(rules: list[FilterRule]) -> dict[str, FilterRule]:
+    overrides: dict[str, FilterRule] = {}
+    for rule in rules:
+        key = _built_in_override_key(rule)
+        if key is not None:
+            overrides[key] = rule
+    return overrides
+
+
+def _custom_rules(rules: list[FilterRule]) -> list[FilterRule]:
+    return [rule for rule in rules if rule.origin != "built_in"]
+
+
+def _rule_with_override(rule: FilterRule, overrides: dict[str, FilterRule]) -> FilterRule:
+    key = _built_in_override_key(rule)
+    if key is None:
+        return rule
+    return overrides.get(key, rule)
+
+
+def _built_in_override_key(rule: FilterRule) -> str | None:
+    if rule.origin != "built_in":
+        return None
+    if rule.detector_key:
+        return f"detector:{rule.detector_key}"
+    return f"id:{rule.id}"
 
 
 def filter_rule_set_version(rules: list[FilterRule]) -> str:
@@ -299,7 +511,7 @@ def evaluate_filter_rules(prompt: str, rules: list[FilterRule]) -> list[RuleMatc
     rules = [rule for rule in rules if rule.enabled and rule.archived_at is None]
     matches = _built_in_matches(prompt, rules)
     for rule in rules:
-        if rule.origin != "custom":
+        if rule.origin not in {"custom", "built_in"}:
             continue
         if rule.kind == "keyword":
             match = _custom_keyword_match(prompt, rule)

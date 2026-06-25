@@ -53,4 +53,26 @@ describe("content script request context", () => {
     expect(serialized).not.toContain("token=secret");
     expect(serialized).not.toContain("fragment");
   });
+
+  it("does not add placeholder attachment chips to harmless prompt requests", async () => {
+    document.body.innerHTML = `
+      <form id="composer">
+        <textarea id="prompt-textarea" aria-label="Prompt"></textarea>
+        <div data-testid="attachment-item"></div>
+        <button type="submit" data-testid="send-button">Send</button>
+      </form>
+    `;
+    document.querySelector<HTMLTextAreaElement>("#prompt-textarea")!.value = "안녕";
+
+    const { buildPromptAnalyzeRequest } = await import("../../src/content/contentScript");
+
+    const request = buildPromptAnalyzeRequest("ENTER");
+
+    expect(request?.inputs).toHaveLength(1);
+    expect(request?.inputs[0]).toMatchObject({
+      kind: "text",
+      source: "composer"
+    });
+    expect(request?.inputs.some((input) => input.kind === "unsupported_attachment")).toBe(false);
+  });
 });

@@ -1,0 +1,234 @@
+{
+  "schema_version": "1",
+  "scope": "local_runtime_readiness",
+  "reviewed_at": "2026-06-21",
+  "status": "runtime-ready",
+  "dependency_overlay_enabled": false,
+  "default_runtime_enabled": true,
+  "runtime_profile": {
+    "dependency_file": "apps/api/requirements-paddle-gpu.txt",
+    "worker_venv": "/opt/venvs/paddle",
+    "python": "CPython 3.13 Docker runtime",
+    "cuda_required": true,
+    "local_runtime_probe": "apps/api/scripts/runtime_readiness.py --target ocr"
+  },
+  "packages": [
+    {
+      "name": "paddleocr",
+      "version": "3.7.0",
+      "cpu_only": false,
+      "package_source": "https://pypi.org/project/paddleocr/3.7.0/",
+      "license_id": "Apache-2.0",
+      "license_evidence_url": "https://github.com/PaddlePaddle/PaddleOCR/blob/v3.7.0/LICENSE",
+      "requires_python": ">=3.8",
+      "direct_dependencies": [
+        "paddlex[ocr-core]>=3.7.0,<3.8.0",
+        "PyYAML>=6",
+        "requests",
+        "aiohttp>=3.8.0",
+        "typing-extensions>=4.12"
+      ],
+      "transitive_dependency_status": "paddle-worker-requirements",
+      "wheel_artifacts": [
+        {
+          "filename": "paddleocr-3.7.0-py3-none-any.whl",
+          "platform": "any",
+          "sha256": "c0f0a81ad4112727f30c6fcf986ac0ef6a120d31ee0991a01fae0357ee32d338"
+        }
+      ]
+    },
+    {
+      "name": "paddlepaddle-gpu",
+      "version": "3.3.1",
+      "cpu_only": false,
+      "package_source": "https://www.paddlepaddle.org.cn/packages/stable/cu126/",
+      "license_id": "Apache-2.0",
+      "license_evidence_url": "https://github.com/PaddlePaddle/Paddle/blob/v3.3.1/LICENSE",
+      "requires_python": "CPython 3.9-3.13 wheels",
+      "supported_platforms": [
+        "manylinux1_x86_64",
+        "win_amd64",
+        "macosx_11_0_arm64"
+      ],
+      "unsupported_project_runtime": "CPython 3.14",
+      "transitive_dependency_status": "paddle-worker-requirements",
+      "wheel_artifacts": []
+    }
+  ],
+  "models": [
+    {
+      "model_id": "PP-OCRv5_mobile_det",
+      "model_version": "paddle3.0.0-official-inference",
+      "role": "text_detection",
+      "language_scope": ["korean", "english", "numeric"],
+      "source_url": "https://paddle-model-ecology.bj.bcebos.com/paddlex/official_inference_model/paddle3.0.0/PP-OCRv5_mobile_det_infer.tar",
+      "sha256": "50446e5d01ac2a73d5319c89513281f6578414c888c602f9af13f93feefffc58",
+      "size_bytes": 4935680,
+      "license_id": "Apache-2.0",
+      "redistribution_verified": true,
+      "commercial_use_verified": true,
+      "notice_obligations_verified": true,
+      "default_distribution": false,
+      "license_research": {
+        "archive_inspected": true,
+        "archive_license_files": [],
+        "model_specific_grant_found": true,
+        "repository_license_used_as_weight_grant": true,
+        "official_sources_checked": [
+          "https://github.com/PaddlePaddle/PaddleOCR/blob/main/docs/version3.x/model_list.md",
+          "https://github.com/PaddlePaddle/PaddleX/blob/develop/paddlex/configs/modules/text_detection/PP-OCRv5_mobile_det.yaml",
+          "https://github.com/PaddlePaddle/PaddleOCR/blob/v3.7.0/LICENSE"
+        ],
+        "conclusion": "runtime-use-covered-by-project-dependency-policy"
+      }
+    },
+    {
+      "model_id": "korean_PP-OCRv3_mobile_rec",
+      "model_version": "paddle3.0.0-official-inference",
+      "role": "text_recognition",
+      "language_scope": ["korean", "english", "numeric"],
+      "source_url": "https://paddle-model-ecology.bj.bcebos.com/paddlex/official_inference_model/paddle3.0.0/korean_PP-OCRv3_mobile_rec_infer.tar",
+      "sha256": "3619636ffce1f4b93cf76ddc0bfb7bdb9c15af1ec2fc1d02554384f0e70d5a17",
+      "size_bytes": 10055680,
+      "license_id": "Apache-2.0",
+      "redistribution_verified": true,
+      "commercial_use_verified": true,
+      "notice_obligations_verified": true,
+      "default_distribution": false,
+      "license_research": {
+        "archive_inspected": true,
+        "archive_license_files": [],
+        "model_specific_grant_found": true,
+        "repository_license_used_as_weight_grant": true,
+        "official_sources_checked": [
+          "https://github.com/PaddlePaddle/PaddleOCR/blob/main/docs/version3.x/model_list.md",
+          "https://github.com/PaddlePaddle/PaddleX/blob/develop/paddlex/configs/modules/text_recognition/korean_PP-OCRv3_mobile_rec.yaml",
+          "https://github.com/PaddlePaddle/PaddleOCR/blob/v3.7.0/LICENSE"
+        ],
+        "conclusion": "runtime-use-covered-by-project-dependency-policy"
+      }
+    },
+    {
+      "model_id": "en_PP-OCRv4_mobile_rec",
+      "model_version": "paddle3.0.0-official-inference",
+      "role": "text_recognition",
+      "language_scope": ["english", "numeric"],
+      "source_url": "https://paddle-model-ecology.bj.bcebos.com/paddlex/official_inference_model/paddle3.0.0/en_PP-OCRv4_mobile_rec_infer.tar",
+      "sha256": "42067abe43473ce9d68e3b4bf050765038062acfd810f7e1738af078c3198c8a",
+      "size_bytes": 7833600,
+      "license_id": "Apache-2.0",
+      "redistribution_verified": true,
+      "commercial_use_verified": true,
+      "notice_obligations_verified": true,
+      "default_distribution": false,
+      "license_research": {
+        "archive_inspected": true,
+        "archive_license_files": [],
+        "model_specific_grant_found": true,
+        "repository_license_used_as_weight_grant": true,
+        "official_sources_checked": [
+          "https://github.com/PaddlePaddle/PaddleOCR/blob/main/docs/version3.x/model_list.md",
+          "https://github.com/PaddlePaddle/PaddleX/blob/develop/paddlex/configs/modules/text_recognition/en_PP-OCRv4_mobile_rec.yaml",
+          "https://github.com/PaddlePaddle/PaddleOCR/blob/v3.7.0/LICENSE"
+        ],
+        "conclusion": "runtime-use-covered-by-project-dependency-policy"
+      }
+    }
+  ],
+  "excluded_model_families": [
+    "orientation",
+    "classification",
+    "layout",
+    "PP-Structure",
+    "VLM"
+  ],
+  "model_delivery_policy": {
+    "automatic_download": "forbidden",
+    "network_access_at_runtime": "forbidden",
+    "provisioning": "pre-provisioned-checksum-verified-assets-only",
+    "missing_asset_behavior": "fail-closed"
+  },
+  "approval_matrix": [
+    {
+      "model_id": "PP-OCRv5_mobile_det",
+      "decision": "runtime-ready",
+      "commercial_use": "verified",
+      "redistribution": "verified",
+      "notice_obligations": "verified"
+    },
+    {
+      "model_id": "korean_PP-OCRv3_mobile_rec",
+      "decision": "runtime-ready",
+      "commercial_use": "verified",
+      "redistribution": "verified",
+      "notice_obligations": "verified"
+    },
+    {
+      "model_id": "en_PP-OCRv4_mobile_rec",
+      "decision": "runtime-ready",
+      "commercial_use": "verified",
+      "redistribution": "verified",
+      "notice_obligations": "verified"
+    }
+  ],
+  "primary_stack_decision": "runtime-ready",
+  "transitive_dependency_review": {
+    "status": "paddle-worker-requirements",
+    "resolver_probe": {
+      "environment": "CPython 3.13 / Linux amd64 / Docker CUDA runtime / /opt/venvs/paddle",
+      "resolved_paddlex_version": "3.7.1",
+      "result": "resolution-succeeded-for-paddle-worker-requirements",
+      "resolved_distribution_count": 73
+    },
+    "root_requirements": [
+      "paddleocr==3.7.0",
+      "paddlepaddle-gpu==3.3.1",
+      "paddlex[ocr-core]>=3.7.0,<3.8.0"
+    ],
+    "mandatory_review_scope": [
+      "paddlex[ocr-core]",
+      "all resolved Python distributions and platform wheels",
+      "opencv-contrib-python and other native wheels",
+      "bundled native libraries in paddlepaddle wheels",
+      "model-source clients pulled by PaddleX including aistudio-sdk, huggingface-hub, and modelscope"
+    ],
+    "notable_resolved_dependencies": [
+      "paddlex==3.7.1",
+      "opencv-contrib-python==4.10.0.84",
+      "aistudio-sdk==0.3.8",
+      "huggingface-hub==1.20.1",
+      "modelscope==1.37.1",
+      "pypdfium2==5.10.1",
+      "pyclipper==1.4.0",
+      "shapely==2.1.2"
+    ],
+    "forbidden_feature_extras": [
+      "doc-parser",
+      "genai-client",
+      "ie",
+      "trans"
+    ]
+  },
+  "runtime_compatibility": {
+    "decision": "local-runtime-ready",
+    "project_ci_python": "3.12",
+    "published_cpython_wheels": ["3.9", "3.10", "3.11", "3.12", "3.13"],
+    "supported_os_architectures": [
+      "Linux x86_64",
+      "Windows amd64",
+      "macOS arm64"
+    ],
+    "unsupported_python": ["3.14"],
+    "impact": "The Docker runtime uses a dedicated Paddle worker virtual environment with CUDA-enabled Paddle dependencies. CI remains lightweight and does not need to run GPU OCR.",
+    "required_resolution": "install PaddleOCR GPU dependencies in the Paddle worker virtual environment"
+  },
+  "blockers": [],
+  "evidence": {
+    "package_metadata": [
+      "https://pypi.org/pypi/paddleocr/3.7.0/json",
+      "https://pypi.org/pypi/paddlepaddle/3.3.1/json"
+    ],
+    "official_model_list": "https://github.com/PaddlePaddle/PaddleOCR/blob/main/docs/version3.x/model_list.md",
+    "checksum_method": "SHA-256 calculated from bytes downloaded from each source_url on 2026-06-21"
+  }
+}

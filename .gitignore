@@ -8,9 +8,19 @@ apps/dashboard/dist/
 .env
 .env.*
 !.env.example
+.venv/
+apps/api/.venv/
 *.log
+__pycache__/
 .pytest_cache/
 apps/api/.pytest_cache/
+
+# Runtime model artifacts. Keep README and sample manifests versioned; mount
+# real artifacts into the API container at /opt/promptguard/models.
+models/*
+!models/README.md
+!models/examples/
+!models/examples/**
 
 # OS/editor noise
 .DS_Store

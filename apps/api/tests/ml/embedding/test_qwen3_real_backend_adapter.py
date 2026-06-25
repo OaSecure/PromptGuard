@@ -1,5 +1,7 @@
 import builtins
 import os
+import sys
+from types import SimpleNamespace
 
 import pytest
 
@@ -43,7 +45,7 @@ def test_qwen3_backend_dependency_failure_is_sanitized(monkeypatch):
     real_import = builtins.__import__
 
     def guarded_import(name, *args, **kwargs):
-        if name in {"torch", "transformers"}:
+        if name in {"torch", "sentence_transformers"}:
             raise ImportError(f"missing {name} while handling SECRET-ATOM")
         return real_import(name, *args, **kwargs)
 
@@ -60,7 +62,7 @@ def test_qwen3_backend_factory_integrates_with_worker_without_leaking_text(monke
     real_import = builtins.__import__
 
     def guarded_import(name, *args, **kwargs):
-        if name in {"torch", "transformers"}:
+        if name in {"torch", "sentence_transformers"}:
             raise ImportError("optional ml dependency missing for SECRET-ATOM")
         return real_import(name, *args, **kwargs)
 
@@ -73,6 +75,95 @@ def test_qwen3_backend_factory_integrates_with_worker_without_leaking_text(monke
     assert result.failure is not None
     assert result.failure.code == "EMBEDDING_MODEL_UNAVAILABLE"
     assert "SECRET-ATOM" not in result.failure.message
+
+
+def test_qwen3_backend_uses_sentence_transformer_encode_with_normalization(monkeypatch):
+    encode_calls = []
+
+    class FakeTensor:
+        def __init__(self, values):
+            self._values = values
+
+        def tolist(self):
+            return self._values
+
+    class FakeSentenceTransformer:
+        def __init__(self, model_name, *, device, trust_remote_code, local_files_only):
+            self.model_name = model_name
+            self.device = device
+            self.trust_remote_code = trust_remote_code
+            self.local_files_only = local_files_only
+
+        def eval(self):
+            return None
+
+        def parameters(self):
+            return []
+
+        def get_sentence_embedding_dimension(self):
+            return 2
+
+        def encode(self, texts, *, normalize_embeddings, convert_to_numpy, show_progress_bar):
+            encode_calls.append(
+                {
+                    "texts": texts,
+                    "normalize_embeddings": normalize_embeddings,
+                    "convert_to_numpy": convert_to_numpy,
+                    "show_progress_bar": show_progress_bar,
+                }
+            )
+            return FakeTensor([[0.6, 0.8] for _text in texts])
+
+    fake_torch = SimpleNamespace(cuda=SimpleNamespace(is_available=lambda: False))
+    fake_sentence_transformers = SimpleNamespace(SentenceTransformer=FakeSentenceTransformer)
+    monkeypatch.setitem(sys.modules, "torch", fake_torch)
+    monkeypatch.setitem(sys.modules, "sentence_transformers", fake_sentence_transformers)
+
+    backend = Qwen3EmbeddingBackend(QWEN3_EMBEDDING_MODEL)
+    vectors = backend.embed_texts(["sample context"], normalize=True)
+
+    assert backend.dimension == 2
+    assert backend.model_version == QWEN3_EMBEDDING_MODEL
+    assert vectors == [[0.6, 0.8]]
+    assert encode_calls == [
+        {
+            "texts": ["sample context"],
+            "normalize_embeddings": True,
+            "convert_to_numpy": True,
+            "show_progress_bar": False,
+        }
+    ]
+
+
+def test_qwen3_backend_can_use_local_path_without_changing_logical_model_version(monkeypatch):
+    class FakeSentenceTransformer:
+        def __init__(self, model_name, *, device, trust_remote_code, local_files_only):
+            self.model_name = model_name
+            self.local_files_only = local_files_only
+
+        def eval(self):
+            return None
+
+        def parameters(self):
+            return []
+
+        def get_sentence_embedding_dimension(self):
+            return 1024
+
+    fake_torch = SimpleNamespace(cuda=SimpleNamespace(is_available=lambda: False))
+    fake_sentence_transformers = SimpleNamespace(SentenceTransformer=FakeSentenceTransformer)
+    monkeypatch.setitem(sys.modules, "torch", fake_torch)
+    monkeypatch.setitem(sys.modules, "sentence_transformers", fake_sentence_transformers)
+
+    backend = Qwen3EmbeddingBackend(
+        "/opt/promptguard/models/qwen3-embedding-0.6b",
+        local_files_only=True,
+        model_version=QWEN3_EMBEDDING_MODEL,
+    )
+
+    assert backend.model_version == QWEN3_EMBEDDING_MODEL
+    assert backend._model.model_name == "/opt/promptguard/models/qwen3-embedding-0.6b"
+    assert backend._model.local_files_only is True
 
 
 @pytest.mark.skipif(os.getenv("RUN_REAL_QWEN_TESTS") != "1", reason="real Qwen3 model download is opt-in")

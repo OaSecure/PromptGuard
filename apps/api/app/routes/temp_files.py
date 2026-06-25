@@ -20,6 +20,7 @@ SAFE_EXTENSION = re.compile(r"^[a-z0-9]{1,16}$")
 
 class TempUploadResponse(BaseModel):
     file_ref: str
+    temp_scope_id: str
     file_kind: str
     mime_hint: str | None
     extension_hint: str | None

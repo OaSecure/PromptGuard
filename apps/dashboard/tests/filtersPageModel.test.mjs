@@ -6,15 +6,18 @@ const {
   buildFilterDryRunPlan,
   buildFilterMutationPayload,
   buildFilterSavePlan,
+  filterActionLabel,
   filterActionOptions,
   filterDryRunHelpText,
   filterFieldVisibility,
   filterFormActionSpecs,
   filterHeaderNavItems,
+  filterKindLabel,
   filterKindOptions,
   filterRegexHelpItems,
   filterRegexHelpText,
   filterSensitivityOptions,
+  filterSeverityLabel,
   filterSeverityOptions,
   safeFilterMutationErrorMessage,
   validateFilterFormState,
@@ -92,6 +95,9 @@ test("filter select options expose Korean labels while preserving API enum value
     { value: "medium", label: "보통" },
     { value: "high", label: "높음" },
   ]);
+  assert.equal(filterKindLabel("context_rule"), "업무 맥락");
+  assert.equal(filterActionLabel("BLOCK"), "차단");
+  assert.equal(filterSeverityLabel("critical"), "심각");
 });
 
 test("filter guidance makes server dry-run oracle and regex semantics explicit", () => {

@@ -249,6 +249,11 @@ MVP에서는 여러 입력과 여러 탐지 결과가 동시에 존재하더라�
 
   - MVP 기본 구성은 API와 PostgreSQL이다.
   - API base image는 `python:3.13-slim`을 사용한다.
+  - API 서버는 web request process 안에서 ML/OCR heavy dependency를 직접 import하거나 per-request model load를 수행하지 않는다.
+  - Torch/LR+FT verifier runtime과 PaddleOCR parser runtime은 API 서버가 호출하는 resident worker process로 분리한다.
+  - resident worker process는 startup 후 대기 queue를 유지하며, 요청별 one-shot subprocess 실행은 fallback/debug path로만 허용한다.
+  - worker queue는 bounded queue, timeout, readiness, structured failure code, graceful shutdown을 제공해야 한다.
+  - Docker 실행 기준에서 `/readyz`는 DB/migration/filter rule뿐 아니라 필수 resident worker readiness를 핵심 의존성으로 반영한다.
   - 대시보드는 HTML/CSS/TypeScript 기반 정적 파일 산출물로 배포한다.
   - MVP 배포 기준에서는 FastAPI 서버가 API와 dashboard 정적 파일을 함께 제공한다.
   - Redis는 필요할 때 켤 수 있는 선택 profile로 제공한다.
@@ -274,11 +279,11 @@ MVP에서는 여러 입력과 여러 탐지 결과가 동시에 존재하더라�
 | 엔드포인트                   | 목적                             | 인증             | HTTP 상태 규칙                                                                       |
 | ----------------------- | ------------------------------ | -------------- | -------------------------------------------------------------------------------- |
 | `GET /livez`            | 프로세스가 살아 있고 요청 처리기가 응답 가능한지 확인 | 공개 또는 내부       | 프로세스가 응답 가능하면 `200`, 응답 불가하면 응답 자체가 실패                                           |
-| `GET /readyz`           | 서버가 트래픽을 받아도 되는지 확인            | 내부 권장          | 설정 유효, DB 연결 가능, 마이그레이션 최신, 기본 필터 설정 로드 가능이면 `200`; 핵심 의존성이 불가하면 `503`           |
+| `GET /readyz`           | 서버가 트래픽을 받아도 되는지 확인            | 내부 권장          | 설정 유효, DB 연결 가능, 마이그레이션 최신, 기본 필터 설정 로드 가능, 필수 resident worker 준비 완료이면 `200`; 핵심 의존성이 불가하면 `503` |
 | `GET /healthz`          | 운영자용 집계 상태                     | 내부 또는 ADMIN 권장 | 핵심 기능 가능하면 `200`; 선택 의존성만 문제면 body `status=degraded`와 함께 `200`; 핵심 의존성 불가면 `503` |
 | `GET /dashboard/status` | 대시보드가 쓰는 서버 상태 API             | ADMIN          | `/healthz`와 같은 상태 metadata를 인증된 대시보드 형식으로 반환                                     |
 
-상태 확인 endpoint는 Docker Compose 실행과 fresh install 검증에 사용한다. 준비 상태 확인이 실패하면 MVP smoke를 통과한 것으로 보지 않는다.
+상태 확인 endpoint는 Docker Compose 실행과 fresh install 검증에 사용한다. 준비 상태 확인이 실패하면 MVP smoke를 통과한 것으로 보지 않는다. ML/OCR resident worker가 필수 분석 경로에 연결된 배포 profile에서는 worker readiness 실패도 준비 상태 실패로 취급한다.
 
 ### 5.2 상태 응답 형식
 
@@ -753,7 +758,7 @@ PDF, Office, OCR, 압축 해제, malware scanning, binary analysis, ZIP 내부 �
 | 필드                   | 기본값    | 의미                                                                           |
 | -------------------- | ------ | ---------------------------------------------------------------------------- |
 | `config_request_ms`  | `5000` | 확장앱 설정 요청 timeout. 최초 설정 요청에는 확장앱 내장 기본값을 쓰고, 이후에는 서버 설정 또는 캐시된 설정을 적용한다.    |
-| `analyze_request_ms` | `8000` | `/prompts/analyze` 요청 timeout. 이 시간을 넘으면 확장앱은 서버 응답 실패로 보고 timeout UX를 적용한다. |
+| `analyze_request_ms` | `120000` | `/prompts/analyze` 요청 timeout. 서버의 `PROMPTGUARD_ML_INFERENCE_QUEUE_TIMEOUT_MS`와 같은 값으로 노출해야 하며, 확장앱은 이 시간을 넘으면 서버 응답 실패로 보고 timeout UX를 적용한다. |
 
 `input_limits`는 byte 기준 크기 제한을 고정 key-value map으로 표현한다. 서버 내부 환경변수나 설정 이름은 `MAX_COMPOSER_TEXT_BYTES`처럼 대문자 상수명을 쓸 수 있지만, API 응답 JSON은 snake\_case field로 내려준다.
 
@@ -868,6 +873,7 @@ MVP에서는 여러 종류의 탐지/제약이 동시에 걸린 경우의 고급
 | `input_results[]`              | `inputs[]` item별 처리 결과 요약                    |
 | `content_unavailable_inputs[]` | 서버가 실제 내용을 검사하지 못하고 metadata-only로 판단한 입력 요약 |
 | `business_context_matches[]`   | 적용되는 경우 Business Context match metadata      |
+| `context_risk_evidence`        | ML classifier/verifier 문맥 위험 safe evidence metadata |
 
 대시보드 이벤트 상세 화면과 `GET /dashboard/events/{event_id}` 응답은 다음 내부 식별자를 표시하거나 반환하지 않는다.
 
@@ -881,11 +887,15 @@ MVP에서는 여러 종류의 탐지/제약이 동시에 걸린 경우의 고급
 
 `detections[]`의 각 항목은 8.1의 응답 계약과 같은 기준을 따른다. 원문 탐지값을 포함하지 않고, 어느 입력에서 탐지됐는지 알 수 있도록 `input_id`, `input_index`, `kind`, `source`, `rule_id`, `detector_id`, `severity`, `action`, `placeholder`, `match_count`, `reason_code`를 포함한다.
 
-`input_results[]`는 요청 당시 `inputs[]`와 같은 순서로 저장된 처리 결과 요약을 반환한다. 각 항목은 `input_id`, `input_index`, `kind`, `source`, `content_included`, `content_scanned`, `decision_basis`, 필요한 경우 `content_unavailable_reason`, `limit_exceeded`를 포함한다.
+`input_results[]`는 요청 당시 `inputs[]`와 같은 순서로 저장된 처리 결과 요약을 반환한다. 각 항목은 `input_id`, `input_index`, `kind`, `source`, `content_included`, `content_scanned`, `decision_basis`, 필요한 경우 `content_unavailable_reason`, `limit_exceeded`를 포함한다. `decision_basis`는 해당 입력이 최종 정책결정에 어떤 근거로 반영됐는지를 나타낸다. ML context-risk evidence가 최종 action을 `Warn` 또는 `Block`으로 올린 경우, span 기반 deterministic detection이 없어도 scan된 입력의 `decision_basis`는 `context_risk`로 저장/반환한다.
 
 `content_unavailable_inputs[]`는 서버가 실제 내용을 검사하지 못하고 metadata-only로 판단한 입력만 별도로 요약한다. 없으면 빈 배열을 반환한다.
 
-Business Context match metadata는 `input_id`, `input_index`, `kind`, `source`, `category`, `reason_code`, `match_count`, `matched_keywords`, `evidence_counts`를 포함할 수 있다. `matched_keywords`는 시스템 rule pack 또는 관리자 등록 context rule 키워드에 한정한다. 임의 원문 span, 입력 일부, 주변 문장은 반환하지 않는다.
+Business Context match metadata는 `input_id`, `input_index`, `kind`, `source`, `category`, `reason_code`, `match_count`, `matched_keywords`, `evidence_counts`를 포함할 수 있다. `matched_keywords`는 시스템 rule pack 또는 관리자 등록 context rule 키워드에 한정한다. 임의 원문 span, 입력 일부, 주변 문장은 반환하지 않는다. ML classifier/verifier의 8-label context-risk evidence는 이 필드에 넣지 않고 `context_risk_evidence`로만 반환한다.
+
+`context_risk_evidence`는 `enabled`, `status`, `candidate_count`, `accepted_count`, `labels`, `status_counts`, `highest_score_bucket`, `highest_confidence_bucket`, `failure_code`, `reason_code`, `classifier_model_versions`, `verifier_model_versions`만 포함하는 raw-free metadata다. `status` 값은 `disabled`, `no_candidate`, `candidate`, `verified`, `timeout`, `failed` 중 하나다. `labels`는 모델 taxonomy label만 허용하고 원문 span, 금액, 계좌번호, 파일명, OCR text, vector/logit/exact score/confidence는 포함하지 않는다.
+
+ML context-risk evidence가 최종 action을 `Warn` 또는 `Block`으로 올린 경우에도 `business_context_matches[]`에 섞어 넣지 않는다. response와 dashboard detail은 `context_risk_evidence`를 별도 evidence로 표시하고, event 저장은 raw-free event-level metadata로 보존한다. `event_detections`는 deterministic detector/context-rule detection row 전용이며 ML context-risk evidence를 synthetic detection처럼 저장하지 않는다.
 
 ### 8.6 ADMIN 사용자 관리 API 계약
 
@@ -1826,7 +1836,7 @@ MVP에서 다음 처리는 제공하지 않는다.
 {
   "request_timeouts": {
     "config_request_ms": 5000,
-    "analyze_request_ms": 8000
+    "analyze_request_ms": 120000
   }
 }
 ```

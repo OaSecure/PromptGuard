@@ -1,0 +1,23 @@
+{
+  "asset_types_in_scope": [
+    "language_pack",
+    "native_library_binding",
+    "ocr_model_weight",
+    "pdf_renderer_binary"
+  ],
+  "assets": [
+    {
+      "asset_type": "pdf_renderer_binary",
+      "commercial_use_compatible": true,
+      "default_distribution": true,
+      "license_id": "BSD-3-Clause",
+      "model_id": "pdfium",
+      "model_version": "151.0.7891.0",
+      "source_disclosure_required": false,
+      "weight_source": "pdfium-binaries bundled in pypdfium2 5.10.1 wheel"
+    }
+  ],
+  "schema_version": "1",
+  "scope": "parser_ocr_runtime_assets",
+  "status": "pdf_renderer_runtime_asset_registered"
+}

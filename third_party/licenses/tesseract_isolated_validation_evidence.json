@@ -1,0 +1,147 @@
+{
+  "schema_version": "1",
+  "status": "additional-validation-required",
+  "production_approval": false,
+  "workflow_run": {
+    "id": 27927632968,
+    "url": "https://github.com/OaSecure/PromptGuard/actions/runs/27927632968",
+    "event": "workflow_dispatch",
+    "head_branch": "main",
+    "head_sha": "f47634b14bf81defb1e9b96ad30145119fc8951a",
+    "created_at": "2026-06-22T03:27:30Z",
+    "completed_at": "2026-06-22T03:27:53Z",
+    "conclusion": "success",
+    "runner_label": "ubuntu-24.04"
+  },
+  "artifact": {
+    "id": 7782618336,
+    "name": "tesseract-isolated-validation-27927632968",
+    "size_bytes": 20101024,
+    "digest": "sha256:b238eb022011f2f9400820a0a89c0f03ed4ca84a4631deefa68e9f496ab39acf",
+    "retention_days": 14,
+    "created": true,
+    "downloaded_to_local_developer_machine": false
+  },
+  "traineddata": {
+    "source_repository": "tesseract-ocr/tessdata",
+    "source_commit": "ced78752cc61322fb554c280d13360b35b8684e4",
+    "source_url_template": "https://raw.githubusercontent.com/tesseract-ocr/tessdata/{commit}/{filename}",
+    "artifacts": {
+      "kor.traineddata": {
+        "sha256": "9520bfe9e3cfc38d4a808e036b0287c88a1d37fb80b9a0a23928ddccdd20595b",
+        "verified": true
+      },
+      "eng.traineddata": {
+        "sha256": "daa0c97d651c19fba3b25e81317cd697e9908c8208090c94c3905381c23fc047",
+        "verified": true
+      }
+    }
+  },
+  "linux_runtime": {
+    "evidence_role": "verified-linux-candidate-not-production-approved",
+    "distribution": "ubuntu-24.04-runner",
+    "binary_path": "/usr/bin/tesseract",
+    "binary_sha256": "9f831cab7525c3dab04af41bda35182af7ea1df9dceeaaa2f3bf207ac45c06a5",
+    "tesseract_version": "5.3.4",
+    "tesseract_package": "tesseract-ocr 5.3.4-1build5 amd64",
+    "libtesseract_package": "libtesseract5 5.3.4-1build5 amd64",
+    "leptonica_package": "liblept5 1.82.0-3build4 amd64",
+    "verified": true,
+    "candidate_version_match": false
+  },
+  "native_dependency_inventory": {
+    "libgif": "5.2.1",
+    "libjpeg_turbo": "2.1.5",
+    "libpng": "1.6.43",
+    "libtiff": "4.5.1",
+    "zlib": "1.3",
+    "libwebp": "1.3.2",
+    "libopenjp2": "2.5.0",
+    "libarchive": "3.7.2",
+    "libcurl": "8.5.0",
+    "verified_for_this_runner": true
+  },
+  "windows_provenance": {
+    "status": "blocked/unverified",
+    "official_release_tag": "5.5.2",
+    "official_release_assets": 0,
+    "windows_binary_candidates": 0,
+    "third_party_or_internal_binary_verified": false,
+    "artifact_sha256_recorded": false,
+    "runtime_smoke_verified": false
+  },
+  "windows_local_validation": {
+    "scope": "local-developer-isolated-validation",
+    "status": "additional-validation-required",
+    "validation_date": "2026-06-23",
+    "distribution_source": "ub-mannheim-windows-build",
+    "provenance_status": "third-party-distribution-local-install-only-unapproved",
+    "tesseract_version": "5.4.0.20240606",
+    "binary_sha256": "babb405f4366b480d02cd8ff2bac8d497170f6c1711ce6f3d5d8bf0fb7fa6ed9",
+    "eng_traineddata_sha256": "7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2",
+    "input_scope": "synthetic-only",
+    "validation_results": {
+      "synthetic_cli_ocr": "success",
+      "pytest_real_ocr": "success",
+      "ocr_result_text_surface": "success",
+      "parsed_document_text_surface": "success",
+      "rendered_image_boundary": "success",
+      "selected_page_integrator_boundary": "success",
+      "internal_file_ref_runner_boundary": "success",
+      "privacy_boundary": "success",
+      "cleanup": "success"
+    },
+    "production_artifact": false,
+    "satisfies_linux_production_pin": false,
+    "third_party_binary_provenance_approved": false,
+    "native_dependency_inventory_complete": false,
+    "representative_accuracy_validated": false,
+    "can_satisfy_production_approval": false
+  },
+  "artifact_separation_gate": {
+    "source_license_candidate_version": "5.5.2",
+    "verified_linux_package_version": "5.3.4-1build5",
+    "same_artifact": false,
+    "source_license_candidate_is_verified_binary": false,
+    "production_approval": false
+  },
+  "production_pin_policy": {
+    "status": "requirements-not-satisfied",
+    "linux_candidate_verified": true,
+    "linux_candidate_production_approved": false,
+    "exact_linux_package_pin_satisfied": false,
+    "native_dependency_version_pins_satisfied": false,
+    "runtime_integration_validation_satisfied": false,
+    "ocr_recognition_accuracy_validation_satisfied": false,
+    "windows_blocker_is_independent": true,
+    "tesseract_5_5_2_artifact_inspection_is_independent": true,
+    "production_approval": false
+  },
+  "runtime_integration_preflight_scope": {
+    "status": "requirements-not-satisfied",
+    "existing_linux_evidence_preserved": true,
+    "runtime_integration_validated": false,
+    "ocr_recognition_accuracy_validated": false,
+    "preflight_contract_implemented_in_runtime": false,
+    "preflight_success_would_prove_ocr_success": false,
+    "preflight_success_would_prove_accuracy": false,
+    "preflight_success_would_approve_production": false,
+    "production_approval": false
+  },
+  "runtime_tests": {
+    "offline_ocr_smoke": {
+      "conclusion": "success",
+      "scope": "process-exit-smoke-only-no-recognition-accuracy-claim"
+    },
+    "runtime_network_deny": {
+      "conclusion": "success",
+      "isolation": "linux-network-namespace-via-unshare"
+    }
+  },
+  "unverified_or_blocked": [
+    "Tesseract candidate 5.5.2 was not the Ubuntu runner package version; the validated package was 5.3.4-1build5.",
+    "No official Windows binary assets exist for release 5.5.2; local third-party Windows runtime validation does not approve artifact provenance or production distribution.",
+    "The smoke test proves offline process execution only and does not validate OCR recognition accuracy.",
+    "Evidence is scoped to this workflow run and ephemeral Ubuntu runner, not a production runtime artifact."
+  ]
+}

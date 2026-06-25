@@ -36,11 +36,13 @@ def test_verifier_runtime_settings_read_enabled_manifest_path_from_env_aliases()
     settings = Settings(
         _env_file=None,
         PROMPTGUARD_VERIFIER_RUNTIME_ENABLED="true",
-        PROMPTGUARD_VERIFIER_MANIFEST_PATH="models/context_roberta_verifier_v205_manifest.json",
+        PROMPTGUARD_VERIFIER_MANIFEST_PATH="/opt/promptguard/models/context_roberta_verifier_v205_manifest.json",
     )
 
     assert settings.verifier_runtime_enabled is True
-    assert settings.verifier_manifest_path_value() == Path("models/context_roberta_verifier_v205_manifest.json")
+    assert settings.verifier_manifest_path_value() == Path(
+        "/opt/promptguard/models/context_roberta_verifier_v205_manifest.json"
+    )
 
 
 def test_analyze_verifier_provider_does_not_build_when_disabled():
@@ -74,7 +76,8 @@ def test_analyze_verifier_provider_builds_config_from_settings():
     settings = Settings(
         _env_file=None,
         PROMPTGUARD_VERIFIER_RUNTIME_ENABLED=True,
-        PROMPTGUARD_VERIFIER_MANIFEST_PATH="models/context_roberta_verifier_v205_manifest.json",
+        PROMPTGUARD_VERIFIER_MANIFEST_PATH="/opt/promptguard/models/context_roberta_verifier_v205_manifest.json",
+        PROMPTGUARD_ML_INFERENCE_QUEUE_TIMEOUT_MS=120_000,
     )
 
     def builder(path):
@@ -86,7 +89,8 @@ def test_analyze_verifier_provider_builds_config_from_settings():
     assert config is not None
     assert config.artifact == fake_bundle().artifact
     assert isinstance(config.service, RobertaVerifierService)
-    assert seen_paths == [Path("models/context_roberta_verifier_v205_manifest.json")]
+    assert config.timeout_ms == 120_000
+    assert seen_paths == [Path("/opt/promptguard/models/context_roberta_verifier_v205_manifest.json")]
 
 
 def test_analyze_verifier_provider_suppresses_build_failure_sensitive_values():
@@ -121,4 +125,7 @@ def test_env_example_documents_verifier_runtime_settings():
     text = env_example.read_text(encoding="utf-8")
 
     assert "PROMPTGUARD_VERIFIER_RUNTIME_ENABLED=false" in text
-    assert "PROMPTGUARD_VERIFIER_MANIFEST_PATH=" in text
+    assert (
+        "PROMPTGUARD_VERIFIER_MANIFEST_PATH=/opt/promptguard/models/context_lr_roberta_active_best_f1_manifest.json"
+        in text
+    )

@@ -1,14 +1,32 @@
-function internalOriginValue(connection) {
-    if (connection.internal_api_origins.length === 0) {
-        return "서버 내부망 IP를 확인할 수 없습니다. 아래 확인 방법을 따라 서버 PC의 IPv4 주소를 확인하세요.";
-    }
-    return connection.internal_api_origins.join(", ");
-}
 function externalOriginValue(connection) {
     if (connection.external_api_origin) {
         return connection.external_api_origin;
     }
     return "자동 감지 안 됨 - 포트포워딩 또는 도메인 설정 후 확인 필요";
+}
+function extensionApiUrlValue(connection) {
+    if (connection.extension_api_url_status === "configured" && connection.extension_api_url) {
+        return connection.extension_api_url;
+    }
+    if (connection.extension_api_url_status === "invalid") {
+        return "설정 오류";
+    }
+    return "설정 필요";
+}
+function extensionApiUrlDescription(connection) {
+    if (connection.extension_api_url_status === "configured" && connection.extension_api_url) {
+        return "Chrome 확장프로그램 설정의 API URL 칸에 그대로 입력할 주소입니다.";
+    }
+    if (connection.extension_api_url_status === "invalid") {
+        return connection.extension_api_url_error ?? "PROMPTGUARD_EXTENSION_API_URL 값을 다시 확인하세요.";
+    }
+    return "서버 관리자가 .env에 PROMPTGUARD_EXTENSION_API_URL=http://서버IP:8000 또는 https://도메인 값을 설정해야 합니다.";
+}
+function extensionApiUrlState(connection) {
+    return connection.extension_api_url_status === "configured" ? "ready" : "error";
+}
+function dashboardPublicUrlValue(connection) {
+    return connection.dashboard_public_url ?? "설정 필요";
 }
 function externalOriginDescription(connection) {
     if (connection.external_api_origin) {
@@ -47,6 +65,12 @@ function normalizeIpv4(value) {
         }
         const octet = Number(part);
         if (!Number.isInteger(octet) || octet < 0 || octet > 255) {
+            return null;
+        }
+    }
+    if (parts[0] === "172") {
+        const second = Number(parts[1]);
+        if (second >= 16 && second <= 31) {
             return null;
         }
     }
@@ -89,22 +113,26 @@ export function buildExternalApiOrigin(rawHost, rawPort, useHttps) {
 export function extensionSetupPlan(connection) {
     return {
         title: "Chrome 확장프로그램 연동",
-        description: "Chrome 확장프로그램 사용자가 백엔드 서버에 연결할 때 입력할 서버 주소와 포트를 확인합니다.",
+        description: "Chrome 확장프로그램 사용자가 백엔드 서버에 연결할 때 입력할 API URL을 확인합니다.",
         connectionCards: [
             {
-                label: "내부망 연결 주소",
-                value: internalOriginValue(connection),
-                description: "같은 공유기 또는 사내망에 있는 Chrome 확장프로그램 사용자가 API URL에 입력할 수 있는 후보입니다.",
+                label: "Chrome Extension API URL",
+                value: extensionApiUrlValue(connection),
+                description: extensionApiUrlDescription(connection),
+                state: extensionApiUrlState(connection),
+                copyValue: connection.extension_api_url_status === "configured" && connection.extension_api_url ? connection.extension_api_url : undefined,
             },
             {
-                label: "외부/포트포워딩 주소",
+                label: "Dashboard URL",
+                value: dashboardPublicUrlValue(connection),
+                description: "관리자가 브라우저로 접속할 대시보드 주소입니다. Chrome 확장프로그램 API URL과 다를 수 있습니다.",
+                state: connection.dashboard_public_url ? "ready" : "warning",
+            },
+            {
+                label: "진단용 감지 주소",
                 value: externalOriginValue(connection),
-                description: externalOriginDescription(connection),
-            },
-            {
-                label: "API 포트",
-                value: connection.api_port,
-                description: "확장프로그램 요청을 받는 백엔드 포트입니다. 포트포워딩을 쓰면 외부 포트가 다를 수 있습니다.",
+                description: `${externalOriginDescription(connection)} 자동 감지값은 참고용이며, 복사 가능한 공식 값은 PROMPTGUARD_EXTENSION_API_URL입니다.`,
+                state: "warning",
             },
         ],
         helpSections: [
@@ -113,7 +141,8 @@ export function extensionSetupPlan(connection) {
                 steps: [
                     "Chrome 확장프로그램은 API URL에 적은 주소를 기준으로 /auth/login, /config/extension, /prompts/analyze 요청을 보냅니다.",
                     `관리자 로컬 확인용 주소는 ${connection.admin_local_api_origin}입니다. 이 localhost는 서버 관리자 PC에서만 유효하고, 다른 사용자 컴퓨터에서는 통하지 않습니다.`,
-                    "확장 사용자의 컴퓨터에서 접속 가능한 주소를 확인한 뒤 그 주소를 사용자에게 안내합니다.",
+                    "확장 사용자의 컴퓨터에서 접속 가능한 API origin을 확인한 뒤 .env의 PROMPTGUARD_EXTENSION_API_URL에 명시합니다.",
+                    "Dashboard URL에는 /dashboard/가 들어갈 수 있지만, Extension API URL에는 /dashboard/ 같은 경로를 넣지 않습니다.",
                     ...dockerBridgeNotice(connection),
                 ],
             },

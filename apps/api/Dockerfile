@@ -1,15 +1,41 @@
+# syntax=docker/dockerfile:1.4
 FROM python:3.13-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+ENV PROMPTGUARD_DASHBOARD_STATIC_DIR=/opt/promptguard/dashboard
 
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends \
+        libglib2.0-0 \
+        libgl1 \
+        tesseract-ocr \
+        tesseract-ocr-kor \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt ./
+RUN --mount=type=cache,id=promptguard-pip-api,target=/root/.cache/pip \
+    python -m venv /opt/venvs/api \
+    && /opt/venvs/api/bin/python -m pip install --upgrade pip setuptools wheel \
+    && /opt/venvs/api/bin/python -m pip install -r requirements.txt
+
+COPY requirements-paddle-gpu.txt ./
+RUN --mount=type=cache,id=promptguard-pip-paddle,target=/root/.cache/pip \
+    python -m venv /opt/venvs/paddle \
+    && /opt/venvs/paddle/bin/python -m pip install --upgrade pip setuptools wheel \
+    && /opt/venvs/paddle/bin/python -m pip install -r requirements-paddle-gpu.txt
+
+COPY requirements-torch-gpu.txt ./
+RUN --mount=type=cache,id=promptguard-pip-torch,target=/root/.cache/pip \
+    python -m venv /opt/venvs/torch \
+    && /opt/venvs/torch/bin/python -m pip install --upgrade pip setuptools wheel \
+    && /opt/venvs/torch/bin/python -m pip install -r requirements-torch-gpu.txt
 
 COPY . .
+COPY --from=dashboard . /opt/promptguard/dashboard
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["/opt/venvs/api/bin/uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

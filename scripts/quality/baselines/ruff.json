@@ -1,0 +1,578 @@
+{
+  "schema_version": 1,
+  "tool": "ruff",
+  "findings": [
+    {
+      "fingerprint": "ruff|apps/api/app/atoms/models.py|I001|Import block is un-sorted or un-formatted|from typing import Any, Literal",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/app/core/password.py|I001|Import block is un-sorted or un-formatted|from argon2 import PasswordHasher",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/app/detectors/pii.py|I001|Import block is un-sorted or un-formatted|import re",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/app/domain/types/parser.py|I001|Import block is un-sorted or un-formatted|from typing import Literal",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/app/infrastructure/pdf/pdfium_renderer.py|I001|Import block is un-sorted or un-formatted|import logging",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/app/infrastructure/temp_storage/filesystem.py|E401|Multiple imports on one line|import base64, json, os, secrets",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/app/infrastructure/temp_storage/filesystem.py|E701|Multiple statements on one line (colon)|except Exception as exc: raise TempFileError(\"TEMP_FILE_CORRUPT\") from exc",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/app/infrastructure/temp_storage/filesystem.py|E701|Multiple statements on one line (colon)|except Exception as exc: raise TempFileError(\"TEMP_FILE_DECRYPT_FAILED\") from exc",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/app/infrastructure/temp_storage/filesystem.py|E701|Multiple statements on one line (colon)|except Exception as exc: raise ValueError(\"invalid temporary file encryption key\") from exc",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/app/infrastructure/temp_storage/filesystem.py|E701|Multiple statements on one line (colon)|except FileNotFoundError as exc: raise TempFileError(\"TEMP_FILE_NOT_FOUND\") from exc",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/app/infrastructure/temp_storage/filesystem.py|E701|Multiple statements on one line (colon)|except TempFileError: expired = True",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/app/infrastructure/temp_storage/filesystem.py|E701|Multiple statements on one line (colon)|for suffix in (\".blob\", \".json\"): self._path(ref, suffix).unlink(missing_ok=True)",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/app/infrastructure/temp_storage/filesystem.py|E701|Multiple statements on one line (colon)|if (manifest[\"subject_id\"], manifest[\"request_id\"], manifest[\"temp_scope_id\"]) != (context.authenticated_subject_id, context.request_id, context.temp_scope_id): raise TempFileError(\"TEMP_FILE_ACCESS_DENIED\")",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/app/infrastructure/temp_storage/filesystem.py|E701|Multiple statements on one line (colon)|if expired: self.delete(ref); deleted.append(ref)",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/app/infrastructure/temp_storage/filesystem.py|E701|Multiple statements on one line (colon)|if len(key) != 32: raise ValueError(\"temporary file encryption key must decode to 32 bytes\")",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/app/infrastructure/temp_storage/filesystem.py|E701|Multiple statements on one line (colon)|if not ref.startswith(\"fref_\"): raise TempFileError(\"TEMP_FILE_NOT_FOUND\")",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/app/infrastructure/temp_storage/filesystem.py|E701|Multiple statements on one line (colon)|if now >= datetime.fromisoformat(manifest[\"expires_at\"]): raise TempFileError(\"TEMP_FILE_EXPIRED\")",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/app/infrastructure/temp_storage/filesystem.py|E701|Multiple statements on one line (colon)|try: expired = now >= datetime.fromisoformat(self._manifest(ref)[\"expires_at\"])",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/app/infrastructure/temp_storage/filesystem.py|E701|Multiple statements on one line (colon)|try: key = base64.b64decode(encryption_key_b64, validate=True)",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/app/infrastructure/temp_storage/filesystem.py|E701|Multiple statements on one line (colon)|try: return json.loads(self._path(ref, \".json\").read_text(encoding=\"utf-8\"))",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/app/infrastructure/temp_storage/filesystem.py|E702|Multiple statements on one line (semicolon)|cipher = self._path(ref, \".blob\").read_bytes(); return self.aes.decrypt(cipher[:12], cipher[12:], ref.encode())",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/app/infrastructure/temp_storage/filesystem.py|E702|Multiple statements on one line (semicolon)|if expired: self.delete(ref); deleted.append(ref)",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/app/infrastructure/temp_storage/filesystem.py|E702|Multiple statements on one line (semicolon)|manifest = self._manifest(ref); now = now or datetime.now(UTC)",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/app/infrastructure/temp_storage/filesystem.py|E702|Multiple statements on one line (semicolon)|nonce = os.urandom(12); cipher = nonce + self.aes.encrypt(nonce, data, ref.encode())",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/app/infrastructure/temp_storage/filesystem.py|E702|Multiple statements on one line (semicolon)|now = now or datetime.now(UTC); deleted = []",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/app/infrastructure/temp_storage/filesystem.py|E702|Multiple statements on one line (semicolon)|now = now or datetime.now(UTC); ref = f\"fref_{secrets.token_urlsafe(32)}\"; scope = f\"tscope_{secrets.token_urlsafe(24)}\"; expires = now + self.ttl",
+      "count": 3
+    },
+    {
+      "fingerprint": "ruff|apps/api/app/infrastructure/temp_storage/filesystem.py|E702|Multiple statements on one line (semicolon)|self._write(self._path(ref, \".blob\"), cipher); self._write(self._path(ref, \".json\"), json.dumps(manifest, separators=(\",\", \":\")).encode())",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/app/infrastructure/temp_storage/filesystem.py|E702|Multiple statements on one line (semicolon)|super().__init__(code); self.code = code",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/app/infrastructure/temp_storage/filesystem.py|E702|Multiple statements on one line (semicolon)|temp = target.with_suffix(target.suffix + \".tmp\"); temp.write_bytes(data); os.replace(temp, target)",
+      "count": 2
+    },
+    {
+      "fingerprint": "ruff|apps/api/app/infrastructure/temp_storage/filesystem.py|I001|Import block is un-sorted or un-formatted|import base64, json, os, secrets",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/app/ml/classifier/__init__.py|I001|Import block is un-sorted or un-formatted|from app.ml.classifier.factory import (",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/app/ml/classifier/manifest.py|I001|Import block is un-sorted or un-formatted|import json",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/app/ml/verifier/__init__.py|I001|Import block is un-sorted or un-formatted|from app.ml.verifier.metadata import project_verification_signal_summary",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/app/models/events.py|I001|Import block is un-sorted or un-formatted|import uuid",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/app/models/filters.py|I001|Import block is un-sorted or un-formatted|import uuid",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/app/normalization/normalizer.py|I001|Import block is un-sorted or un-formatted|import unicodedata",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/app/parser/adapters/office_foundation.py|I001|Import block is un-sorted or un-formatted|import csv",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/app/parser/fakes.py|I001|Import block is un-sorted or un-formatted|import time",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/app/parser/ports.py|I001|Import block is un-sorted or un-formatted|from typing import Protocol",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/app/parser/temp_file_resolver.py|I001|Import block is un-sorted or un-formatted|from app.parser.models import (",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/app/ports/parser.py|I001|Import block is un-sorted or un-formatted|from typing import Protocol",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/app/routes/auth.py|I001|Import block is un-sorted or un-formatted|import uuid",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/app/routes/dashboard_filters.py|F401|`app.routes.analyze.risk_level_for_score` imported but unused|from app.routes.analyze import risk_level_for_score",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/app/routes/dashboard_filters.py|I001|Import block is un-sorted or un-formatted|import re",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/app/routes/dashboard_status.py|I001|Import block is un-sorted or un-formatted|from datetime import UTC, datetime",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/app/routes/filters.py|I001|Import block is un-sorted or un-formatted|import re",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/app/routes/stats.py|F401|`typing.Literal` imported but unused|from typing import Literal",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/app/routes/temp_files.py|E701|Multiple statements on one line (colon)|if file_kind not in FILE_KINDS: raise HTTPException(status_code=422, detail=\"unsupported file kind\")",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/app/routes/temp_files.py|E701|Multiple statements on one line (colon)|if total > settings.temp_file_max_bytes: raise HTTPException(status_code=413, detail=\"temporary file is too large\")",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/app/runtime/cleanup/temp_files.py|I001|Import block is un-sorted or un-formatted|from datetime import datetime",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/app/services/analyze_classifier.py|I001|Import block is un-sorted or un-formatted|from dataclasses import dataclass, field",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/atoms/test_atom_builder_contract.py|I001|Import block is un-sorted or un-formatted|import copy",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/atoms/test_atom_builder_responsibility.py|I001|Import block is un-sorted or un-formatted|import ast",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/conftest.py|I001|Import block is un-sorted or un-formatted|import os",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/contract/current_behavior/snapshot_helpers.py|I001|Import block is un-sorted or un-formatted|import json",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/contract/current_behavior/test_analyze_golden.py|I001|Import block is un-sorted or un-formatted|from types import SimpleNamespace",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/contract/test_analyze_request_adapter.py|E701|Multiple statements on one line (colon)|with pytest.raises(ValidationError): request(item)",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/contract/test_analyze_request_adapter.py|E701|Multiple statements on one line (colon)|with pytest.raises(ValidationError): request(text(\"in_1\", \"hello\"), text(\"in_1\", \"again\"))",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/contract/test_analyze_request_adapter.py|E701|Multiple statements on one line (colon)|with pytest.raises(ValidationError): request({**text(\"in_1\", \"hello\"), \"file_ref\": \"fr_synthetic\"})",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/contract/test_analyze_request_adapter.py|I001|Import block is un-sorted or un-formatted|import pytest",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/contract/test_architecture_boundaries.py|E701|Multiple statements on one line (colon)|elif isinstance(node, ast.ImportFrom) and node.module: names.add(node.module)",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/contract/test_architecture_boundaries.py|E701|Multiple statements on one line (colon)|if \"app.application.analyze.input_envelope\" in imports(path): violations.append(path)",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/contract/test_architecture_boundaries.py|E701|Multiple statements on one line (colon)|if allowed in path.parents: continue",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/contract/test_architecture_boundaries.py|E701|Multiple statements on one line (colon)|if isinstance(node, ast.Import): names.update(alias.name for alias in node.names)",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/contract/test_contract_fixtures_privacy.py|E701|Multiple statements on one line (colon)|for nested in value: yield from walk(nested)",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/contract/test_file_reference_analyze.py|E702|Multiple statements on one line (semicolon)|user = _user(); client, session = _client(user, rules=[])",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/contract/test_ocr_model_weight_license_gate.py|I001|Import block is un-sorted or un-formatted|import json",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/contract/test_parser_dependency_license_gate.py|I001|Import block is un-sorted or un-formatted|import importlib.metadata",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/contract/test_parser_ocr_dependency_license_gate.py|I001|Import block is un-sorted or un-formatted|import json",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/contract/test_pdfium_dependency_license_gate.py|I001|Import block is un-sorted or un-formatted|import ast",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/contract/test_port_contracts.py|E701|Multiple statements on one line (colon)|class RuntimeParserPort(FileParserRunnerPort, Protocol): pass",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/contract/test_port_contracts.py|F401|`app.domain.types.parser.OcrResult` imported but unused|from app.domain.types.parser import FileParserResult, OcrResult, ParserWorkerPayload",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/contract/test_pr9_no_real_ocr_dependencies.py|I001|Import block is un-sorted or un-formatted|import ast",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/contract/test_shared_schema_contracts.py|E701|Multiple statements on one line (colon)|with pytest.raises(ValidationError): OffsetMapping(normalized_start=2, normalized_end=1, original_start=0, original_end=1)",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/contract/test_shared_schema_contracts.py|E701|Multiple statements on one line (colon)|with pytest.raises(ValidationError): ParsedDocument(file_kind=None, **base)",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/contract/test_shared_schema_contracts.py|E701|Multiple statements on one line (colon)|with pytest.raises(ValidationError): TextRange(start=3, end=2)",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/contract/test_shared_schema_contracts.py|I001|Import block is un-sorted or un-formatted|import pytest",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/integration/test_internal_pipeline_contract.py|I001|Import block is un-sorted or un-formatted|import base64",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/mapping/test_signal_segment_mapper_responsibility.py|I001|Import block is un-sorted or un-formatted|import ast",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/ml/classifier/test_classifier_runtime_settings.py|I001|Import block is un-sorted or un-formatted|from pathlib import Path",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/ml/classifier/test_lr_classifier_boundaries.py|I001|Import block is un-sorted or un-formatted|import math",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/ml/classifier/test_lr_classifier_factory.py|I001|Import block is un-sorted or un-formatted|from pathlib import Path",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/ml/classifier/test_lr_classifier_loader.py|I001|Import block is un-sorted or un-formatted|import joblib",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/ml/classifier/test_lr_classifier_manifest.py|I001|Import block is un-sorted or un-formatted|import json",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/ml/classifier/test_lr_classifier_service_factory.py|I001|Import block is un-sorted or un-formatted|import json",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/ml/embedding/test_qwen3_real_backend_adapter.py|I001|Import block is un-sorted or un-formatted|import builtins",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/ml/embedding/test_qwen_atom_embedding_privacy.py|I001|Import block is un-sorted or un-formatted|import ast",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/ml/embedding/test_qwen_atom_embedding_worker.py|I001|Import block is un-sorted or un-formatted|import math",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/ml/segment_embedding/test_segment_embedding_pipeline_contract.py|I001|Import block is un-sorted or un-formatted|from app.atoms import AnalysisAtom, TextRange",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/ml/test_gpu_capacity_sizing.py|I001|Import block is un-sorted or un-formatted|from app.ml.gpu_capacity import (",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/ml/verifier/test_roberta_verifier_artifact_smoke.py|I001|Import block is un-sorted or un-formatted|import os",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/ml/verifier/test_roberta_verifier_contract.py|I001|Import block is un-sorted or un-formatted|import pytest",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/ml/verifier/test_roberta_verifier_factory.py|I001|Import block is un-sorted or un-formatted|import json",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/ml/verifier/test_roberta_verifier_manifest.py|I001|Import block is un-sorted or un-formatted|import json",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/parser/test_file_parser_runner.py|I001|Import block is un-sorted or un-formatted|import pytest",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/parser/test_file_parser_runner_native_text_slice.py|F401|`pytest` imported but unused|import pytest",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/parser/test_file_parser_runner_native_text_slice.py|I001|Import block is un-sorted or un-formatted|import pytest",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/parser/test_native_text_adapter.py|F401|`logging` imported but unused|import logging",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/parser/test_native_text_adapter.py|I001|Import block is un-sorted or un-formatted|import logging",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/parser/test_office_pdf_parser_foundation.py|I001|Import block is un-sorted or un-formatted|import ast",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/parser/test_parser_adapter_registry.py|I001|Import block is un-sorted or un-formatted|import pytest",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/parser/test_parser_plan_resolver.py|I001|Import block is un-sorted or un-formatted|import pytest",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/parser/test_parser_worker_contract.py|I001|Import block is un-sorted or un-formatted|import ast",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/parser/test_pdf_native_text_extraction.py|I001|Import block is un-sorted or un-formatted|import io",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/parser/test_pdfium_renderer.py|I001|Import block is un-sorted or un-formatted|import logging",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/parser/test_temp_file_resolver.py|I001|Import block is un-sorted or un-formatted|from datetime import datetime, timedelta, timezone",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/parser/test_text_plain_code_adapters.py|I001|Import block is un-sorted or un-formatted|import ast",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/policy/test_policy_orchestrator.py|I001|Import block is un-sorted or un-formatted|import pytest",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/privacy/test_event_allowlist_serializer.py|F401|`json` imported but unused|import json",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/privacy/test_event_allowlist_serializer.py|I001|Import block is un-sorted or un-formatted|import json",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/runtime/test_ml_inference_queue_contract.py|I001|Import block is un-sorted or un-formatted|import ast",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/scanner/test_legacy_rule_adapter.py|I001|Import block is un-sorted or un-formatted|import json",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/scanner/test_scanner_boundaries.py|I001|Import block is un-sorted or un-formatted|import ast",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/segmenter/test_segmenter_responsibility.py|I001|Import block is un-sorted or un-formatted|import ast",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/test_admin_seed.py|I001|Import block is un-sorted or un-formatted|import uuid",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/test_analyze.py|I001|Import block is un-sorted or un-formatted|import json",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/test_auth_routes.py|I001|Import block is un-sorted or un-formatted|import uuid",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/test_auth_schema.py|I001|Import block is un-sorted or un-formatted|from datetime import timedelta",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/test_cors.py|I001|Import block is un-sorted or un-formatted|import pytest",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/test_dashboard_filters.py|I001|Import block is un-sorted or un-formatted|import json",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/test_dashboard_overview.py|I001|Import block is un-sorted or un-formatted|import json",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/test_dashboard_session.py|I001|Import block is un-sorted or un-formatted|import uuid",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/test_dashboard_status.py|I001|Import block is un-sorted or un-formatted|import json",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/test_dashboard_users.py|I001|Import block is un-sorted or un-formatted|import uuid",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/test_event_size_bucket_migration.py|I001|Import block is un-sorted or un-formatted|import importlib.util",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/test_events.py|I001|Import block is un-sorted or un-formatted|import json",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/test_filter_rules.py|I001|Import block is un-sorted or un-formatted|import json",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/test_health.py|I001|Import block is un-sorted or un-formatted|from types import SimpleNamespace",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/test_pii_detectors.py|I001|Import block is un-sorted or un-formatted|from dataclasses import asdict",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/test_prompt_hash.py|I001|Import block is un-sorted or un-formatted|import pytest",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/test_rbac.py|I001|Import block is un-sorted or un-formatted|from types import SimpleNamespace",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/test_stats_events.py|I001|Import block is un-sorted or un-formatted|import json",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/test_stats_users.py|I001|Import block is un-sorted or un-formatted|import json",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/test_temp_storage.py|E701|Multiple statements on one line (colon)|with pytest.raises(TempFileError, match=\"TEMP_FILE_ACCESS_DENIED\"): store.resolve(result[\"file_ref\"], TempFileAccessContext(\"other\", \"r1\", result[\"temp_scope_id\"]), now)",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/test_temp_storage.py|E701|Multiple statements on one line (colon)|with pytest.raises(TempFileError, match=\"TEMP_FILE_DECRYPT_FAILED\"): store.resolve(result[\"file_ref\"], TempFileAccessContext(\"u1\", \"r1\", result[\"temp_scope_id\"]), now)",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/test_temp_storage.py|E701|Multiple statements on one line (colon)|with pytest.raises(TempFileError, match=\"TEMP_FILE_EXPIRED\"): store.resolve(result[\"file_ref\"], context, now + timedelta(seconds=900))",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/test_temp_storage.py|E702|Multiple statements on one line (semicolon)|blob = next(tmp_path.glob(\"*.blob\")); blob.write_bytes(blob.read_bytes()[:-1] + b\"x\")",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/test_temp_storage.py|E702|Multiple statements on one line (semicolon)|store = storage(tmp_path); now = datetime(2026, 1, 1, tzinfo=UTC)",
+      "count": 2
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/test_temp_storage.py|E702|Multiple statements on one line (semicolon)|store = storage(tmp_path); now = datetime(2026, 1, 1, tzinfo=UTC); raw = b\"SYNTHETIC_PLAINTEXT_SENTINEL\"",
+      "count": 2
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/test_temp_storage.py|I001|Import block is un-sorted or un-formatted|import base64",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/test_temp_upload.py|E702|Multiple statements on one line (semicolon)|app = FastAPI(); app.include_router(router)",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/test_temp_upload.py|E702|Multiple statements on one line (semicolon)|body = response.json(); assert body[\"size_bucket\"] == \"tiny\" and body[\"file_ref\"].startswith(\"fref_\")",
+      "count": 1
+    },
+    {
+      "fingerprint": "ruff|apps/api/tests/test_temp_upload.py|I001|Import block is un-sorted or un-formatted|import base64",
+      "count": 1
+    }
+  ]
+}

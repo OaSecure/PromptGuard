@@ -1,0 +1,206 @@
+{
+  "schema_version": 1,
+  "tool": "mypy",
+  "findings": [
+    {
+      "fingerprint": "mypy|apps/api/app/atoms/builder.py|arg-type|Argument 1 to \"_validate_policy\" has incompatible type \"AtomizationPolicy | None\"; expected \"AtomizationPolicy\"|",
+      "count": 1
+    },
+    {
+      "fingerprint": "mypy|apps/api/app/atoms/builder.py|arg-type|Argument 2 to \"_atomize_block\" has incompatible type \"AtomizationPolicy | None\"; expected \"AtomizationPolicy\"|",
+      "count": 1
+    },
+    {
+      "fingerprint": "mypy|apps/api/app/atoms/builder.py|union-attr|Item \"None\" of \"AtomizationPolicy | None\" has no attribute \"atomizer_version\"|",
+      "count": 2
+    },
+    {
+      "fingerprint": "mypy|apps/api/app/interfaces/http/response_adapter.py|arg-type|Argument \"risk_level\" to \"AnalyzeResponse\" has incompatible type \"str\"; expected \"Literal['low', 'medium', 'high', 'critical']\"|",
+      "count": 1
+    },
+    {
+      "fingerprint": "mypy|apps/api/app/mapping/builder.py|arg-type|Argument \"max_severity\" to \"SegmentSignalSet\" has incompatible type \"str | None\"; expected \"Literal['info', 'low', 'medium', 'high', 'critical'] | None\"|",
+      "count": 1
+    },
+    {
+      "fingerprint": "mypy|apps/api/app/mapping/builder.py|arg-type|Argument 3 to \"_mapped_signal\" has incompatible type \"str\"; expected \"Literal['offset_overlap', 'atom_membership']\"|",
+      "count": 1
+    },
+    {
+      "fingerprint": "mypy|apps/api/app/ml/embedding/models.py|assignment|Incompatible types in assignment (expression has type \"str\", variable has type \"Literal['Qwen/Qwen3-Embedding-0.6B']\")|",
+      "count": 1
+    },
+    {
+      "fingerprint": "mypy|apps/api/app/ml/verifier/manifest.py|arg-type|Argument \"boundary\" to \"LabelDefinition\" has incompatible type \"Any | None\"; expected \"str\"|",
+      "count": 1
+    },
+    {
+      "fingerprint": "mypy|apps/api/app/ml/verifier/manifest.py|arg-type|Argument \"negative\" to \"LabelDefinition\" has incompatible type \"Any | None\"; expected \"str\"|",
+      "count": 1
+    },
+    {
+      "fingerprint": "mypy|apps/api/app/ml/verifier/manifest.py|arg-type|Argument \"positive\" to \"LabelDefinition\" has incompatible type \"Any | None\"; expected \"str\"|",
+      "count": 1
+    },
+    {
+      "fingerprint": "mypy|apps/api/app/parser/adapters/office_foundation.py|arg-type|Argument \"status\" to \"ParserStepResult\" has incompatible type \"str\"; expected \"Literal['success', 'partial', 'failed', 'skipped']\"|",
+      "count": 1
+    },
+    {
+      "fingerprint": "mypy|apps/api/app/parser/adapters/office_foundation.py|call-overload|No overload variant of \"next\" matches argument types \"Iterable[Element[str]]\", \"None\"|",
+      "count": 1
+    },
+    {
+      "fingerprint": "mypy|apps/api/app/parser/adapters/office_foundation.py|var-annotated|Need type annotation for \"blocks\" (hint: \"blocks: list[<type>] = ...\")|",
+      "count": 2
+    },
+    {
+      "fingerprint": "mypy|apps/api/app/parser/adapters/pdf_foundation.py|arg-type|Argument \"image_evidence\" to \"PdfPageCoverageInput\" has incompatible type \"str\"; expected \"Literal['present', 'absent', 'unknown']\"|",
+      "count": 1
+    },
+    {
+      "fingerprint": "mypy|apps/api/app/parser/adapters/pdf_foundation.py|arg-type|Argument \"status\" to \"ParserStepResult\" has incompatible type \"str\"; expected \"Literal['success', 'partial', 'failed', 'skipped']\"|",
+      "count": 1
+    },
+    {
+      "fingerprint": "mypy|apps/api/app/parser/adapters/pdf_ocr_fake.py|arg-type|Argument \"ocr_status\" to \"FileParserResult\" has incompatible type \"str\"; expected \"Literal['not_applicable', 'text_found', 'no_text_detected', 'timeout', 'failed']\"|",
+      "count": 1
+    },
+    {
+      "fingerprint": "mypy|apps/api/app/parser/fakes.py|arg-type|Argument \"location\" to \"OcrTextBlock\" has incompatible type \"dict[str, int]\"; expected \"BlockLocation | None\"|",
+      "count": 1
+    },
+    {
+      "fingerprint": "mypy|apps/api/app/parser/fakes.py|call-arg|Unexpected keyword argument \"metadata\" for \"PipelineFailure\"|",
+      "count": 1
+    },
+    {
+      "fingerprint": "mypy|apps/api/app/parser/pdf_coverage.py|arg-type|Argument \"candidate_reason\" to \"PdfPageCoverageDecision\" has incompatible type \"str\"; expected \"Literal['native_extraction_failed', 'very_low_native_text', 'low_native_text_image_present', 'low_native_text_image_unknown', 'low_native_text_image_absent', 'sufficient_native_text']\"|",
+      "count": 1
+    },
+    {
+      "fingerprint": "mypy|apps/api/app/parser/planning.py|arg-type|Argument \"execution_mode\" to \"ParserPlanStep\" has incompatible type \"str\"; expected \"Literal['always', 'fallback']\"|",
+      "count": 1
+    },
+    {
+      "fingerprint": "mypy|apps/api/app/parser/planning.py|arg-type|Argument \"trigger\" to \"ParserFallbackRule\" has incompatible type \"str\"; expected \"Literal['adapter_unavailable', 'adapter_initialization_failed', 'step_failed', 'no_text_detected']\"|",
+      "count": 1
+    },
+    {
+      "fingerprint": "mypy|apps/api/app/parser/temp_file_resolver.py|arg-type|Argument \"file_kind\" to \"ResolvedTemporaryFile\" has incompatible type \"str | Any\"; expected \"Literal['plain_text', 'image', 'pdf', 'office_document', 'spreadsheet', 'slide', 'code', 'unknown']\"|",
+      "count": 1
+    },
+    {
+      "fingerprint": "mypy|apps/api/app/parser/temp_file_resolver.py|operator|Unsupported operand types for in (\"str | Any\" and \"tuple[Literal['plain_text', 'image', 'pdf', 'office_document', 'spreadsheet', 'slide', 'code', 'unknown'], ...]\")|",
+      "count": 1
+    },
+    {
+      "fingerprint": "mypy|apps/api/app/parser/temp_file_resolver.py|union-attr|Item \"None\" of \"TemporaryFileRecord | None\" has no attribute \"authenticated_subject_id\"|",
+      "count": 1
+    },
+    {
+      "fingerprint": "mypy|apps/api/app/parser/temp_file_resolver.py|union-attr|Item \"None\" of \"TemporaryFileRecord | None\" has no attribute \"deleted_at\"|",
+      "count": 1
+    },
+    {
+      "fingerprint": "mypy|apps/api/app/parser/temp_file_resolver.py|union-attr|Item \"None\" of \"TemporaryFileRecord | None\" has no attribute \"expires_at\"|",
+      "count": 1
+    },
+    {
+      "fingerprint": "mypy|apps/api/app/parser/temp_file_resolver.py|union-attr|Item \"None\" of \"TemporaryFileRecord | None\" has no attribute \"file_kind\"|",
+      "count": 2
+    },
+    {
+      "fingerprint": "mypy|apps/api/app/parser/temp_file_resolver.py|union-attr|Item \"None\" of \"TemporaryFileRecord | None\" has no attribute \"file_ref\"|",
+      "count": 1
+    },
+    {
+      "fingerprint": "mypy|apps/api/app/parser/temp_file_resolver.py|union-attr|Item \"None\" of \"TemporaryFileRecord | None\" has no attribute \"local_runtime_ref\"|",
+      "count": 1
+    },
+    {
+      "fingerprint": "mypy|apps/api/app/parser/temp_file_resolver.py|union-attr|Item \"None\" of \"TemporaryFileRecord | None\" has no attribute \"request_id\"|",
+      "count": 1
+    },
+    {
+      "fingerprint": "mypy|apps/api/app/parser/temp_file_resolver.py|union-attr|Item \"None\" of \"TemporaryFileRecord | None\" has no attribute \"session_id\"|",
+      "count": 1
+    },
+    {
+      "fingerprint": "mypy|apps/api/app/parser/temp_file_resolver.py|union-attr|Item \"None\" of \"TemporaryFileRecord | None\" has no attribute \"state\"|",
+      "count": 1
+    },
+    {
+      "fingerprint": "mypy|apps/api/app/parser/temp_file_resolver.py|union-attr|Item \"None\" of \"TemporaryFileRecord | None\" has no attribute \"temp_scope_id\"|",
+      "count": 1
+    },
+    {
+      "fingerprint": "mypy|apps/api/app/privacy/event_serializer.py|arg-type|Argument \"action\" to \"EventProjection\" has incompatible type \"str\"; expected \"Literal['ALLOW', 'WARN', 'MASK', 'BLOCK']\"|",
+      "count": 1
+    },
+    {
+      "fingerprint": "mypy|apps/api/app/privacy/event_serializer.py|arg-type|Argument \"risk_level\" to \"EventProjection\" has incompatible type \"str\"; expected \"Literal['low', 'medium', 'high', 'critical']\"|",
+      "count": 1
+    },
+    {
+      "fingerprint": "mypy|apps/api/app/routes/admin_users.py|return-value|Incompatible return value type (got \"dict[UUID, DashboardUserAggregate]\", expected \"dict[object, DashboardUserAggregate]\")|",
+      "count": 1
+    },
+    {
+      "fingerprint": "mypy|apps/api/app/routes/analyze.py|arg-type|Argument 1 to \"included_text_inputs\" has incompatible type \"LegacyAnalyzeRequest\"; expected \"AnalyzeRequest\"|",
+      "count": 1
+    },
+    {
+      "fingerprint": "mypy|apps/api/app/routes/analyze.py|arg-type|Argument 1 to \"input_results_for_payload\" has incompatible type \"LegacyAnalyzeRequest\"; expected \"AnalyzeRequest\"|",
+      "count": 1
+    },
+    {
+      "fingerprint": "mypy|apps/api/app/routes/analyze.py|no-redef|Name \"keys\" already defined on|",
+      "count": 1
+    },
+    {
+      "fingerprint": "mypy|apps/api/app/routes/auth.py|arg-type|Argument 2 to \"issue_token_pair\" has incompatible type \"User | None\"; expected \"User\"|",
+      "count": 1
+    },
+    {
+      "fingerprint": "mypy|apps/api/app/routes/auth.py|union-attr|Item \"None\" of \"User | None\" has no attribute \"last_login_at\"|",
+      "count": 1
+    },
+    {
+      "fingerprint": "mypy|apps/api/app/routes/dashboard_session.py|arg-type|Argument \"samesite\" to \"delete_cookie\" of \"Response\" has incompatible type \"str\"; expected \"Literal['lax', 'strict', 'none'] | None\"|",
+      "count": 1
+    },
+    {
+      "fingerprint": "mypy|apps/api/app/routes/dashboard_session.py|arg-type|Argument \"samesite\" to \"set_cookie\" of \"Response\" has incompatible type \"str\"; expected \"Literal['lax', 'strict', 'none'] | None\"|",
+      "count": 1
+    },
+    {
+      "fingerprint": "mypy|apps/api/app/routes/dashboard_status.py|arg-type|Argument 1 to \"add\" of \"set\" has incompatible type \"str | int\"; expected \"str\"|",
+      "count": 1
+    },
+    {
+      "fingerprint": "mypy|apps/api/app/routes/health.py|return-value|Incompatible return value type (got \"str | None\", expected \"str\")|",
+      "count": 1
+    },
+    {
+      "fingerprint": "mypy|apps/api/app/runtime/ml_inference_queue.py|misc|\"None\" not callable|",
+      "count": 1
+    },
+    {
+      "fingerprint": "mypy|apps/api/app/runtime/parser_worker.py|arg-type|Argument \"parser_status\" to \"FileParserResult\" has incompatible type \"str\"; expected \"Literal['parsed', 'partial', 'failed', 'unsupported', 'timeout', 'too_large', 'encrypted']\"|",
+      "count": 1
+    },
+    {
+      "fingerprint": "mypy|apps/api/app/scanner/scanner.py|arg-type|Argument \"scanner_status\" to \"LexicalScanResult\" has incompatible type \"str\"; expected \"Literal['not_started', 'completed', 'partial', 'timeout', 'failed']\"|",
+      "count": 1
+    },
+    {
+      "fingerprint": "mypy|apps/api/app/services/analyze_classifier.py|arg-type|Argument \"signal_type\" to \"LexicalSignal\" has incompatible type \"str\"; expected \"Literal['pii_span', 'secret_span', 'secret_fingerprint', 'token_candidate', 'protected_target_hit', 'custom_regex_hit', 'sensitive_value_pattern_hit', 'context_trigger_hit']\"|",
+      "count": 1
+    },
+    {
+      "fingerprint": "mypy|apps/api/app/services/analyze_classifier.py|union-attr|Item \"None\" of \"BuiltClassifierService | None\" has no attribute \"service\"|",
+      "count": 2
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "manifest_version": "context_lr_roberta_active_best_f1_2026_06_23",
+  "selected": {
+    "lr_model": "models/context_with_patch_v287_lr_c4_dev_classifier.joblib",
+    "target_labels_json": "models/context_target_labels.sample.json",
+    "lr_candidate_policy": {
+      "mode": "global_high_recall_threshold",
+      "candidate_threshold": 0.02,
+      "lr_threshold_policy_json": null,
+      "lr_top_k": 0
+    }
+  }
+}

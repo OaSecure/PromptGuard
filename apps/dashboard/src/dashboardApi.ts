@@ -16,9 +16,7 @@ export class DashboardApiError extends Error {
 
 export function dashboardApiBaseUrl(): string {
   const configured = document.documentElement.dataset.promptguardApiBaseUrl?.trim();
-  if (configured) return configured.replace(/\/+$/, "");
-  if (window.location.protocol === "http:" || window.location.protocol === "https:") return window.location.origin;
-  return "http://localhost:8000";
+  return configured ? configured.replace(/\/+$/, "") : "";
 }
 
 export async function dashboardRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {

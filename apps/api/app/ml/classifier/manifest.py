@@ -76,11 +76,11 @@ def load_classifier_manifest(
 
     lr_model_path = _require_relative_path(selected.get("lr_model"), "selected.lr_model")
     target_labels_path = _require_relative_path(selected.get("target_labels_json"), "selected.target_labels_json")
-    candidate_threshold = _require_threshold(selected.get("candidate_threshold"))
+    candidate_threshold = _read_candidate_threshold(selected)
 
     root = Path(artifact_root) if artifact_root is not None else _infer_artifact_root(path)
     labels_payload = _read_json_file(
-        root / target_labels_path,
+        _resolve_json_path(root, target_labels_path, manifest_dir=path.parent),
         invalid_code="CLASSIFIER_MANIFEST_INVALID_LABELS_JSON",
         invalid_message="classifier manifest label json is invalid",
         not_found_code="CLASSIFIER_MANIFEST_LABELS_NOT_FOUND",
@@ -112,6 +112,18 @@ def _infer_artifact_root(manifest_path: Path) -> Path:
     return manifest_path.parent
 
 
+def _resolve_json_path(root: Path, relative_path: Path, *, manifest_dir: Path) -> Path:
+    root_candidate = root / relative_path
+    if root_candidate.is_file():
+        return root_candidate
+
+    manifest_dir_candidate = manifest_dir / relative_path
+    if manifest_dir_candidate.is_file():
+        return manifest_dir_candidate
+
+    return root_candidate
+
+
 def _read_json_file(
     path: Path,
     *,
@@ -139,19 +151,44 @@ def _require_text(value: Any, field: str) -> str:
     return value
 
 
-def _require_threshold(value: Any) -> float:
+def _read_candidate_threshold(selected: dict[str, Any]) -> float:
+    if "candidate_threshold" in selected:
+        return _require_threshold(selected.get("candidate_threshold"), "selected.candidate_threshold")
+
+    policy = selected.get("lr_candidate_policy")
+    if not isinstance(policy, dict):
+        raise ClassifierManifestLoadError(
+            code="CLASSIFIER_MANIFEST_INVALID_PAYLOAD",
+            message="classifier manifest payload is invalid",
+            metadata={"field": "selected.lr_candidate_policy"},
+        )
+
+    mode = policy.get("mode")
+    if mode != "global_high_recall_threshold":
+        raise ClassifierManifestLoadError(
+            code="CLASSIFIER_MANIFEST_INVALID_PAYLOAD",
+            message="classifier manifest payload is invalid",
+            metadata={"field": "selected.lr_candidate_policy.mode"},
+        )
+    return _require_threshold(
+        policy.get("candidate_threshold"),
+        "selected.lr_candidate_policy.candidate_threshold",
+    )
+
+
+def _require_threshold(value: Any, field: str) -> float:
     if not isinstance(value, (float, int)) or isinstance(value, bool):
         raise ClassifierManifestLoadError(
             code="CLASSIFIER_MANIFEST_INVALID_PAYLOAD",
             message="classifier manifest payload is invalid",
-            metadata={"field": "selected.candidate_threshold"},
+            metadata={"field": field},
         )
     threshold = float(value)
     if threshold < 0.0 or threshold > 1.0:
         raise ClassifierManifestLoadError(
             code="CLASSIFIER_MANIFEST_INVALID_PAYLOAD",
             message="classifier manifest payload is invalid",
-            metadata={"field": "selected.candidate_threshold"},
+            metadata={"field": field},
         )
     return threshold
 

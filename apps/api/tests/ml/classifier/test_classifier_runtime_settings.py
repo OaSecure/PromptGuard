@@ -44,11 +44,13 @@ def test_classifier_runtime_settings_read_enabled_manifest_path_from_env_aliases
     settings = Settings(
         _env_file=None,
         PROMPTGUARD_CLASSIFIER_RUNTIME_ENABLED="true",
-        PROMPTGUARD_CLASSIFIER_MANIFEST_PATH="models/context_lr_roberta_best_v205_manifest.json",
+        PROMPTGUARD_CLASSIFIER_MANIFEST_PATH="/opt/promptguard/models/context_lr_roberta_best_v205_manifest.json",
     )
 
     assert settings.classifier_runtime_enabled is True
-    assert settings.classifier_manifest_path_value() == Path("models/context_lr_roberta_best_v205_manifest.json")
+    assert settings.classifier_manifest_path_value() == Path(
+        "/opt/promptguard/models/context_lr_roberta_best_v205_manifest.json"
+    )
 
 
 def test_classifier_provider_does_not_build_when_disabled():
@@ -90,7 +92,7 @@ def test_classifier_provider_builds_service_bundle_from_settings():
     settings = Settings(
         _env_file=None,
         PROMPTGUARD_CLASSIFIER_RUNTIME_ENABLED=True,
-        PROMPTGUARD_CLASSIFIER_MANIFEST_PATH="models/context_lr_roberta_best_v205_manifest.json",
+        PROMPTGUARD_CLASSIFIER_MANIFEST_PATH="/opt/promptguard/models/context_lr_roberta_best_v205_manifest.json",
     )
 
     def builder(path):
@@ -104,7 +106,7 @@ def test_classifier_provider_builds_service_bundle_from_settings():
     assert result.bundle is not None
     assert result.bundle.artifact == fake_bundle().artifact
     assert isinstance(result.bundle.service, ClassifierService)
-    assert seen_paths == [Path("models/context_lr_roberta_best_v205_manifest.json")]
+    assert seen_paths == [Path("/opt/promptguard/models/context_lr_roberta_best_v205_manifest.json")]
 
 
 def test_classifier_provider_wraps_build_failure_without_sensitive_values():
@@ -158,4 +160,7 @@ def test_env_example_documents_classifier_runtime_settings():
     text = env_example.read_text(encoding="utf-8")
 
     assert "PROMPTGUARD_CLASSIFIER_RUNTIME_ENABLED=false" in text
-    assert "PROMPTGUARD_CLASSIFIER_MANIFEST_PATH=" in text
+    assert (
+        "PROMPTGUARD_CLASSIFIER_MANIFEST_PATH=/opt/promptguard/models/context_lr_roberta_active_best_f1_manifest.json"
+        in text
+    )

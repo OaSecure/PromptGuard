@@ -5,6 +5,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
+from app.domain.types.policy import ContextRiskEvidence
+
 _PUBLIC_ACTIONS = {"ALLOW": "Allow", "WARN": "Warn", "MASK": "Mask", "BLOCK": "Block"}
 
 
@@ -32,7 +34,7 @@ class AnalyzeInputResult(BaseModel):
     source: Literal["composer", "converted_paste", "attached_file", "pasted_file", "pasted_image", "screenshot_image", "attachment_chip"]
     content_included: bool
     content_scanned: bool
-    decision_basis: Literal["no_detection", "detection", "content_unavailable", "metadata_only"]
+    decision_basis: Literal["no_detection", "detection", "content_unavailable", "metadata_only", "context_risk"]
     content_unavailable_reason: str | None = None
     limit_exceeded: str | None = None
 
@@ -58,6 +60,21 @@ class BusinessContextMatch(BaseModel):
     evidence_counts: dict[str, int]
 
 
+class ContextRiskEvidenceResponse(BaseModel):
+    enabled: bool
+    status: str
+    candidate_count: int
+    accepted_count: int
+    labels: list[str]
+    status_counts: dict[str, int]
+    highest_score_bucket: str | None = None
+    highest_confidence_bucket: str | None = None
+    failure_code: str | None = None
+    reason_code: str
+    classifier_model_versions: list[str]
+    verifier_model_versions: list[str]
+
+
 class AnalyzeResponse(BaseModel):
     event_id: uuid.UUID
     request_id: str
@@ -72,6 +89,7 @@ class AnalyzeResponse(BaseModel):
     input_results: list[AnalyzeInputResult]
     content_unavailable_inputs: list[ContentUnavailableInput]
     business_context_matches: list[BusinessContextMatch]
+    context_risk_evidence: ContextRiskEvidenceResponse | None = None
     client_request_id: str
     filter_config_revision: str
     masked_prompt: str | None = None
@@ -81,8 +99,10 @@ def build_analyze_response(
     *, event_id: uuid.UUID, request_id: str, checked_at: datetime, action: str,
     risk_score: int, risk_level: str, payload: Any, matched_inputs: list[tuple[int, Any, list[Any]]],
     input_results: list[AnalyzeInputResult], masked_prompt: str | None, masked_source: str | None,
+    classifier_outcome: Any | None = None,
 ) -> AnalyzeResponse:
-    has_unavailable = any(not item.content_included for item in payload.inputs)
+    unavailable_inputs = _content_unavailable(input_results)
+    has_unavailable = bool(unavailable_inputs)
     matches = [match for _index, _item, item_matches in matched_inputs for match in item_matches]
     usable_mask = masked_prompt if action == "MASK" and masked_source in {"composer", "converted_paste"} else None
     return AnalyzeResponse(
@@ -97,8 +117,9 @@ def build_analyze_response(
         requires_user_confirmation=_requires_confirmation(action, matches),
         detections=_response_detections(matched_inputs),
         input_results=input_results,
-        content_unavailable_inputs=_content_unavailable(payload),
+        content_unavailable_inputs=unavailable_inputs,
         business_context_matches=_business_context_matches(matched_inputs),
+        context_risk_evidence=_context_risk_evidence(classifier_outcome),
         client_request_id=payload.client_request_id,
         filter_config_revision=payload.filter_config_revision,
         masked_prompt=usable_mask,
@@ -122,9 +143,9 @@ def _user_message(action: str, unavailable: bool) -> str:
 def _requires_confirmation(action: str, matches: list[Any]) -> bool:
     if action == "BLOCK":
         return False
-    if action == "WARN":
+    if action in {"MASK", "WARN"}:
         return True
-    return action == "MASK" and any(match.action == "WARN" for match in matches)
+    return False
 
 
 def _response_detections(matched_inputs: list[tuple[int, Any, list[Any]]]) -> list[AnalyzeDetection]:
@@ -136,15 +157,28 @@ def _response_detections(matched_inputs: list[tuple[int, Any, list[Any]]]) -> li
     ) for index, item, matches in matched_inputs for match in matches]
 
 
-def _content_unavailable(payload: Any) -> list[ContentUnavailableInput]:
+def _content_unavailable(input_results: list[AnalyzeInputResult]) -> list[ContentUnavailableInput]:
     result = []
-    for index, item in enumerate(payload.inputs):
-        if item.content_included:
+    for item in input_results:
+        if item.content_scanned or item.decision_basis not in {"content_unavailable", "metadata_only"}:
             continue
         reason = item.content_unavailable_reason or ("metadata_only" if item.kind == "attachment_metadata" else "unavailable")
-        result.append(ContentUnavailableInput(input_id=item.input_id, input_index=index, kind=item.kind,
+        result.append(ContentUnavailableInput(input_id=item.input_id, input_index=item.input_index, kind=item.kind,
                                               source=item.source, reason=reason, limit_exceeded=item.limit_exceeded))
     return result
+
+
+def _context_risk_evidence(classifier_outcome: Any | None) -> ContextRiskEvidenceResponse | None:
+    if classifier_outcome is None:
+        return None
+    value = getattr(classifier_outcome, "context_risk", None)
+    if isinstance(value, ContextRiskEvidence):
+        evidence = value
+    elif isinstance(value, dict):
+        evidence = ContextRiskEvidence.model_validate(value)
+    else:
+        return None
+    return ContextRiskEvidenceResponse.model_validate(evidence.model_dump())
 
 
 def _business_context_matches(matched_inputs: list[tuple[int, Any, list[Any]]]) -> list[BusinessContextMatch]:

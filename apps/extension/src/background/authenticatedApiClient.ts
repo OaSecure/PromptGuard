@@ -74,7 +74,8 @@ async function refreshAccessToken(refreshToken: string, options: AuthenticatedOp
   return response;
 }
 
-function refreshAccessTokenSingleFlight(refreshToken: string, options: AuthenticatedOptions): Promise<RefreshResponse | NormalizedError> {
+/** Refreshes an access token through one shared in-flight request for concurrent real API calls. */
+export function refreshAccessTokenSingleFlight(refreshToken: string, options: AuthenticatedOptions): Promise<RefreshResponse | NormalizedError> {
   if (!refreshInFlight) {
     refreshInFlight = refreshAccessToken(refreshToken, options).finally(() => {
       refreshInFlight = undefined;
