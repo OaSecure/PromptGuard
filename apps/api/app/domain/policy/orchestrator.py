@@ -86,12 +86,10 @@ def _context_risk_decision(request: PolicyDecisionRequest) -> PolicyDecision | N
     if not request.ml.classifier_enabled:
         return None
     context = request.ml.context
-    if context.status in {"verified", "candidate"}:
+    if context.status == "verified" and context.accepted_count > 0:
         return _configured_decision(request.action_settings.context_classifier_action, context.reason_code)
     if context.status in {"timeout", "failed"} and (context.candidate_count > 0 or context.accepted_count > 0):
         return _configured_decision(request.action_settings.context_classifier_action, context.reason_code)
-    if request.ml.classifier_has_candidates:
-        return _configured_decision(request.action_settings.context_classifier_action, "RISK_CONTEXT_LR_ONLY")
     return None
 
 
