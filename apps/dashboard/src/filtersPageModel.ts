@@ -137,6 +137,18 @@ export function filterActionOptions(): FilterSelectOption<RuleAction>[] {
   ];
 }
 
+export function filterKindLabel(value: RuleKind): string {
+  return filterKindOptions().find((item) => item.value === value)?.label ?? value;
+}
+
+export function filterActionLabel(value: RuleAction): string {
+  return filterActionOptions().find((item) => item.value === value)?.label ?? value;
+}
+
+export function filterSeverityLabel(value: RuleSeverity): string {
+  return filterSeverityOptions().find((item) => item.value === value)?.label ?? value;
+}
+
 export function filterSensitivityOptions(): FilterSelectOption<"low" | "medium" | "high">[] {
   return [
     { value: "low", label: "낮음" },
