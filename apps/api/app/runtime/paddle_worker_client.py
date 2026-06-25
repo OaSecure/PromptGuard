@@ -124,9 +124,7 @@ class PaddleWorkerClient:
         resident = self._resident_process()
         response_text = resident.request(dumps_paddle_worker_json(control_payload))
         if response_text is None:
-            if resident.snapshot().last_failure_code == "WORKER_QUEUE_FULL":
-                return _failure("PADDLE_WORKER_QUEUE_FULL", request)
-            return _failure("PADDLE_WORKER_TIMEOUT", request)
+            return _failure(_resident_failure_code("PADDLE_WORKER", resident.snapshot().last_failure_code), request)
         response = loads_paddle_worker_json(response_text or "")
         if response is None:
             return _failure("PADDLE_WORKER_INVALID_RESPONSE", request)
@@ -260,6 +258,18 @@ def _suffix_for_path(path: Path) -> str:
 
 def _failure(error_code: str, request: PaddleWorkerRequest) -> PaddleWorkerResult:
     return PaddleWorkerResult(ok=False, task=request.task, request_id=request.request_id, error_code=error_code)
+
+
+def _resident_failure_code(prefix: str, code: str | None) -> str:
+    if code == "WORKER_QUEUE_FULL":
+        return f"{prefix}_QUEUE_FULL"
+    if code == "WORKER_TIMEOUT":
+        return f"{prefix}_TIMEOUT"
+    if code == "WORKER_NO_RESPONSE":
+        return f"{prefix}_NO_RESPONSE"
+    if code == "WORKER_REQUEST_FAILED":
+        return f"{prefix}_REQUEST_FAILED"
+    return f"{prefix}_UNAVAILABLE"
 
 
 def _safe_error_code(value: object) -> str:

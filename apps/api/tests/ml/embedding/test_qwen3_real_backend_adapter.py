@@ -88,10 +88,11 @@ def test_qwen3_backend_uses_sentence_transformer_encode_with_normalization(monke
             return self._values
 
     class FakeSentenceTransformer:
-        def __init__(self, model_name, *, device, trust_remote_code):
+        def __init__(self, model_name, *, device, trust_remote_code, local_files_only):
             self.model_name = model_name
             self.device = device
             self.trust_remote_code = trust_remote_code
+            self.local_files_only = local_files_only
 
         def eval(self):
             return None
@@ -122,6 +123,7 @@ def test_qwen3_backend_uses_sentence_transformer_encode_with_normalization(monke
     vectors = backend.embed_texts(["sample context"], normalize=True)
 
     assert backend.dimension == 2
+    assert backend.model_version == QWEN3_EMBEDDING_MODEL
     assert vectors == [[0.6, 0.8]]
     assert encode_calls == [
         {
@@ -131,6 +133,37 @@ def test_qwen3_backend_uses_sentence_transformer_encode_with_normalization(monke
             "show_progress_bar": False,
         }
     ]
+
+
+def test_qwen3_backend_can_use_local_path_without_changing_logical_model_version(monkeypatch):
+    class FakeSentenceTransformer:
+        def __init__(self, model_name, *, device, trust_remote_code, local_files_only):
+            self.model_name = model_name
+            self.local_files_only = local_files_only
+
+        def eval(self):
+            return None
+
+        def parameters(self):
+            return []
+
+        def get_sentence_embedding_dimension(self):
+            return 1024
+
+    fake_torch = SimpleNamespace(cuda=SimpleNamespace(is_available=lambda: False))
+    fake_sentence_transformers = SimpleNamespace(SentenceTransformer=FakeSentenceTransformer)
+    monkeypatch.setitem(sys.modules, "torch", fake_torch)
+    monkeypatch.setitem(sys.modules, "sentence_transformers", fake_sentence_transformers)
+
+    backend = Qwen3EmbeddingBackend(
+        "/opt/promptguard/models/qwen3-embedding-0.6b",
+        local_files_only=True,
+        model_version=QWEN3_EMBEDDING_MODEL,
+    )
+
+    assert backend.model_version == QWEN3_EMBEDDING_MODEL
+    assert backend._model.model_name == "/opt/promptguard/models/qwen3-embedding-0.6b"
+    assert backend._model.local_files_only is True
 
 
 @pytest.mark.skipif(os.getenv("RUN_REAL_QWEN_TESTS") != "1", reason="real Qwen3 model download is opt-in")

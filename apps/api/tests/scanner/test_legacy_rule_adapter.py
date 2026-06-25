@@ -4,7 +4,7 @@ from uuid import UUID
 
 from app.models.filters import FilterRule
 from app.scanner.models import LexicalSignal
-from app.services.filter_rules import evaluate_filter_rules
+from app.services.filter_rules import BUILT_IN_RULES, evaluate_filter_rules
 
 
 def _rule(kind: str, **values) -> FilterRule:
@@ -80,3 +80,17 @@ def test_lexical_rule_snapshot_is_manifest_only(caplog):
     assert raw_pattern not in encoded
     assert raw_value not in caplog.text
     assert raw_pattern not in caplog.text
+
+
+def test_built_in_public_api_key_rule_detects_exposed_tokens_without_raw_evidence():
+    text = "배포 설정에 api_key = sk-proj-abcdefghijklmnopqrstuvwxyz123456 를 붙여줘"
+
+    matches = evaluate_filter_rules(text, BUILT_IN_RULES)
+
+    secret_match = next(match for match in matches if match.detector_id == "API_SECRET")
+    assert secret_match.action == "BLOCK"
+    assert secret_match.severity == "critical"
+    assert secret_match.source == "custom_regex"
+    encoded = json.dumps(secret_match.safe_evidence)
+    assert "sk-proj" not in encoded
+    assert "abcdefghijklmnopqrstuvwxyz" not in encoded

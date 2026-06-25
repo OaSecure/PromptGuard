@@ -1,7 +1,10 @@
 import pytest
+from types import SimpleNamespace
 
+from app.application.analyze.policy_adapter import build_policy_request
 from app.domain.policy import PolicyOrchestrator
 from app.domain.types.policy import (
+    ContextRiskEvidence,
     PolicyActionSettings,
     PolicyDecisionRequest,
     PolicyInputEvidence,
@@ -124,6 +127,67 @@ def test_classifier_candidate_uses_configured_context_action_without_mask_target
     assert decision.reason_code == "RISK_CONTEXT_LR_ONLY"
 
 
+def test_verified_context_evidence_uses_verifier_confirmed_reason():
+    ml = PolicyMlEvidence(
+        classifier_enabled=True,
+        classifier_has_candidates=True,
+        verifier_summary_present=True,
+        context=ContextRiskEvidence(
+            enabled=True,
+            status="verified",
+            candidate_count=1,
+            accepted_count=1,
+            labels=["INTERNAL_OPERATION_CONTEXT"],
+            reason_code="RISK_CONTEXT_VERIFIER_CONFIRMED",
+        ),
+    )
+
+    decision = PolicyOrchestrator().decide(_request(ml=ml))
+
+    assert decision.action == "warn"
+    assert decision.reason_code == "RISK_CONTEXT_VERIFIER_CONFIRMED"
+
+
+def test_confirmed_context_label_uses_matching_filter_rule_action():
+    classifier_outcome = SimpleNamespace(
+        enabled=True,
+        has_candidates=True,
+        failure=None,
+        verifier_summaries=[],
+        context_risk=ContextRiskEvidence(
+            enabled=True,
+            status="verified",
+            candidate_count=1,
+            accepted_count=1,
+            labels=["CONFIDENTIAL_BUSINESS_CONTEXT"],
+            reason_code="RISK_CONTEXT_VERIFIER_CONFIRMED",
+        ),
+    )
+    label_rule = SimpleNamespace(
+        origin="built_in",
+        category="Context Risk",
+        detector_key="CONFIDENTIAL_BUSINESS_CONTEXT",
+        enabled=True,
+        archived_at=None,
+        action="BLOCK",
+        severity="critical",
+    )
+
+    request = build_policy_request(
+        "req-context-label",
+        [SimpleNamespace(input_id="input-1", content_included=True)],
+        [],
+        classifier_outcome,
+        input_results=[SimpleNamespace(input_id="input-1", content_scanned=True)],
+        filter_rules=[label_rule],
+    )
+    decision = PolicyOrchestrator().decide(request)
+
+    assert decision.action == "block"
+    assert decision.severity == "critical"
+    assert decision.reason_code == "RISK_CONTEXT_VERIFIER_CONFIRMED"
+
+
 def test_empty_input_uses_configured_empty_input_action():
     settings = PolicyActionSettings(empty_input_action="warn")
 
@@ -141,9 +205,20 @@ def test_empty_input_uses_configured_empty_input_action():
 
 
 @pytest.mark.parametrize("failure", ["classifier_failed", "verifier_failed"])
-def test_ml_failures_fall_back_to_lexical_and_parser_status(failure):
-    ml = PolicyMlEvidence(**{failure: True})
-    assert PolicyOrchestrator().decide(_request(ml=ml)).action == "allow"
+def test_ml_failures_without_candidates_do_not_create_context_policy_decisions(failure):
+    ml = PolicyMlEvidence(
+        classifier_enabled=True,
+        **{failure: True},
+        context=ContextRiskEvidence(
+            enabled=True,
+            status="failed",
+            failure_code="VERIFIER_MODEL_FAILED" if failure == "verifier_failed" else "ANALYZE_CLASSIFIER_FAILED",
+            reason_code="RISK_CONTEXT_LR_ONLY_VERIFIER_FAILED",
+        ),
+    )
+    decision = PolicyOrchestrator().decide(_request(ml=ml))
+    assert decision.action == "allow"
+    assert decision.reason_code == "NO_RISK_DETECTED"
 
 
 def test_verifier_failure_keeps_lr_candidate_warn_path():
@@ -156,6 +231,37 @@ def test_verifier_failure_keeps_lr_candidate_warn_path():
 def test_verifier_summary_has_no_new_policy_meaning():
     ml = PolicyMlEvidence(verifier_summary_present=True)
     assert PolicyOrchestrator().decide(_request(ml=ml)).action == "allow"
+
+
+def test_context_timeout_uses_timeout_reason():
+    ml = PolicyMlEvidence(
+        classifier_enabled=True,
+        context=ContextRiskEvidence(
+            enabled=True,
+            status="timeout",
+            candidate_count=1,
+            failure_code="ML_INFERENCE_TIMEOUT",
+            reason_code="RISK_CONTEXT_LR_ONLY_VERIFIER_TIMEOUT",
+        ),
+    )
+    decision = PolicyOrchestrator().decide(_request(ml=ml))
+    assert decision.action == "warn"
+    assert decision.reason_code == "RISK_CONTEXT_LR_ONLY_VERIFIER_TIMEOUT"
+
+
+def test_context_timeout_without_candidates_does_not_create_context_policy_decision():
+    ml = PolicyMlEvidence(
+        classifier_enabled=True,
+        context=ContextRiskEvidence(
+            enabled=True,
+            status="timeout",
+            failure_code="ML_INFERENCE_TIMEOUT",
+            reason_code="RISK_CONTEXT_LR_ONLY_VERIFIER_TIMEOUT",
+        ),
+    )
+    decision = PolicyOrchestrator().decide(_request(ml=ml))
+    assert decision.action == "allow"
+    assert decision.reason_code == "NO_RISK_DETECTED"
 
 
 def test_unmapped_rule_reason_remains_safe_and_deterministic():

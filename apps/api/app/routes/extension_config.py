@@ -103,13 +103,23 @@ async def extension_config(
             ".java",
             ".go",
             ".rs",
+            ".pdf",
+            ".docx",
+            ".xlsx",
+            ".pptx",
+            ".png",
+            ".jpg",
+            ".jpeg",
         ],
-        excluded_extensions=[".pdf", ".docx", ".xlsx", ".pptx", ".zip", ".png", ".jpg", ".jpeg"],
+        excluded_extensions=[".zip"],
     )
     return ExtensionConfigResponse(
         api_base_url=settings.api_public_url,
         filter_config_revision="cfg_default",
-        request_timeouts=RequestTimeouts(config_request_ms=5000, analyze_request_ms=8000),
+        request_timeouts=RequestTimeouts(
+            config_request_ms=5000,
+            analyze_request_ms=settings.ml_inference_queue_timeout_ms,
+        ),
         input_limits=InputLimits(
             composer_text_bytes=262_144,
             converted_paste_text_bytes=1_048_576,
@@ -118,7 +128,7 @@ async def extension_config(
         ),
         attachment_policy=attachment_policy,
         policy_version="cfg_default",
-        timeout_ms=8000,
+        timeout_ms=settings.ml_inference_queue_timeout_ms,
         ai_service_configs=[
             AiServiceConfig(
                 service="CHATGPT",

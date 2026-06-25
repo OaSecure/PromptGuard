@@ -4,6 +4,7 @@ import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 from app.runtime import resident_worker_process
 from app.runtime.paddle_worker_client import (
     PaddleOcrSubprocessRuntime,
@@ -48,6 +49,27 @@ def test_paddle_worker_error_sanitizes_private_detail():
     assert result["error_code"] == "PADDLE_WORKER_OCR_FAILED"
     assert "PRIVATE_OCR_TEXT" not in serialized
     assert "/private/path.png" not in serialized
+
+
+def test_paddle_worker_serve_returns_json_error_when_ocr_raises(monkeypatch):
+    worker = _load_worker_module()
+    monkeypatch.setattr(worker, "_ocr_image_result", lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("PRIVATE_TRACEBACK")))
+    payload = {
+        "protocol_version": PADDLE_WORKER_PROTOCOL_VERSION,
+        "task": "ocr_image",
+        "request_id": "req-1",
+        "metadata": {"payload_ref": "pwpl_missing"},
+    }
+
+    response = worker._safe_handle_payload(payload)
+
+    assert response == {
+        "ok": False,
+        "error_code": "PADDLE_WORKER_OCR_FAILED",
+        "task": "ocr_image",
+        "request_id": "req-1",
+    }
+    assert "PRIVATE_TRACEBACK" not in json.dumps(response)
 
 
 def test_client_invokes_configured_paddle_python_with_metadata_only_payload():
@@ -216,6 +238,34 @@ def test_paddle_client_maps_resident_queue_full_to_fail_closed_code():
 
     assert result.ok is False
     assert result.error_code == "PADDLE_WORKER_QUEUE_FULL"
+
+
+@pytest.mark.parametrize(
+    ("resident_code", "expected"),
+    [
+        ("WORKER_NO_RESPONSE", "PADDLE_WORKER_NO_RESPONSE"),
+        ("WORKER_REQUEST_FAILED", "PADDLE_WORKER_REQUEST_FAILED"),
+        ("WORKER_TIMEOUT", "PADDLE_WORKER_TIMEOUT"),
+        (None, "PADDLE_WORKER_UNAVAILABLE"),
+    ],
+)
+def test_paddle_client_preserves_resident_failure_code(resident_code, expected):
+    client = PaddleWorkerClient(
+        PaddleWorkerClientConfig(
+            python_path=Path("/opt/venvs/paddle/bin/python"),
+            script_path=Path("/app/scripts/paddle_ocr_worker.py"),
+            timeout_ms=500,
+        )
+    )
+    client._resident = SimpleNamespace(
+        request=lambda _payload: None,
+        snapshot=lambda: SimpleNamespace(last_failure_code=resident_code),
+    )
+
+    result = client.execute(PaddleWorkerRequest(task="ocr_smoke", request_id="req-1"))
+
+    assert result.ok is False
+    assert result.error_code == expected
 
 
 def test_client_payload_ref_keeps_image_bytes_out_of_control_json_and_deletes_payload(tmp_path):

@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from app.runtime.defaults import DEFAULT_ML_INFERENCE_QUEUE_TIMEOUT_MS
 from app.runtime.resident_worker_process import ResidentWorkerProcess, ResidentWorkerSnapshot
 from app.runtime.torch_worker_payload import TorchWorkerPayloadStore
 from app.runtime.torch_worker_protocol import (
@@ -26,7 +27,7 @@ class TorchWorkerClientConfig:
 
     python_path: Path
     script_path: Path
-    timeout_ms: int = 3000
+    timeout_ms: int = DEFAULT_ML_INFERENCE_QUEUE_TIMEOUT_MS
     max_queue_size: int = 32
 
 
@@ -147,9 +148,7 @@ class TorchWorkerClient:
         resident = self._resident_process()
         response_text = resident.request(dumps_worker_json(control_payload))
         if response_text is None:
-            if resident.snapshot().last_failure_code == "WORKER_QUEUE_FULL":
-                return _failure("TORCH_WORKER_QUEUE_FULL", request)
-            return _failure("TORCH_WORKER_TIMEOUT", request)
+            return _failure(_resident_failure_code("TORCH_WORKER", resident.snapshot().last_failure_code), request)
         response = loads_worker_json(response_text or "")
         if response is None:
             return _failure("TORCH_WORKER_INVALID_RESPONSE", request)
@@ -172,7 +171,7 @@ class TorchWorkerClient:
         return self._resident.snapshot() if self._resident is not None else None
 
     def readiness_probe(self) -> TorchWorkerResult:
-        return self.execute(TorchWorkerRequest(task="context_smoke", request_id="torch-readiness"))
+        return self.execute(TorchWorkerRequest(task="context_warmup", request_id="torch-readiness"))
 
     def _resident_process(self) -> ResidentWorkerProcess:
         if self._resident is None:
@@ -194,6 +193,18 @@ class TorchWorkerClient:
 
 def _failure(error_code: str, request: TorchWorkerRequest) -> TorchWorkerResult:
     return TorchWorkerResult(ok=False, task=request.task, request_id=request.request_id, error_code=error_code)
+
+
+def _resident_failure_code(prefix: str, code: str | None) -> str:
+    if code == "WORKER_QUEUE_FULL":
+        return f"{prefix}_QUEUE_FULL"
+    if code == "WORKER_TIMEOUT":
+        return f"{prefix}_TIMEOUT"
+    if code == "WORKER_NO_RESPONSE":
+        return f"{prefix}_NO_RESPONSE"
+    if code == "WORKER_REQUEST_FAILED":
+        return f"{prefix}_REQUEST_FAILED"
+    return f"{prefix}_UNAVAILABLE"
 
 
 def _safe_error_code(value: object) -> str:

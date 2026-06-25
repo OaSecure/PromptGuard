@@ -126,6 +126,9 @@ def _client(user=None, rules=None, policy_settings=None) -> tuple[TestClient, _F
         yield fake_session
 
     app.dependency_overrides[get_db_session] = override_session
+    app.dependency_overrides[analyze_route.get_classifier_runtime_provider] = lambda: ClassifierRuntimeProviderResult(
+        failure=PipelineFailure(code="CLASSIFIER_RUNTIME_DISABLED", message="classifier runtime disabled")
+    )
     return TestClient(app), fake_session
 
 

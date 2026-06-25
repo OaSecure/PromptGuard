@@ -13,8 +13,10 @@ class Qwen3EmbeddingBackend:
         *,
         device: str | None = None,
         trust_remote_code: bool = False,
+        local_files_only: bool = False,
+        model_version: str | None = None,
     ) -> None:
-        self.model_version = model_name
+        self.model_version = model_version or model_name
         try:
             import torch
             from sentence_transformers import SentenceTransformer
@@ -22,12 +24,18 @@ class Qwen3EmbeddingBackend:
             raise RuntimeError("qwen3_embedding_dependencies_unavailable") from exc
 
         selected_device = device or ("cuda" if torch.cuda.is_available() else "cpu")
-        self._model = SentenceTransformer(model_name, device=selected_device, trust_remote_code=trust_remote_code)
+        self._model = SentenceTransformer(
+            model_name,
+            device=selected_device,
+            trust_remote_code=trust_remote_code,
+            local_files_only=local_files_only,
+        )
         self._model.eval()
         for parameter in self._model.parameters():
             parameter.requires_grad_(False)
 
-        dimension = self._model.get_sentence_embedding_dimension()
+        dimension_getter = getattr(self._model, "get_embedding_dimension", self._model.get_sentence_embedding_dimension)
+        dimension = dimension_getter()
         if dimension is None:
             raise RuntimeError("qwen3_embedding_dependencies_unavailable")
         self.dimension = int(dimension)

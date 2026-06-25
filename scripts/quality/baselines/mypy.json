@@ -147,10 +147,6 @@
       "count": 1
     },
     {
-      "fingerprint": "mypy|apps/api/app/routes/analyze.py|arg-type|Argument \"decision_basis\" to \"AnalyzeInputResult\" has incompatible type \"str\"; expected \"Literal['no_detection', 'detection', 'content_unavailable', 'metadata_only']\"|",
-      "count": 1
-    },
-    {
       "fingerprint": "mypy|apps/api/app/routes/analyze.py|arg-type|Argument 1 to \"included_text_inputs\" has incompatible type \"LegacyAnalyzeRequest\"; expected \"AnalyzeRequest\"|",
       "count": 1
     },

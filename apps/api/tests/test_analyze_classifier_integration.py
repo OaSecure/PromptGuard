@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 from app.atoms.models import PipelineFailure
+from app.domain.types.policy import ContextRiskEvidence
 from app.ml.classifier.factory import (
     BuiltClassifierService,
     ClassifierRuntimeProviderResult,
@@ -288,6 +289,8 @@ def test_evaluate_analyze_classifier_uses_pipeline_and_reports_candidates() -> N
     assert outcome.enabled is True
     assert outcome.has_candidates is True
     assert outcome.failure is None
+    assert outcome.context_risk.status == "candidate"
+    assert outcome.context_risk.candidate_count == 1
 
 
 def test_evaluate_analyze_classifier_embeds_sentence_and_classifies_with_lr_runtime() -> None:
@@ -459,7 +462,11 @@ def test_evaluate_analyze_classifier_verifies_classifier_candidates_without_raw_
             "failure": None,
         }
     ]
+    assert outcome.context_risk.status == "verified"
+    assert outcome.context_risk.accepted_count == 1
+    assert outcome.context_risk.labels == ["secret_risk"]
     assert raw_sentinel not in json.dumps(outcome.verifier_summaries)
+    assert raw_sentinel not in outcome.context_risk.model_dump_json()
     assert raw_sentinel not in json.dumps(verifier_request.model_dump())
 
 
@@ -478,6 +485,7 @@ def test_evaluate_analyze_classifier_skips_verifier_when_classifier_has_no_candi
     assert outcome.enabled is True
     assert outcome.has_candidates is False
     assert outcome.failure is None
+    assert outcome.context_risk.status == "no_candidate"
     assert outcome.verifier_summaries == []
     assert verifier_model.requests == []
 
@@ -497,6 +505,8 @@ def test_evaluate_analyze_classifier_fails_closed_when_enabled_verifier_fails() 
     assert outcome.has_candidates is True
     assert outcome.failure is not None
     assert outcome.failure.code == "VERIFIER_MODEL_FAILED"
+    assert outcome.context_risk.status == "failed"
+    assert outcome.context_risk.failure_code == "VERIFIER_MODEL_FAILED"
     assert "raw verifier failure sentinel" not in json.dumps(outcome.failure.model_dump())
 
 
@@ -527,6 +537,8 @@ def test_evaluate_analyze_classifier_fails_closed_when_verifier_queue_times_out(
     assert outcome.has_candidates is True
     assert outcome.failure is not None
     assert outcome.failure.code == "ML_INFERENCE_TIMEOUT"
+    assert outcome.context_risk.status == "timeout"
+    assert outcome.context_risk.failure_code == "ML_INFERENCE_TIMEOUT"
     assert "ordinary note" not in json.dumps(outcome.failure.model_dump())
     queue.shutdown()
 
@@ -665,7 +677,17 @@ def test_classifier_candidate_escalates_allow_to_warn_without_raw_leakage(monkey
     sentinel = "CLASSIFIER_RAW_SECRET_SENTINEL"
 
     def candidate_outcome(*_args, **_kwargs):
-        return SimpleNamespace(enabled=True, has_candidates=True, failure=None)
+        return SimpleNamespace(
+            enabled=True,
+            has_candidates=True,
+            failure=None,
+            context_risk=ContextRiskEvidence(
+                enabled=True,
+                status="candidate",
+                candidate_count=1,
+                reason_code="RISK_CONTEXT_LR_ONLY",
+            ),
+        )
 
     monkeypatch.setattr(analyze_route, "evaluate_analyze_classifier", candidate_outcome, raising=False)
     user = _user()
@@ -680,20 +702,35 @@ def test_classifier_candidate_escalates_allow_to_warn_without_raw_leakage(monkey
     assert response.status_code == 200
     body = response.json()
     assert body["action"] == "Warn"
+    assert body["risk_score"] >= 40
+    assert body["risk_level"] == "medium"
     assert body["allow_original_send"] is True
     assert body["requires_user_confirmation"] is True
     assert "masked_prompt" not in body
     assert body["detections"] == []
+    assert body["input_results"][0]["decision_basis"] == "context_risk"
+    assert body["context_risk_evidence"]["status"] == "candidate"
+    assert body["context_risk_evidence"]["candidate_count"] == 1
+    stored = _stored_payload(fake_session)
+    assert "ML_CONTEXT_RISK" not in stored
+    assert "context_risk_evidence" in stored
+    assert "RISK_CONTEXT_LR_ONLY" in stored
     assert sentinel not in json.dumps(body)
-    assert sentinel not in _stored_payload(fake_session)
+    assert sentinel not in stored
 
 
-def test_classifier_failure_falls_back_to_lexical_parser_policy_without_masked_prompt(monkeypatch) -> None:
+def test_classifier_failure_uses_safe_context_failure_evidence_without_masked_prompt(monkeypatch) -> None:
     def failed_outcome(*_args, **_kwargs):
         return SimpleNamespace(
             enabled=True,
             has_candidates=False,
             failure=PipelineFailure(code="EMBEDDING_TIMEOUT", message="embedding timeout"),
+            context_risk=ContextRiskEvidence(
+                enabled=True,
+                status="timeout",
+                failure_code="EMBEDDING_TIMEOUT",
+                reason_code="RISK_CONTEXT_LR_ONLY_VERIFIER_TIMEOUT",
+            ),
         )
 
     monkeypatch.setattr(analyze_route, "evaluate_analyze_classifier", failed_outcome, raising=False)
@@ -711,6 +748,9 @@ def test_classifier_failure_falls_back_to_lexical_parser_policy_without_masked_p
     assert body["action"] == "Allow"
     assert body["allow_original_send"] is True
     assert body["requires_user_confirmation"] is False
+    assert body["input_results"][0]["decision_basis"] == "no_detection"
+    assert body["context_risk_evidence"]["status"] == "timeout"
+    assert body["context_risk_evidence"]["failure_code"] == "EMBEDDING_TIMEOUT"
     assert "masked_prompt" not in body
 
 

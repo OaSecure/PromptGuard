@@ -6,6 +6,7 @@ from pydantic_core import PydanticCustomError
 
 from app.atoms.models import PipelineFailure
 from app.ml.classifier.models import SegmentClassificationCandidate, SegmentClassificationResult
+from app.runtime.defaults import DEFAULT_ML_INFERENCE_QUEUE_TIMEOUT_MS
 
 RobertaVerificationStatus = Literal["confirmed", "rejected", "uncertain", "timeout", "failed"]
 
@@ -52,7 +53,7 @@ class RobertaVerificationRequest(BaseModel):
     input_id: str
     candidates: list[RobertaVerificationCandidate] = Field(default_factory=list)
     artifact: VerifierArtifactRef
-    timeout_ms: int = Field(default=3000, ge=1)
+    timeout_ms: int = Field(default=DEFAULT_ML_INFERENCE_QUEUE_TIMEOUT_MS, ge=1)
 
     @field_validator("input_id")
     @classmethod
@@ -115,7 +116,7 @@ def build_verification_request_from_classifier(
     input_id: str,
     classification: SegmentClassificationResult,
     artifact: VerifierArtifactRef,
-    timeout_ms: int = 3000,
+    timeout_ms: int = DEFAULT_ML_INFERENCE_QUEUE_TIMEOUT_MS,
     candidate_text_by_segment_id: Mapping[str, str] | None = None,
 ) -> RobertaVerificationRequest:
     if classification.failure is not None:

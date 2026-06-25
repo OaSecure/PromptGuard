@@ -16,19 +16,22 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt ./
-RUN python -m venv /opt/venvs/api \
-    && /opt/venvs/api/bin/python -m pip install --no-cache-dir --upgrade pip setuptools wheel \
-    && /opt/venvs/api/bin/python -m pip install --no-cache-dir -r requirements.txt
+RUN --mount=type=cache,id=promptguard-pip-api,target=/root/.cache/pip \
+    python -m venv /opt/venvs/api \
+    && /opt/venvs/api/bin/python -m pip install --upgrade pip setuptools wheel \
+    && /opt/venvs/api/bin/python -m pip install -r requirements.txt
 
 COPY requirements-paddle-gpu.txt ./
-RUN python -m venv /opt/venvs/paddle \
-    && /opt/venvs/paddle/bin/python -m pip install --no-cache-dir --upgrade pip setuptools wheel \
-    && /opt/venvs/paddle/bin/python -m pip install --no-cache-dir -r requirements-paddle-gpu.txt
+RUN --mount=type=cache,id=promptguard-pip-paddle,target=/root/.cache/pip \
+    python -m venv /opt/venvs/paddle \
+    && /opt/venvs/paddle/bin/python -m pip install --upgrade pip setuptools wheel \
+    && /opt/venvs/paddle/bin/python -m pip install -r requirements-paddle-gpu.txt
 
 COPY requirements-torch-gpu.txt ./
-RUN python -m venv /opt/venvs/torch \
-    && /opt/venvs/torch/bin/python -m pip install --no-cache-dir --upgrade pip setuptools wheel \
-    && /opt/venvs/torch/bin/python -m pip install --no-cache-dir -r requirements-torch-gpu.txt
+RUN --mount=type=cache,id=promptguard-pip-torch,target=/root/.cache/pip \
+    python -m venv /opt/venvs/torch \
+    && /opt/venvs/torch/bin/python -m pip install --upgrade pip setuptools wheel \
+    && /opt/venvs/torch/bin/python -m pip install -r requirements-torch-gpu.txt
 
 COPY . .
 COPY --from=dashboard . /opt/promptguard/dashboard

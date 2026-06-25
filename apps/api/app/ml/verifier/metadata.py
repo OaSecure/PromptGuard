@@ -10,7 +10,7 @@ def project_verification_signal_summary(result: RobertaVerificationResult) -> di
         "verification_count": len(result.verifications),
         "accepted_count": sum(1 for item in result.verifications if item.accepted),
         "status_counts": _status_counts(result.verifications),
-        "labels": sorted({item.candidate_label for item in result.verifications}),
+        "labels": sorted({item.candidate_label for item in result.verifications if item.accepted}),
         "highest_confidence_bucket": _highest_confidence_bucket(result.verifications),
         "verifier_model_versions": sorted({item.verifier_model_version for item in result.verifications}),
         "failure": _project_failure_metadata(result),

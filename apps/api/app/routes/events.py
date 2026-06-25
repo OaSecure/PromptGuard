@@ -17,7 +17,11 @@ router = APIRouter(prefix="/dashboard/events", tags=["dashboard-events"])
 
 ActionFilter = Literal["ALLOW", "WARN", "MASK", "BLOCK"]
 RiskLevelFilter = Literal["low", "medium", "high", "critical"]
-ALLOWED_EVIDENCE_COUNT_KEYS = {"match_count", "matched_condition_count", "keyword_count"}
+ALLOWED_EVIDENCE_COUNT_KEYS = {
+    "match_count",
+    "matched_condition_count",
+    "keyword_count",
+}
 
 
 class EventDetectionSummary(BaseModel):
@@ -66,6 +70,21 @@ class BusinessContextMatch(BaseModel):
     evidence_counts: dict[str, Any]
 
 
+class ContextRiskEvidence(BaseModel):
+    enabled: bool
+    status: str
+    candidate_count: int
+    accepted_count: int
+    labels: list[str]
+    status_counts: dict[str, int]
+    highest_score_bucket: str | None = None
+    highest_confidence_bucket: str | None = None
+    failure_code: str | None
+    reason_code: str
+    classifier_model_versions: list[str]
+    verifier_model_versions: list[str]
+
+
 class EventListItem(BaseModel):
     event_id: uuid.UUID
     created_at: datetime
@@ -90,6 +109,7 @@ class EventDetail(EventListItem):
     input_results: list[EventInputResponse]
     content_unavailable_inputs: list[EventInputResponse]
     business_context_matches: list[BusinessContextMatch]
+    context_risk_evidence: ContextRiskEvidence | None
 
 
 def apply_event_filters(
@@ -168,8 +188,41 @@ def safe_counts(value: Any) -> dict[str, int]:
     return {key: item for key, item in value.items() if key in ALLOWED_EVIDENCE_COUNT_KEYS and isinstance(item, int)}
 
 
+def safe_int_map(value: Any) -> dict[str, int]:
+    if not isinstance(value, dict):
+        return {}
+    return {
+        key: item
+        for key, item in value.items()
+        if isinstance(key, str) and isinstance(item, int) and item >= 0
+    }
+
+
 def is_business_context_detection(detection: EventDetection) -> bool:
     return detection.source == "custom_context_rule"
+
+
+def context_risk_response(value: Any) -> ContextRiskEvidence | None:
+    if not isinstance(value, dict):
+        return None
+    status = value.get("status")
+    candidate_count = value.get("candidate_count")
+    accepted_count = value.get("accepted_count")
+    reason_code = value.get("reason_code")
+    return ContextRiskEvidence(
+        enabled=value.get("enabled") is True,
+        status=status if isinstance(status, str) else "candidate",
+        candidate_count=candidate_count if isinstance(candidate_count, int) else 0,
+        accepted_count=accepted_count if isinstance(accepted_count, int) else 0,
+        labels=safe_keywords(value.get("labels")),
+        status_counts=safe_int_map(value.get("status_counts")),
+        highest_score_bucket=value.get("highest_score_bucket") if isinstance(value.get("highest_score_bucket"), str) else None,
+        highest_confidence_bucket=value.get("highest_confidence_bucket") if isinstance(value.get("highest_confidence_bucket"), str) else None,
+        failure_code=value.get("failure_code") if isinstance(value.get("failure_code"), str) else None,
+        reason_code=reason_code if isinstance(reason_code, str) else "RISK_CONTEXT_LR_ONLY",
+        classifier_model_versions=safe_keywords(value.get("classifier_model_versions")),
+        verifier_model_versions=safe_keywords(value.get("verifier_model_versions")),
+    )
 
 
 def list_item(
@@ -206,7 +259,10 @@ def detail_item(
 ) -> EventDetail:
     base = list_item(event, user, detections, inputs)
     summary = summarize_detections(detections)
-    input_results = [input_response(item) for item in sorted(inputs, key=lambda item: item.input_index)]
+    input_results = [
+        input_response(item)
+        for item in sorted(inputs, key=lambda item: item.input_index)
+    ]
     content_unavailable_inputs = [
         input_response(item)
         for item in sorted(inputs, key=lambda item: item.input_index)
@@ -250,6 +306,7 @@ def detail_item(
             for detection in sorted(detections, key=lambda item: (item.category, item.type, item.reason_code))
             if is_business_context_detection(detection) and (detection.matched_keywords or detection.evidence_counts)
         ],
+        context_risk_evidence=context_risk_response(event.context_risk_evidence),
     )
 
 

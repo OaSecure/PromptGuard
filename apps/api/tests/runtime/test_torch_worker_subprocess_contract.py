@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 from app.runtime import resident_worker_process
 from app.runtime.resident_worker_process import ResidentWorkerProcess
 from app.runtime.torch_worker_client import (
@@ -204,6 +205,34 @@ def test_torch_client_maps_resident_queue_full_to_fail_closed_code():
     assert result.error_code == "TORCH_WORKER_QUEUE_FULL"
 
 
+@pytest.mark.parametrize(
+    ("resident_code", "expected"),
+    [
+        ("WORKER_NO_RESPONSE", "TORCH_WORKER_NO_RESPONSE"),
+        ("WORKER_REQUEST_FAILED", "TORCH_WORKER_REQUEST_FAILED"),
+        ("WORKER_TIMEOUT", "TORCH_WORKER_TIMEOUT"),
+        (None, "TORCH_WORKER_UNAVAILABLE"),
+    ],
+)
+def test_torch_client_preserves_resident_failure_code(resident_code, expected):
+    client = TorchWorkerClient(
+        TorchWorkerClientConfig(
+            python_path=Path("/opt/venvs/torch/bin/python"),
+            script_path=Path("/app/scripts/torch_context_worker.py"),
+            timeout_ms=500,
+        )
+    )
+    client._resident = SimpleNamespace(
+        request=lambda _payload: None,
+        snapshot=lambda: SimpleNamespace(last_failure_code=resident_code),
+    )
+
+    result = client.execute(TorchWorkerRequest(task="context_smoke", request_id="req-1"))
+
+    assert result.ok is False
+    assert result.error_code == expected
+
+
 def test_torch_worker_readiness_probe_warms_resident_process(monkeypatch):
     processes = []
 
@@ -247,7 +276,7 @@ def test_torch_worker_readiness_probe_warms_resident_process(monkeypatch):
     assert snapshot.process_running is True
     assert snapshot.warm is True
     assert snapshot.requests_total == 1
-    assert processes[0].requests[0]["task"] == "context_smoke"
+    assert processes[0].requests[0]["task"] == "context_warmup"
 
 
 def test_client_timeout_is_fail_closed_without_private_values():
@@ -420,6 +449,54 @@ def test_context_worker_payload_ref_failure_does_not_echo_raw_text(tmp_path):
     assert "PRIVATE_RAW_CONTEXT" not in completed.stderr
 
 
+def test_torch_worker_model_imports_do_not_require_api_settings_dependency():
+    script = "\n".join(
+        [
+            "import builtins",
+            "real_import = builtins.__import__",
+            "def guarded_import(name, globals=None, locals=None, fromlist=(), level=0):",
+            "    if name == 'pydantic_settings' or name.startswith('pydantic_settings.'):",
+            "        raise ModuleNotFoundError(name)",
+            "    return real_import(name, globals, locals, fromlist, level)",
+            "builtins.__import__ = guarded_import",
+            "from app.ml.verifier.models import DEFAULT_ML_INFERENCE_QUEUE_TIMEOUT_MS",
+            "print(DEFAULT_ML_INFERENCE_QUEUE_TIMEOUT_MS)",
+        ]
+    )
+
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        text=True,
+        capture_output=True,
+        check=False,
+        env={**os.environ, "PYTHONPATH": str(API_ROOT)},
+    )
+
+    assert completed.returncode == 0
+    assert completed.stdout.strip() == "120000"
+
+
+def test_torch_worker_serve_returns_json_error_when_pipeline_raises(monkeypatch):
+    worker = _load_worker_module()
+    monkeypatch.setattr(worker, "_context_pipeline_result", lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("PRIVATE_TRACEBACK")))
+    payload = {
+        "protocol_version": TORCH_WORKER_PROTOCOL_VERSION,
+        "task": "context_pipeline",
+        "request_id": "req-1",
+        "metadata": {"payload_ref": "twpl_missing"},
+    }
+
+    response = worker._safe_handle_payload(payload)
+
+    assert response == {
+        "ok": False,
+        "error_code": "TORCH_WORKER_CONTEXT_FAILED",
+        "task": "context_pipeline",
+        "request_id": "req-1",
+    }
+    assert "PRIVATE_TRACEBACK" not in json.dumps(response)
+
+
 def test_context_pipeline_orchestrates_real_model_steps_with_sanitized_summary(monkeypatch):
     worker = _load_worker_module()
     calls: list[str] = []
@@ -459,6 +536,63 @@ def test_context_pipeline_orchestrates_real_model_steps_with_sanitized_summary(m
     assert "0.91" not in serialized
     assert "0.42" not in serialized
     worker._reset_context_pipeline_runtime_for_tests()
+
+
+def test_context_pipeline_embedding_backend_uses_preinstalled_path(monkeypatch, tmp_path):
+    worker = _load_worker_module()
+    model_dir = tmp_path / "qwen3-embedding-0.6b"
+    model_dir.mkdir()
+    calls = []
+
+    monkeypatch.setenv("PROMPTGUARD_QWEN_EMBEDDING_MODEL_PATH", str(model_dir))
+    monkeypatch.setattr(
+        worker,
+        "Qwen3EmbeddingBackend",
+        lambda *args, **kwargs: calls.append((args, kwargs)) or SimpleNamespace(model_version=kwargs["model_version"]),
+    )
+
+    backend = worker._create_local_qwen3_embedding_backend("Qwen/Qwen3-Embedding-0.6B")
+
+    assert backend.model_version == "Qwen/Qwen3-Embedding-0.6B"
+    assert calls == [
+        (
+            (str(model_dir),),
+            {
+                "trust_remote_code": True,
+                "local_files_only": True,
+                "model_version": "Qwen/Qwen3-Embedding-0.6B",
+            },
+        )
+    ]
+
+
+def test_context_pipeline_embedding_backend_rejects_missing_preinstalled_path(monkeypatch, tmp_path):
+    worker = _load_worker_module()
+    monkeypatch.setenv("PROMPTGUARD_QWEN_EMBEDDING_MODEL_PATH", str(tmp_path / "missing-qwen"))
+
+    with pytest.raises(RuntimeError) as exc_info:
+        worker._resolve_local_qwen3_embedding_model("Qwen/Qwen3-Embedding-0.6B")
+
+    assert str(exc_info.value) == "qwen3_embedding_model_path_unavailable"
+
+
+def test_context_pipeline_embedding_backend_uses_offline_snapshot_only(monkeypatch, tmp_path):
+    worker = _load_worker_module()
+    snapshot_dir = tmp_path / "snapshot"
+    snapshot_dir.mkdir()
+    calls = []
+
+    def snapshot_download(*, repo_id, local_files_only):
+        calls.append({"repo_id": repo_id, "local_files_only": local_files_only})
+        return str(snapshot_dir)
+
+    monkeypatch.delenv("PROMPTGUARD_QWEN_EMBEDDING_MODEL_PATH", raising=False)
+    monkeypatch.setitem(sys.modules, "huggingface_hub", SimpleNamespace(snapshot_download=snapshot_download))
+
+    resolved = worker._resolve_local_qwen3_embedding_model("Qwen/Qwen3-Embedding-0.6B")
+
+    assert resolved == snapshot_dir
+    assert calls == [{"repo_id": "Qwen/Qwen3-Embedding-0.6B", "local_files_only": True}]
 
 
 def test_context_pipeline_reuses_model_runtime_for_same_manifest(monkeypatch):
