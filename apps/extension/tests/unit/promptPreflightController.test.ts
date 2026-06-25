@@ -465,6 +465,31 @@ describe("prompt preflight controller", () => {
     timeoutController.disconnect();
   });
 
+  it("retries Block with a fresh client_request_id and sends after a later Allow", async () => {
+    const page = setupComposer("block retry case");
+    const requestIds: string[] = [];
+    let attempt = 0;
+    const controller = startPromptPreflightController({
+      config: DEFAULT_CONFIG,
+      getContext: () => context,
+      sendAnalyze: async (request) => {
+        requestIds.push(request.client_request_id);
+        attempt += 1;
+        return attempt === 1 ? responseFor("Block") : responseFor("Allow");
+      }
+    });
+
+    page.button.click();
+    await waitFor(() => overlayDecision() === "block");
+    clickOverlayAction("retry");
+    await waitFor(() => page.submits() === 1);
+
+    expect(requestIds).toHaveLength(2);
+    expect(requestIds[0]).not.toBe(requestIds[1]);
+    expect(page.submits()).toBe(1);
+    controller.disconnect();
+  });
+
   it("fails closed for malformed Analyze responses", async () => {
     const page = setupComposer("malformed response case");
     const controller = startPromptPreflightController({
@@ -484,7 +509,7 @@ describe("prompt preflight controller", () => {
     controller.disconnect();
   });
 
-  it("reuses the same client_request_id when the same blocked send attempt is retried", async () => {
+  it("uses a fresh client_request_id when a failed inspection is retried", async () => {
     const page = setupComposer("retry case");
     const requestIds: string[] = [];
     let attempt = 0;
@@ -504,7 +529,7 @@ describe("prompt preflight controller", () => {
     await waitFor(() => page.submits() === 1);
 
     expect(requestIds).toHaveLength(2);
-    expect(requestIds[0]).toBe(requestIds[1]);
+    expect(requestIds[0]).not.toBe(requestIds[1]);
     controller.disconnect();
   });
 
