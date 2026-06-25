@@ -60,11 +60,28 @@ def main() -> int:
     return _run_ocr_image(payload, task=task, request_id=request_id)
 
 
+def safe_main() -> int:
+    try:
+        return main()
+    except Exception:
+        print(dumps_paddle_worker_json(build_paddle_worker_error("PADDLE_WORKER_OCR_FAILED")))
+        return 1
+
+
 def serve() -> int:
     for line in sys.stdin:
-        response = _handle_payload(loads_paddle_worker_json(line))
+        response = _safe_handle_payload(loads_paddle_worker_json(line))
         print(dumps_paddle_worker_json(response), flush=True)
     return 0
+
+
+def _safe_handle_payload(payload: dict[str, Any] | None) -> dict[str, Any]:
+    task = payload.get("task") if isinstance(payload, dict) and isinstance(payload.get("task"), str) else None
+    request_id = payload.get("request_id") if isinstance(payload, dict) and isinstance(payload.get("request_id"), str) else None
+    try:
+        return _handle_payload(payload)
+    except Exception:
+        return build_paddle_worker_error("PADDLE_WORKER_OCR_FAILED", task=task, request_id=request_id)
 
 
 def _handle_payload(payload: dict[str, Any] | None) -> dict[str, Any]:
@@ -242,4 +259,4 @@ def _suppress_native_output():
 
 
 if __name__ == "__main__":
-    raise SystemExit(serve() if "--serve" in sys.argv[1:] else main())
+    raise SystemExit(serve() if "--serve" in sys.argv[1:] else safe_main())

@@ -77,6 +77,7 @@ def test_analyze_verifier_provider_builds_config_from_settings():
         _env_file=None,
         PROMPTGUARD_VERIFIER_RUNTIME_ENABLED=True,
         PROMPTGUARD_VERIFIER_MANIFEST_PATH="/opt/promptguard/models/context_roberta_verifier_v205_manifest.json",
+        PROMPTGUARD_ML_INFERENCE_QUEUE_TIMEOUT_MS=120_000,
     )
 
     def builder(path):
@@ -88,6 +89,7 @@ def test_analyze_verifier_provider_builds_config_from_settings():
     assert config is not None
     assert config.artifact == fake_bundle().artifact
     assert isinstance(config.service, RobertaVerifierService)
+    assert config.timeout_ms == 120_000
     assert seen_paths == [Path("/opt/promptguard/models/context_roberta_verifier_v205_manifest.json")]
 
 

@@ -19,10 +19,6 @@
       "count": 1
     },
     {
-      "fingerprint": "ruff|apps/api/app/domain/types/policy.py|I001|Import block is un-sorted or un-formatted|from typing import Literal",
-      "count": 1
-    },
-    {
       "fingerprint": "ruff|apps/api/app/infrastructure/pdf/pdfium_renderer.py|I001|Import block is un-sorted or un-formatted|import logging",
       "count": 1
     },

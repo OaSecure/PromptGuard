@@ -1,3 +1,6 @@
+import logging
+import os
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -24,6 +27,10 @@ from app.routes.temp_files import router as temp_files_router, validate_temp_sto
 
 settings = get_settings()
 validate_temp_storage_settings()
+
+LOG_LEVEL = os.getenv("PROMPTGUARD_LOG_LEVEL", "INFO").upper()
+logging.basicConfig(level=getattr(logging, LOG_LEVEL, logging.INFO))
+logging.getLogger("app").setLevel(getattr(logging, LOG_LEVEL, logging.INFO))
 
 app = FastAPI(
     title="PromptGuard API",

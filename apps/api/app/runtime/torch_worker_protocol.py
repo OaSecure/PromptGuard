@@ -4,7 +4,7 @@ from typing import Any
 
 TORCH_WORKER_PROTOCOL_VERSION = "promptguard.torch-worker.v1"
 
-_ALLOWED_TASKS = {"context_smoke", "context_pipeline"}
+_ALLOWED_TASKS = {"context_smoke", "context_warmup", "context_pipeline"}
 _FORBIDDEN_KEYS = {
     "raw_prompt",
     "prompt",

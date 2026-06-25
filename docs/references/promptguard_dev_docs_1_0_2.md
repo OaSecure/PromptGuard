@@ -758,7 +758,7 @@ PDF, Office, OCR, 압축 해제, malware scanning, binary analysis, ZIP 내부 �
 | 필드                   | 기본값    | 의미                                                                           |
 | -------------------- | ------ | ---------------------------------------------------------------------------- |
 | `config_request_ms`  | `5000` | 확장앱 설정 요청 timeout. 최초 설정 요청에는 확장앱 내장 기본값을 쓰고, 이후에는 서버 설정 또는 캐시된 설정을 적용한다.    |
-| `analyze_request_ms` | `8000` | `/prompts/analyze` 요청 timeout. 이 시간을 넘으면 확장앱은 서버 응답 실패로 보고 timeout UX를 적용한다. |
+| `analyze_request_ms` | `120000` | `/prompts/analyze` 요청 timeout. 서버의 `PROMPTGUARD_ML_INFERENCE_QUEUE_TIMEOUT_MS`와 같은 값으로 노출해야 하며, 확장앱은 이 시간을 넘으면 서버 응답 실패로 보고 timeout UX를 적용한다. |
 
 `input_limits`는 byte 기준 크기 제한을 고정 key-value map으로 표현한다. 서버 내부 환경변수나 설정 이름은 `MAX_COMPOSER_TEXT_BYTES`처럼 대문자 상수명을 쓸 수 있지만, API 응답 JSON은 snake\_case field로 내려준다.
 
@@ -873,6 +873,7 @@ MVP에서는 여러 종류의 탐지/제약이 동시에 걸린 경우의 고급
 | `input_results[]`              | `inputs[]` item별 처리 결과 요약                    |
 | `content_unavailable_inputs[]` | 서버가 실제 내용을 검사하지 못하고 metadata-only로 판단한 입력 요약 |
 | `business_context_matches[]`   | 적용되는 경우 Business Context match metadata      |
+| `context_risk_evidence`        | ML classifier/verifier 문맥 위험 safe evidence metadata |
 
 대시보드 이벤트 상세 화면과 `GET /dashboard/events/{event_id}` 응답은 다음 내부 식별자를 표시하거나 반환하지 않는다.
 
@@ -886,11 +887,15 @@ MVP에서는 여러 종류의 탐지/제약이 동시에 걸린 경우의 고급
 
 `detections[]`의 각 항목은 8.1의 응답 계약과 같은 기준을 따른다. 원문 탐지값을 포함하지 않고, 어느 입력에서 탐지됐는지 알 수 있도록 `input_id`, `input_index`, `kind`, `source`, `rule_id`, `detector_id`, `severity`, `action`, `placeholder`, `match_count`, `reason_code`를 포함한다.
 
-`input_results[]`는 요청 당시 `inputs[]`와 같은 순서로 저장된 처리 결과 요약을 반환한다. 각 항목은 `input_id`, `input_index`, `kind`, `source`, `content_included`, `content_scanned`, `decision_basis`, 필요한 경우 `content_unavailable_reason`, `limit_exceeded`를 포함한다.
+`input_results[]`는 요청 당시 `inputs[]`와 같은 순서로 저장된 처리 결과 요약을 반환한다. 각 항목은 `input_id`, `input_index`, `kind`, `source`, `content_included`, `content_scanned`, `decision_basis`, 필요한 경우 `content_unavailable_reason`, `limit_exceeded`를 포함한다. `decision_basis`는 해당 입력이 최종 정책결정에 어떤 근거로 반영됐는지를 나타낸다. ML context-risk evidence가 최종 action을 `Warn` 또는 `Block`으로 올린 경우, span 기반 deterministic detection이 없어도 scan된 입력의 `decision_basis`는 `context_risk`로 저장/반환한다.
 
 `content_unavailable_inputs[]`는 서버가 실제 내용을 검사하지 못하고 metadata-only로 판단한 입력만 별도로 요약한다. 없으면 빈 배열을 반환한다.
 
-Business Context match metadata는 `input_id`, `input_index`, `kind`, `source`, `category`, `reason_code`, `match_count`, `matched_keywords`, `evidence_counts`를 포함할 수 있다. `matched_keywords`는 시스템 rule pack 또는 관리자 등록 context rule 키워드에 한정한다. 임의 원문 span, 입력 일부, 주변 문장은 반환하지 않는다.
+Business Context match metadata는 `input_id`, `input_index`, `kind`, `source`, `category`, `reason_code`, `match_count`, `matched_keywords`, `evidence_counts`를 포함할 수 있다. `matched_keywords`는 시스템 rule pack 또는 관리자 등록 context rule 키워드에 한정한다. 임의 원문 span, 입력 일부, 주변 문장은 반환하지 않는다. ML classifier/verifier의 8-label context-risk evidence는 이 필드에 넣지 않고 `context_risk_evidence`로만 반환한다.
+
+`context_risk_evidence`는 `enabled`, `status`, `candidate_count`, `accepted_count`, `labels`, `status_counts`, `highest_score_bucket`, `highest_confidence_bucket`, `failure_code`, `reason_code`, `classifier_model_versions`, `verifier_model_versions`만 포함하는 raw-free metadata다. `status` 값은 `disabled`, `no_candidate`, `candidate`, `verified`, `timeout`, `failed` 중 하나다. `labels`는 모델 taxonomy label만 허용하고 원문 span, 금액, 계좌번호, 파일명, OCR text, vector/logit/exact score/confidence는 포함하지 않는다.
+
+ML context-risk evidence가 최종 action을 `Warn` 또는 `Block`으로 올린 경우에도 `business_context_matches[]`에 섞어 넣지 않는다. response와 dashboard detail은 `context_risk_evidence`를 별도 evidence로 표시하고, event 저장은 raw-free event-level metadata로 보존한다. `event_detections`는 deterministic detector/context-rule detection row 전용이며 ML context-risk evidence를 synthetic detection처럼 저장하지 않는다.
 
 ### 8.6 ADMIN 사용자 관리 API 계약
 
@@ -1831,7 +1836,7 @@ MVP에서 다음 처리는 제공하지 않는다.
 {
   "request_timeouts": {
     "config_request_ms": 5000,
-    "analyze_request_ms": 8000
+    "analyze_request_ms": 120000
   }
 }
 ```

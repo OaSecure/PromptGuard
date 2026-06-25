@@ -201,6 +201,38 @@ def test_dashboard_filters_list_uses_origin_alias_without_source() -> None:
     assert all("editable_fields" in item for item in body)
 
 
+def test_dashboard_filters_list_exposes_context_label_policy_rules() -> None:
+    response = _client(_FakeSession()).get("/dashboard/filters")
+    body = response.json()
+
+    context_rules = [item for item in body if item["category"] == "Context Risk"]
+
+    assert response.status_code == 200
+    assert {item["label"] for item in context_rules} >= {
+        "기밀 비즈니스 정보 맥락",
+        "내부 운영 정보 맥락",
+        "개인정보 맥락",
+    }
+    assert all(item["origin"] == "built_in" for item in context_rules)
+    assert all(item["editable_fields"] == {"severity": True, "action": True, "enabled": True} for item in context_rules)
+
+
+def test_dashboard_filters_updates_built_in_context_label_by_creating_override() -> None:
+    fake_session = _FakeSession()
+    response = _client(fake_session).patch(
+        "/dashboard/filters/00000000-0000-4000-8000-000000000207",
+        json={"action": "BLOCK", "severity": "critical"},
+    )
+    body = response.json()
+
+    assert response.status_code == 200
+    assert body["label"] == "내부 운영 정보 맥락"
+    assert body["action"] == "BLOCK"
+    assert body["severity"] == "critical"
+    assert len(fake_session.added) == 1
+    assert fake_session.added[0].detector_key == "INTERNAL_OPERATION_CONTEXT"
+
+
 def test_dashboard_filters_preserves_existing_rule_id_type() -> None:
     rule = _rule()
     response = _client(_FakeSession([rule])).get(f"/dashboard/filters/{rule.id}")

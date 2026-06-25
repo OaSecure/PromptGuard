@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import sys
+import time
 from pathlib import Path
 from threading import Lock
 from typing import Any
@@ -40,6 +41,8 @@ build_segment_embeddings = None
 build_verification_request_from_classifier = None
 project_verification_signal_summary = None
 build_verifier_service_from_manifest = None
+
+QWEN3_LOCAL_MODEL_PATH_ENV = "PROMPTGUARD_QWEN_EMBEDDING_MODEL_PATH"
 
 
 class _ContextPipelineRuntime:
@@ -82,17 +85,38 @@ def main() -> int:
     if task == "context_smoke":
         print(dumps_worker_json({"ok": True, "task": task, "request_id": request_id, "metadata": {"worker": "torch"}}))
         return 0
+    if task == "context_warmup":
+        result = _context_warmup_result(request_id=request_id)
+        print(dumps_worker_json({**result, "task": task, "request_id": request_id}))
+        return 0 if result.get("ok") is True else 1
     if task == "context_pipeline":
         return _run_context_pipeline(payload, task=task, request_id=request_id)
     print(dumps_worker_json(build_worker_error("TORCH_WORKER_TASK_NOT_IMPLEMENTED", task=task, request_id=request_id)))
     return 1
 
 
+def safe_main() -> int:
+    try:
+        return main()
+    except Exception:
+        print(dumps_worker_json(build_worker_error("TORCH_WORKER_CONTEXT_FAILED")))
+        return 1
+
+
 def serve() -> int:
     for line in sys.stdin:
-        response = _handle_payload(loads_worker_json(line))
+        response = _safe_handle_payload(loads_worker_json(line))
         print(dumps_worker_json(response), flush=True)
     return 0
+
+
+def _safe_handle_payload(payload: dict[str, Any] | None) -> dict[str, Any]:
+    task = payload.get("task") if isinstance(payload, dict) and isinstance(payload.get("task"), str) else None
+    request_id = payload.get("request_id") if isinstance(payload, dict) and isinstance(payload.get("request_id"), str) else None
+    try:
+        return _handle_payload(payload)
+    except Exception:
+        return build_worker_error("TORCH_WORKER_CONTEXT_FAILED", task=task, request_id=request_id)
 
 
 def _handle_payload(payload: dict[str, Any] | None) -> dict[str, Any]:
@@ -105,9 +129,45 @@ def _handle_payload(payload: dict[str, Any] | None) -> dict[str, Any]:
         return build_worker_error(validation.error_code or "TORCH_WORKER_INVALID_REQUEST", task=task, request_id=request_id)
     if task == "context_smoke":
         return {"ok": True, "task": task, "request_id": request_id, "metadata": {"worker": "torch"}}
+    if task == "context_warmup":
+        return {**_context_warmup_result(request_id=request_id), "task": task, "request_id": request_id}
     if task == "context_pipeline":
         return {**_context_pipeline_result(payload, request_id=request_id), "task": task, "request_id": request_id}
     return build_worker_error("TORCH_WORKER_TASK_NOT_IMPLEMENTED", task=task, request_id=request_id)
+
+
+def _context_warmup_result(*, request_id: str | None) -> dict[str, Any]:
+    _worker_stage("context_warmup.start", request_id=request_id)
+    _load_context_pipeline_dependencies()
+    classifier_manifest_path = os.getenv("PROMPTGUARD_CLASSIFIER_MANIFEST_PATH", "").strip()
+    verifier_manifest_path = os.getenv("PROMPTGUARD_VERIFIER_MANIFEST_PATH", "").strip()
+    if not classifier_manifest_path or not verifier_manifest_path:
+        return build_worker_error("TORCH_WORKER_CONTEXT_CONFIG_UNAVAILABLE", task="context_warmup", request_id=request_id)
+    try:
+        runtime = _get_context_pipeline_runtime(
+            classifier_manifest_path=classifier_manifest_path,
+            verifier_manifest_path=verifier_manifest_path,
+        )
+        _worker_stage("context_warmup.embedding_model_load_start", request_id=request_id)
+        backend = runtime.embedding_loader.get_model(QWEN3_EMBEDDING_MODEL)
+        _worker_stage("context_warmup.embedding_model_load_done", request_id=request_id)
+    except Exception:
+        _worker_stage("context_warmup.failed", request_id=request_id)
+        return build_worker_error("TORCH_WORKER_CONTEXT_MODEL_UNAVAILABLE", task="context_warmup", request_id=request_id)
+    return {
+        "ok": True,
+        "metadata": {
+            "worker": "torch",
+            "warmup": True,
+            "runtime": {
+                "load_generation": runtime.load_generation,
+                "classifier_cached": True,
+                "verifier_cached": True,
+                "embedding_loader_cached": True,
+                "embedding_dimension": getattr(backend, "dimension", None),
+            },
+        },
+    }
 
 
 def _run_context_pipeline(payload: dict, *, task: str, request_id: str | None) -> int:
@@ -142,7 +202,9 @@ def _context_pipeline_result(payload: dict[str, Any], *, request_id: str | None)
 
 
 def _execute_context_pipeline(worker_payload: dict[str, Any], *, request_id: str | None) -> dict[str, Any]:
+    _worker_stage("context_pipeline.start", request_id=request_id)
     _load_context_pipeline_dependencies()
+    _worker_stage("context_pipeline.dependencies_loaded", request_id=request_id)
 
     classifier_manifest_path = os.getenv("PROMPTGUARD_CLASSIFIER_MANIFEST_PATH", "").strip()
     verifier_manifest_path = os.getenv("PROMPTGUARD_VERIFIER_MANIFEST_PATH", "").strip()
@@ -157,14 +219,18 @@ def _execute_context_pipeline(worker_payload: dict[str, Any], *, request_id: str
         return build_worker_error("TORCH_WORKER_CONTEXT_PAYLOAD_INVALID", task="context_pipeline", request_id=request_id)
 
     try:
+        _worker_stage("context_pipeline.runtime_load_start", request_id=request_id)
         runtime = _get_context_pipeline_runtime(
             classifier_manifest_path=classifier_manifest_path,
             verifier_manifest_path=verifier_manifest_path,
         )
+        _worker_stage("context_pipeline.runtime_load_done", request_id=request_id)
     except Exception:
+        _worker_stage("context_pipeline.runtime_load_failed", request_id=request_id)
         return build_worker_error("TORCH_WORKER_CONTEXT_MODEL_UNAVAILABLE", task="context_pipeline", request_id=request_id)
 
     queue = runtime.queue
+    _worker_stage("context_pipeline.embedding_start", request_id=request_id)
     embedding_result = queue.execute(
         MlInferenceJob(
             job_id=f"{request_id or input_id}:embed",
@@ -185,8 +251,11 @@ def _execute_context_pipeline(worker_payload: dict[str, Any], *, request_id: str
         ),
     )
     if embedding_result.status != "succeeded" or embedding_result.value.failure is not None:
+        _worker_stage("context_pipeline.embedding_failed", request_id=request_id)
         return build_worker_error("TORCH_WORKER_EMBEDDING_FAILED", task="context_pipeline", request_id=request_id)
+    _worker_stage("context_pipeline.embedding_done", request_id=request_id)
 
+    _worker_stage("context_pipeline.segment_embedding_start", request_id=request_id)
     segment_embedding_result = build_segment_embeddings(
         SegmentEmbeddingBuildRequest(
             input_id=input_id,
@@ -197,8 +266,11 @@ def _execute_context_pipeline(worker_payload: dict[str, Any], *, request_id: str
         )
     )
     if segment_embedding_result.failure is not None:
+        _worker_stage("context_pipeline.segment_embedding_failed", request_id=request_id)
         return build_worker_error("TORCH_WORKER_SEGMENT_EMBEDDING_FAILED", task="context_pipeline", request_id=request_id)
+    _worker_stage("context_pipeline.segment_embedding_done", request_id=request_id)
 
+    _worker_stage("context_pipeline.classifier_start", request_id=request_id)
     classification_result = queue.execute(
         MlInferenceJob(
             job_id=f"{request_id or input_id}:classify",
@@ -216,8 +288,11 @@ def _execute_context_pipeline(worker_payload: dict[str, Any], *, request_id: str
         ),
     )
     if classification_result.status != "succeeded" or classification_result.value.failure is not None:
+        _worker_stage("context_pipeline.classifier_failed", request_id=request_id)
         return build_worker_error("TORCH_WORKER_CLASSIFIER_FAILED", task="context_pipeline", request_id=request_id)
+    _worker_stage("context_pipeline.classifier_done", request_id=request_id)
 
+    _worker_stage("context_pipeline.verifier_request_start", request_id=request_id)
     verification_request = build_verification_request_from_classifier(
         input_id=input_id,
         classification=classification_result.value,
@@ -225,6 +300,7 @@ def _execute_context_pipeline(worker_payload: dict[str, Any], *, request_id: str
         timeout_ms=30_000,
         candidate_text_by_segment_id={segment.segment_id: segment.text for segment in segments},
     )
+    _worker_stage("context_pipeline.verifier_start", request_id=request_id)
     verification_result = queue.execute(
         MlInferenceJob(
             job_id=f"{request_id or input_id}:verify",
@@ -236,7 +312,9 @@ def _execute_context_pipeline(worker_payload: dict[str, Any], *, request_id: str
         operation=lambda: runtime.verifier_bundle.service.verify(verification_request),
     )
     if verification_result.status != "succeeded" or verification_result.value.failure is not None:
+        _worker_stage("context_pipeline.verifier_failed", request_id=request_id)
         return build_worker_error("TORCH_WORKER_VERIFIER_FAILED", task="context_pipeline", request_id=request_id)
+    _worker_stage("context_pipeline.verifier_done", request_id=request_id)
 
     return {
         "ok": True,
@@ -258,6 +336,39 @@ def _execute_context_pipeline(worker_payload: dict[str, Any], *, request_id: str
     }
 
 
+def _worker_stage(stage: str, *, request_id: str | None) -> None:
+    print(f"{stage} request_id={request_id or 'none'} ts={time.monotonic():.3f}", file=sys.stderr, flush=True)
+
+
+def _create_local_qwen3_embedding_backend(model_name: str) -> Any:
+    resolved_model_path = _resolve_local_qwen3_embedding_model(model_name)
+    return Qwen3EmbeddingBackend(
+        str(resolved_model_path),
+        trust_remote_code=True,
+        local_files_only=True,
+        model_version=model_name,
+    )
+
+
+def _resolve_local_qwen3_embedding_model(model_name: str) -> Path:
+    configured_path = os.getenv(QWEN3_LOCAL_MODEL_PATH_ENV, "").strip()
+    if configured_path:
+        path = Path(configured_path)
+        if path.exists():
+            return path
+        raise RuntimeError("qwen3_embedding_model_path_unavailable")
+
+    try:
+        from huggingface_hub import snapshot_download
+    except ImportError as exc:
+        raise RuntimeError("qwen3_embedding_snapshot_resolver_unavailable") from exc
+
+    try:
+        return Path(snapshot_download(repo_id=model_name, local_files_only=True))
+    except Exception as exc:
+        raise RuntimeError("qwen3_embedding_model_not_preinstalled") from exc
+
+
 def _get_context_pipeline_runtime(*, classifier_manifest_path: str, verifier_manifest_path: str) -> _ContextPipelineRuntime:
     global _CONTEXT_RUNTIME
     global _CONTEXT_RUNTIME_LOAD_GENERATION
@@ -275,7 +386,7 @@ def _get_context_pipeline_runtime(*, classifier_manifest_path: str, verifier_man
 
         classifier_bundle = build_classifier_service_from_manifest(Path(classifier_manifest_path))
         verifier_bundle = build_verifier_service_from_manifest(Path(verifier_manifest_path))
-        embedding_loader = AtomEmbeddingModelLoader(lambda model_name: Qwen3EmbeddingBackend(model_name, trust_remote_code=True))
+        embedding_loader = AtomEmbeddingModelLoader(_create_local_qwen3_embedding_backend)
         _CONTEXT_RUNTIME_LOAD_GENERATION += 1
         _CONTEXT_RUNTIME = _ContextPipelineRuntime(
             classifier_manifest_path=classifier_manifest_path,
@@ -435,4 +546,4 @@ def _load_context_pipeline_dependencies() -> None:
 
 
 if __name__ == "__main__":
-    raise SystemExit(serve() if "--serve" in sys.argv[1:] else main())
+    raise SystemExit(serve() if "--serve" in sys.argv[1:] else safe_main())

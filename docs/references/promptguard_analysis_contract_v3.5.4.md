@@ -2772,6 +2772,7 @@ AnalysisAtom Builder 이후, Adjacent Semantic Segmenter 이전에 실행된다.
 * `AnalysisAtom[]`
 * embedding worker queue
 * Qwen3 singleton model loader
+* preinstalled local Qwen3 model artifact at `PROMPTGUARD_QWEN_EMBEDDING_MODEL_PATH`
 
 #### Downstream consumer
 
@@ -2782,6 +2783,8 @@ AnalysisAtom Builder 이후, Adjacent Semantic Segmenter 이전에 실행된다.
 
 * Qwen3 embedding model singleton load
 * request마다 model reload 금지
+* request 처리 중 Hugging Face network download 금지
+* `PROMPTGUARD_QWEN_EMBEDDING_MODEL_PATH` 또는 offline local snapshot에서만 model load
 * atom text batch embedding
 * micro-batching
 * embedding dimension, model version 반환
@@ -2790,6 +2793,7 @@ AnalysisAtom Builder 이후, Adjacent Semantic Segmenter 이전에 실행된다.
 #### Non-responsibility
 
 * Qwen3 fine-tuning 금지
+* Hugging Face model artifact를 요청 처리 중 자동 다운로드 금지
 * LR classifier 학습 금지
 * classifier prediction 금지
 * segment boundary 결정 금지
@@ -2822,6 +2826,8 @@ AtomEmbeddingResult(input_id, embeddings: list[AtomEmbedding], embedding_model_v
 
 * Qwen3 model is frozen.
 * model loader is singleton per process or worker lifecycle.
+* Qwen3 model artifact must be preinstalled before runtime startup.
+* Runtime model loading is local-only; missing local artifact fails with structured model-unavailable failure instead of network download.
 * embedding result order matches request atom order.
 * embedding vector is never persisted in EventStorage.
 
@@ -3502,6 +3508,37 @@ Verifier 결과 수집 후, UserNotice/EventStorage 이전에 실행된다.
 PolicyDecisionRequest(request_id, input_id, source_metadata, scan_status, lexical_signals, scanner_evidence, ml_context_evidence, segment_signal_sets, classification_results, verification_results, admin_policy_config, dashboard_policy_settings, pipeline_failures)
 ```
 
+`ml_context_evidence`는 서버 내부에서 `ContextRiskEvidence` 단일 계약으로 전달한다. worker, Analyze service, Policy Orchestrator, API response adapter, extension validation, and server logs MUST use the same field names:
+
+```text
+ContextRiskEvidence(
+  enabled,
+  status = disabled | no_candidate | candidate | verified | timeout | failed,
+  candidate_count,
+  accepted_count,
+  labels,
+  status_counts,
+  highest_score_bucket,
+  highest_confidence_bucket,
+  failure_code,
+  reason_code,
+  classifier_model_versions,
+  verifier_model_versions
+)
+```
+
+Boundary rules for `ContextRiskEvidence`:
+
+* `labels` are taxonomy labels only. They are not raw input spans, detected values, payroll amounts, account numbers, file names, or snippets.
+* `candidate_count`, `accepted_count`, `status_counts`, score/confidence buckets, model versions, `failure_code`, and `reason_code` are safe evidence metadata and may cross worker/service/policy/response/extension/log boundaries.
+* Raw text, file content, OCR text, normalized text, segment text, vectors, logits, exact scores, exact confidence values, file refs, original filenames, and full masked prompts MUST NOT be placed in `ContextRiskEvidence`.
+* `status=verified` with `accepted_count > 0` uses `reason_code=RISK_CONTEXT_VERIFIER_CONFIRMED`.
+* `status=candidate` uses `RISK_CONTEXT_LR_ONLY` or `RISK_CONTEXT_VERIFIER_UNCERTAIN`.
+* `status=timeout` or `status=failed` MUST reach Policy Orchestrator with `failure_code`; timeout/failure is not an allow reason.
+* `business_context_matches[]` is not the ML context evidence surface. It remains deterministic Business Context rule metadata from system rule pack or admin context rules.
+* ML context-risk evidence that contributes to a final Warn/Block decision must remain on the `context_risk_evidence` surface in Analyze responses, event/dashboard detail, and extension validation. Event persistence stores it as raw-free event-level metadata; it must not be projected into `business_context_matches[]` or into synthetic `event_detections` rows.
+* `input_results[].decision_basis` is the single input/result basis contract. When the top-level action is driven by ML context evidence rather than a deterministic span detection, scanned inputs that carried the context evidence use `decision_basis=context_risk` in response, event storage, dashboard detail, and extension validation.
+
 #### Output schema
 
 ```text
@@ -3945,6 +3982,8 @@ Application startup부터 shutdown까지 유지된다.
 
 ```text
 WorkerRuntimeConfig(parser_pool_size, embedding_batch_size, embedding_timeout_ms, verifier_queue_size, verifier_timeout_ms, temp_file_cleanup_interval_seconds, model_preload)
+
+The analyze ML worker timeout default is `120000ms`. API, LR/RoBERTa verifier request construction, Torch worker client defaults, and extension `/config/extension.request_timeouts.analyze_request_ms` must use the same configured value (`PROMPTGUARD_ML_INFERENCE_QUEUE_TIMEOUT_MS`) so the browser does not abort before resident workers can return context-risk evidence.
 ```
 
 #### Output schema

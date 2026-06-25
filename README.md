@@ -75,11 +75,19 @@ hf download OASecure/promptguard-context-classifier \
   --local-dir .
 ```
 
+Qwen embedding model도 런타임 시작 전에 반드시 로컬 artifact로 내려받아야 한다. Torch worker는 요청 처리 중 Hugging Face에서 모델을 내려받지 않으며, 아래 경로에 모델이 없으면 context ML runtime을 사용할 수 없다.
+
+```bash
+hf download Qwen/Qwen3-Embedding-0.6B \
+  --local-dir models/qwen3-embedding-0.6b
+```
+
 Docker Compose 실행 시 `compose.yml`은 `./models`를 API 컨테이너의 `/opt/promptguard/models`에 read-only로 mount한다. 런타임을 켜려면 `.env`에서 다음 값을 사용한다.
 
 ```env
 PROMPTGUARD_CLASSIFIER_RUNTIME_ENABLED=true
 PROMPTGUARD_CLASSIFIER_MANIFEST_PATH=/opt/promptguard/models/context_lr_roberta_active_best_f1_manifest.json
+PROMPTGUARD_QWEN_EMBEDDING_MODEL_PATH=/opt/promptguard/models/qwen3-embedding-0.6b
 PROMPTGUARD_VERIFIER_RUNTIME_ENABLED=true
 PROMPTGUARD_VERIFIER_MANIFEST_PATH=/opt/promptguard/models/context_lr_roberta_active_best_f1_manifest.json
 ```
@@ -227,11 +235,19 @@ hf download OASecure/promptguard-context-classifier \
   --local-dir .
 ```
 
+Download the Qwen embedding model before starting the runtime. The Torch worker does not download this model from Hugging Face while handling requests; if this local artifact is missing, the context ML runtime is unavailable.
+
+```bash
+hf download Qwen/Qwen3-Embedding-0.6B \
+  --local-dir models/qwen3-embedding-0.6b
+```
+
 `compose.yml` mounts `./models` into the API container at `/opt/promptguard/models` as read-only. Enable the runtime with:
 
 ```env
 PROMPTGUARD_CLASSIFIER_RUNTIME_ENABLED=true
 PROMPTGUARD_CLASSIFIER_MANIFEST_PATH=/opt/promptguard/models/context_lr_roberta_active_best_f1_manifest.json
+PROMPTGUARD_QWEN_EMBEDDING_MODEL_PATH=/opt/promptguard/models/qwen3-embedding-0.6b
 PROMPTGUARD_VERIFIER_RUNTIME_ENABLED=true
 PROMPTGUARD_VERIFIER_MANIFEST_PATH=/opt/promptguard/models/context_lr_roberta_active_best_f1_manifest.json
 ```
