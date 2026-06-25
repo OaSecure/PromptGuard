@@ -16,6 +16,7 @@ const CONTEXT_RISK_LABELS: Record<string, string> = {
   CUSTOMER_DATA_CONTEXT: "고객 또는 계정 정보"
 };
 
+/** Builds user-facing decision evidence without exposing internal label codes. */
 export function safeDecisionEvidence(response: AnalyzeResponse): string[] {
   const evidence: string[] = [];
   if (response.context_risk_evidence && response.context_risk_evidence.status !== "disabled" && response.context_risk_evidence.status !== "no_candidate") {
