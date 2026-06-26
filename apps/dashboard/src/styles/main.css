@@ -1183,7 +1183,7 @@ input {
 }
 
 .filter-summary strong {
-  color: #2f80ed;
+  color: #80cbc4;
   display: block;
   font-size: 17px;
   font-weight: 900;
@@ -1299,7 +1299,7 @@ input {
   border-radius: 18px;
   padding: 20px;
   position: sticky;
-  top: 18px;
+  top: 170px;
 }
 
 .filter-form label,
@@ -1348,6 +1348,38 @@ input {
   box-shadow: 0 0 0 4px rgba(47, 128, 237, 0.1);
 }
 
+.activation-toggle {
+  align-items: center;
+  background: #eaf7f6;
+  border: 1px solid #80cbc4;
+  border-radius: 14px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  min-height: 52px;
+  overflow: hidden;
+  padding: 4px;
+  width: 100%;
+}
+
+.activation-option {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 10px;
+  color: #1f2937;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 15px;
+  font-weight: 900;
+  justify-content: center;
+  min-height: 42px;
+}
+
+.activation-option[aria-pressed="true"] {
+  background: #80cbc4;
+  box-shadow: 0 8px 18px rgba(31, 41, 55, 0.14);
+}
+
 .context-box,
 .dryrun-result {
   background: #f8fcff;
@@ -1382,6 +1414,24 @@ input {
   flex-wrap: wrap;
   gap: 10px;
   justify-content: flex-end;
+}
+
+.filter-save-button {
+  background: #1f2937;
+  border: 0;
+  border-radius: 14px;
+  color: #80cbc4;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 900;
+  min-height: 52px;
+  min-width: 128px;
+  padding: 0 28px;
+}
+
+.filter-save-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .full-button {
@@ -1466,7 +1516,24 @@ input {
 }
 
 .filter-table {
-  min-width: 1060px;
+  min-width: 1180px;
+  width: 100%;
+}
+
+.filter-dashboard .table-card {
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+.filter-table th,
+.filter-table td {
+  text-align: center;
+}
+
+.filter-table th:nth-child(3),
+.filter-table td:nth-child(3) {
+  text-align: left;
 }
 
 .filter-table small {

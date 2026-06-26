@@ -20,13 +20,15 @@ import {
   type FilterFormState,
   type FilterSelectOption,
   type FilterRule,
+  type RuleAction,
+  type RuleSeverity,
 } from "./filtersPageModel.js";
 import { logoutDashboardSession, refreshDashboardCsrf } from "./session.js";
 
 type DryRunResult = {
   matched: boolean;
-  expected_action: string;
-  expected_severity: string;
+  expected_action: RuleAction;
+  expected_severity: RuleSeverity;
   match_count: number;
   reason_code: string;
   matched_keywords: string[];
@@ -205,6 +207,15 @@ function stopButtonClick(event: MouseEvent, action: () => void): void {
   action();
 }
 
+function scrollToRuleForm(): void {
+  window.requestAnimationFrame(() => {
+    const formCard = document.querySelector<HTMLElement>(".filter-card");
+    if (!formCard) return;
+    const top = formCard.getBoundingClientRect().top + window.scrollY - 180;
+    window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+  });
+}
+
 function field(label: string, control: HTMLElement): HTMLLabelElement {
   const wrapper = el("label");
   wrapper.append(label, control);
@@ -250,13 +261,22 @@ function select<T extends string>(value: T, values: T[] | FilterSelectOption<T>[
   return node;
 }
 
-function checkbox(value: boolean, onChange: (value: boolean) => void, disabled = false): HTMLInputElement {
-  const node = el("input");
-  node.type = "checkbox";
-  node.checked = value;
-  node.disabled = disabled;
-  node.addEventListener("change", () => onChange(node.checked));
-  return node;
+function activationButton(value: boolean, onChange: (value: boolean) => void): HTMLElement {
+  const wrapper = el("div", "activation-toggle");
+  const onButton = button("ON", "activation-option", () => onChange(true));
+  const offButton = button("OFF", "activation-option", () => onChange(false));
+  onButton.setAttribute("aria-pressed", String(value));
+  offButton.setAttribute("aria-pressed", String(!value));
+  wrapper.append(onButton, offButton);
+  return wrapper;
+}
+
+function originLabel(value: FilterRule["origin"]): string {
+  return value === "built_in" ? "기본" : "사용자 정의";
+}
+
+function yesNo(value: boolean): string {
+  return value ? "예" : "아니오";
 }
 
 function renderHeader(): HTMLElement {
@@ -293,8 +313,8 @@ function renderSummary(): HTMLElement {
   const builtIn = rules.filter((rule) => rule.origin === "built_in").length;
   const custom = rules.filter((rule) => rule.origin === "custom").length;
   summary.append(
-    el("strong", undefined, "필터 규칙 설정 요약"),
-    el("p", undefined, `기본 규칙 ${builtIn}개, 사용자 정의 규칙 ${custom}개가 현재 관리 대상입니다. 미리 실행은 저장 없이 단일 규칙의 예상 결과만 확인합니다.`),
+    el("strong", undefined, "필터 규칙 현황"),
+    el("p", undefined, `기본 규칙 ${builtIn}개, 사용자 정의 규칙 ${custom}개가 현재 관리 대상입니다.`),
   );
   return summary;
 }
@@ -310,7 +330,7 @@ function renderRuleTable(): HTMLElement {
   for (const rule of rules) {
     const row = el("tr");
     row.append(
-      cellBadge(rule.origin, "source-badge"),
+      cellBadge(originLabel(rule.origin), "source-badge"),
       el("td", undefined, filterKindLabel(rule.kind)),
       ruleNameCell(rule),
       cellBadge(filterSeverityLabel(rule.severity), "severity-badge"),
@@ -351,6 +371,7 @@ function ruleActionCell(rule: FilterRule): HTMLTableCellElement {
       formState = formFromRule(rule);
       dryRunResult = null;
       render();
+      scrollToRuleForm();
     });
   });
   const toggle = button(rule.enabled ? "비활성화" : "활성화", "text-action");
@@ -404,7 +425,11 @@ function renderForm(): HTMLElement {
       render();
     }, formState.mode === "edit")),
     field("카테고리", input(formState.category, (value) => { formState.category = value; }, !visibility.canEditIdentity)),
-    field("활성화", checkbox(formState.enabled, (value) => { formState.enabled = value; })),
+    field("활성화", activationButton(formState.enabled, (value) => {
+      formState.enabled = value;
+      formMessage = "";
+      render();
+    })),
   );
   const row2 = el("div", "form-row");
   row2.append(
@@ -429,7 +454,7 @@ function renderForm(): HTMLElement {
     row1,
     row2,
     row3,
-    el("p", "filter-subtext", "활성화는 규칙 실행 여부이고, 처리는 규칙이 탐지됐을 때 서버가 적용할 Allow/Warn/Mask/Block 결정입니다."),
+    el("p", "filter-subtext", "활성화는 규칙 실행 여부이고, 처리는 규칙이 탐지됐을 때 서버가 적용할 허용/경고/마스킹/차단 결정입니다."),
     field("설명", textarea(formState.description, (value) => { formState.description = value; }, !visibility.canEditIdentity)),
   );
   if (visibility.canEditIdentity) {
@@ -438,7 +463,7 @@ function renderForm(): HTMLElement {
   const actions = el("div", "form-actions");
   const [saveAction] = filterFormActionSpecs(Boolean(dryRunText.trim()));
   actions.append(
-    button(saveAction.label, "login-button", undefined, saveAction.disabled, saveAction.type),
+    button(saveAction.label, "filter-save-button", undefined, saveAction.disabled, saveAction.type),
   );
   form.append(actions);
   if (formMessage) {
@@ -512,13 +537,13 @@ function renderDryRun(): HTMLElement {
   } else {
     const keywords = dryRunResult.matched_keywords.length > 0 ? dryRunResult.matched_keywords.join(", ") : "없음";
     [
-      ["일치 여부", String(dryRunResult.matched)],
-      ["예상 처리", dryRunResult.expected_action],
-      ["예상 심각도", dryRunResult.expected_severity],
+      ["일치 여부", yesNo(dryRunResult.matched)],
+      ["예상 처리", filterActionLabel(dryRunResult.expected_action)],
+      ["예상 심각도", filterSeverityLabel(dryRunResult.expected_severity)],
       ["일치 수", String(dryRunResult.match_count)],
       ["사유 코드", dryRunResult.reason_code],
       ["일치 키워드", keywords],
-      ["샘플 저장 여부", String(dryRunResult.sample_persisted)],
+      ["샘플 저장 여부", yesNo(dryRunResult.sample_persisted)],
     ].forEach(([name, value]) => {
       const row = el("div", "result-row");
       row.append(el("span", undefined, name), el("strong", undefined, value));
