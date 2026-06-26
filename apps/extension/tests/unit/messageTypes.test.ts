@@ -11,6 +11,19 @@ describe("extension message guard", () => {
     expect(isExtensionMessage({ type: "AUTH_LOGIN_REQUEST", payload: { login_id: "member@example.com", password: "test-password" } })).toBe(true);
     expect(isExtensionMessage({ type: "PROMPT_ANALYZE_REQUEST", payload: promptAnalyzeRequest() })).toBe(true);
     expect(isExtensionMessage({ type: "FILES_ANALYZE_REQUEST", payload: filesAnalyzeRequest() })).toBe(true);
+    expect(
+      isExtensionMessage({
+        type: "TEMP_FILE_UPLOAD_REQUEST",
+        payload: {
+          file_bytes_base64: "U0FGRV9URVNUX0JZVEVT",
+          requestId: "frq_test",
+          fileKind: "plain_text",
+          extension: ".txt",
+          mime: "text/plain",
+          size_bytes: 15
+        }
+      })
+    ).toBe(true);
   });
 
   it("rejects unknown or malformed messages before routing", () => {
@@ -22,6 +35,20 @@ describe("extension message guard", () => {
     expect(isExtensionMessage({ type: "AUTH_LOGIN_REQUEST", payload: { login_id: 123, password: "test-password" } })).toBe(false);
     expect(isExtensionMessage({ type: "PROMPT_ANALYZE_REQUEST" })).toBe(false);
     expect(isExtensionMessage({ type: "FILES_ANALYZE_REQUEST", payload: null })).toBe(false);
+    expect(isExtensionMessage({ type: "TEMP_FILE_UPLOAD_REQUEST", payload: { file: new File(["raw"], "secret.txt") } })).toBe(false);
+    expect(
+      isExtensionMessage({
+        type: "TEMP_FILE_UPLOAD_REQUEST",
+        payload: {
+          file_bytes_base64: "U0FGRV9URVNUX0JZVEVT",
+          requestId: "frq_test",
+          fileKind: "plain_text",
+          extension: ".txt",
+          mime: "text/plain",
+          size_bytes: -1
+        }
+      })
+    ).toBe(false);
   });
 
   it("rejects malformed analyze request payloads", () => {
@@ -67,7 +94,6 @@ describe("extension message guard", () => {
       { ...validFileInput, temp_scope_id: "" },
       { ...validFileInput, temp_scope_id: "https://files.example.test/tscope_123" },
       { ...validFileInput, file_kind: "raw_filename_trusted" },
-      { ...validFileInput, size_bucket: "tiny" },
       { ...validFileInput, metadata: { original_filename: "customer.env" } },
       { ...validFileInput, metadata: { file_content: "raw file text" } },
       { ...validFileInput, metadata: { nested: { detected_raw_value: "secret-token" } } }

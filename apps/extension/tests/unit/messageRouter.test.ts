@@ -420,7 +420,7 @@ describe("message router API auth boundary", () => {
         file_ref: "fref_abcdefghijklmnopqrstuvwxyzABCDEF",
         temp_scope_id: "tscope_abcdefghijklmnopqrstuvwxyz123456",
         file_kind: "plain_text",
-        size_bucket: "small",
+        size_bucket: "tiny",
         expires_at: "2026-06-24T00:00:00Z"
       })
     );
@@ -430,11 +430,12 @@ describe("message router API auth boundary", () => {
     const response = await routeMessage({
       type: "TEMP_FILE_UPLOAD_REQUEST",
       payload: {
-        file: new File(["PRIVATE_FILE_CONTENT"], "customer-secret.env", { type: "text/plain" }),
+        file_bytes_base64: encodeBase64("PRIVATE_FILE_CONTENT"),
         requestId: "frq_test",
         fileKind: "plain_text",
         extension: ".env",
-        mime: "text/plain"
+        mime: "text/plain",
+        size_bytes: "PRIVATE_FILE_CONTENT".length
       }
     });
 
@@ -442,6 +443,7 @@ describe("message router API auth boundary", () => {
     const request = (fetchMock.mock.calls as unknown as Array<[string, RequestInit]>)[0][1];
     const body = request.body as FormData;
     const uploaded = body.get("file") as File;
+    expect(await readBlobText(uploaded)).toBe("PRIVATE_FILE_CONTENT");
     expect(fetchMock).toHaveBeenCalledWith("https://api.promptguard.test/files/temp", expect.objectContaining({
       method: "POST",
       headers: expect.objectContaining({
@@ -469,7 +471,7 @@ describe("message router API auth boundary", () => {
         file_ref: "fref_abcdefghijklmnopqrstuvwxyzABCDEF",
         temp_scope_id: "tscope_abcdefghijklmnopqrstuvwxyz123456",
         file_kind: "plain_text",
-        size_bucket: "small",
+        size_bucket: "tiny",
         expires_at: "2026-06-24T00:00:00Z"
       }));
     vi.stubGlobal("chrome", { storage: { local: storage } });
@@ -478,11 +480,12 @@ describe("message router API auth boundary", () => {
     const response = await routeMessage({
       type: "TEMP_FILE_UPLOAD_REQUEST",
       payload: {
-        file: new File(["PRIVATE_FILE_CONTENT"], "customer-secret.env", { type: "text/plain" }),
+        file_bytes_base64: encodeBase64("PRIVATE_FILE_CONTENT"),
         requestId: "frq_test",
         fileKind: "plain_text",
         extension: ".env",
-        mime: "text/plain"
+        mime: "text/plain",
+        size_bytes: "PRIVATE_FILE_CONTENT".length
       }
     });
 
@@ -610,4 +613,20 @@ function filesAnalyzeResponse() {
     event_id: "evt_test_files",
     request_id: "req_test_files"
   };
+}
+
+function encodeBase64(value: string): string {
+  return btoa(value);
+}
+
+function readBlobText(blob: Blob): Promise<string> {
+  if (typeof blob.text === "function") {
+    return blob.text();
+  }
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error ?? new Error("Failed to read blob."));
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.readAsText(blob);
+  });
 }

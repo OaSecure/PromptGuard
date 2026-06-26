@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_CONFIG, DEFAULT_POLICY_VERSION } from "../../src/shared/constants";
 import { startPromptPreflightController } from "../../src/content/promptPreflightController";
-import type { AnalyzeResponse, DecisionAction, ExtensionContext } from "../../src/shared/types";
+import type { AnalyzeInput, AnalyzeRequest, AnalyzeResponse, DecisionAction, ExtensionContext } from "../../src/shared/types";
 
 const context: ExtensionContext = {
   ai_service: "CHATGPT",
@@ -260,13 +260,18 @@ describe("prompt preflight controller", () => {
 
     page.button.click();
     await waitFor(() => overlayDecision() === "mask");
+    expect(overlayText()).toContain("마스킹 적용 후 검사");
     clickOverlayAction("apply-mask");
-    await waitFor(() => analyzeCount === 2 && overlayText().includes("마스킹본 검사가 완료되었습니다."));
+    await waitFor(() => analyzeCount === 2 && overlayDecision() === "mask_passed");
 
     expect(page.textarea.value).toBe("[masked]");
     expect(page.submits()).toBe(0);
     expect(requestIds).toHaveLength(2);
     expect(requestIds[0]).not.toBe(requestIds[1]);
+    expect(overlayText()).toContain("마스킹본 검사 통과");
+    expect(overlayText()).toContain("대체된 내용으로 전송할 수 있습니다.");
+    expect(overlayText()).toContain("마스킹본 전송");
+    expect(overlayText()).toContain("취소");
 
     clickOverlayAction("send-masked-prompt");
     await waitFor(() => page.submits() === 1);
@@ -290,11 +295,97 @@ describe("prompt preflight controller", () => {
     page.button.click();
     await waitFor(() => overlayDecision() === "mask");
     clickOverlayAction("apply-mask");
-    await waitFor(() => analyzeCount === 2 && overlayDecision() === "block");
+    await waitFor(() => analyzeCount === 2 && overlayDecision() === "mask_failed");
 
     expect(page.textarea.value).toBe("[masked]");
     expect(page.submits()).toBe(0);
-    expect(overlayText()).toContain("민감한 내용을 제거한 뒤 다시 시도하세요.");
+    expect(overlayText()).toContain("마스킹본 전송 불가");
+    expect(overlayText()).toContain("대체된 내용에서도 민감한 항목이 감지됐습니다.");
+    expect(overlayText()).toContain("다시 검사");
+    expect(overlayText()).toContain("취소");
+    controller.disconnect();
+  });
+
+  it("includes registered file_reference inputs in the final send-time Analyze request", async () => {
+    const page = setupComposer("prompt with attachment");
+    let captured: AnalyzeRequest | undefined;
+    const fileInput: AnalyzeInput = {
+      input_id: "in_file_ref_test",
+      kind: "file_reference",
+      source: "attached_file",
+      size_bytes: 1024,
+      content_included: false,
+      file_ref: "fref_abcdefghijklmnopqrstuvwxyz123456",
+      temp_scope_id: "tscope_abcdefghijklmnopqrstuvwxyz123456",
+      file_kind: "image",
+      mime: "image/png",
+      extension: "png",
+      size_bucket: "small"
+    };
+    const controller = startPromptPreflightController({
+      config: DEFAULT_CONFIG,
+      getContext: () => context,
+      getRegisteredAttachmentInputs: () => [fileInput],
+      getRegisteredAttachmentRequestId: () => "crq_attachment_owner",
+      sendAnalyze: async (request) => {
+        captured = request;
+        return responseFor("Allow");
+      }
+    });
+
+    page.button.click();
+    await waitFor(() => page.submits() === 1);
+
+    expect(captured?.inputs).toEqual(expect.arrayContaining([expect.objectContaining({
+      kind: "file_reference",
+      source: "attached_file",
+      file_ref: "fref_abcdefghijklmnopqrstuvwxyz123456",
+      content_included: false
+    })]));
+    expect(captured?.client_request_id).toBe("crq_attachment_owner");
+    expect(JSON.stringify(captured)).not.toContain("customer-secret.png");
+    controller.disconnect();
+  });
+
+  it("allows file-only send attempts to be inspected when composer text is empty", async () => {
+    const page = setupComposer("");
+    let captured: AnalyzeRequest | undefined;
+    const fileInput: AnalyzeInput = {
+      input_id: "in_file_only_test",
+      kind: "file_reference",
+      source: "attached_file",
+      size_bytes: 2048,
+      content_included: false,
+      file_ref: "fref_fileonlyabcdefghijklmnopqrstuvwx",
+      temp_scope_id: "tscope_fileonlyabcdefghijklmnopqr",
+      file_kind: "pdf",
+      mime: "application/pdf",
+      extension: "pdf",
+      size_bucket: "small"
+    };
+    const controller = startPromptPreflightController({
+      config: DEFAULT_CONFIG,
+      getContext: () => context,
+      getRegisteredAttachmentInputs: () => [fileInput],
+      getRegisteredAttachmentRequestId: () => "crq_file_only_owner",
+      sendAnalyze: async (request) => {
+        captured = request;
+        return responseFor("Allow");
+      }
+    });
+
+    page.button.click();
+    await waitFor(() => page.submits() === 1);
+
+    expect(document.documentElement.dataset.promptguardLastFailure).not.toBe("empty-prompt");
+    expect(captured?.client_request_id).toBe("crq_file_only_owner");
+    expect(captured?.inputs.some((input) => input.kind === "text" && input.source === "composer")).toBe(false);
+    expect(captured?.inputs).toEqual(expect.arrayContaining([expect.objectContaining({
+      kind: "file_reference",
+      source: "attached_file",
+      file_kind: "pdf",
+      content_included: false
+    })]));
     controller.disconnect();
   });
 

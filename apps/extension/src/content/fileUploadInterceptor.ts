@@ -1,11 +1,6 @@
 import { filesFromFileList, type FileUploadAttempt } from "./fileUploadSnapshot";
 
-/**
- * Configures DOM listeners that pause native file attach attempts.
- *
- * `shouldBypass` lets the controller replay an approved input-change attempt
- * without the extension immediately intercepting its own replay.
- */
+/** Configures DOM listeners that observe native file attach attempts. */
 export interface FileUploadInterceptorOptions {
   document?: Document;
   fileInputSelectors: string[];
@@ -22,9 +17,9 @@ export interface FileUploadInterceptor {
 /**
  * Installs capture-phase listeners for file input changes and drag/drop files.
  *
- * The interceptor only stops events that actually contain files and match the
- * configured surfaces, so unrelated page changes and non-file drops continue
- * through the page normally.
+ * The interceptor does not stop native attachment events. It only captures the
+ * live File/Blob handle early enough to create a temporary server reference
+ * while the page continues its normal attachment flow.
  */
 export function installFileUploadInterceptor(options: FileUploadInterceptorOptions): FileUploadInterceptor {
   const doc = options.document ?? document;
@@ -43,8 +38,6 @@ export function installFileUploadInterceptor(options: FileUploadInterceptorOptio
       return;
     }
 
-    event.preventDefault();
-    event.stopImmediatePropagation();
     options.onFileAttempt({ method: "INPUT", target: input, files });
   };
 
@@ -61,8 +54,6 @@ export function installFileUploadInterceptor(options: FileUploadInterceptorOptio
       return;
     }
 
-    event.preventDefault();
-    event.stopImmediatePropagation();
     options.onFileAttempt({ method: "DROP", target: event.target, files });
   };
 

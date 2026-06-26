@@ -11,6 +11,17 @@ import {
   type PromptPreflightController
 } from "./promptPreflightController";
 import { startFileUploadPreflightController, type FileUploadPreflightController } from "./fileUploadPreflightController";
+import {
+  beginRegisteredAttachmentUpload,
+  clearRegisteredAttachmentInputs,
+  endRegisteredAttachmentUpload,
+  getOrCreateRegisteredAttachmentRequestId,
+  getRegisteredAttachmentInputs,
+  getRegisteredAttachmentRequestId,
+  hasPendingRegisteredAttachmentUploads,
+  registerAttachmentInputs,
+  waitForRegisteredAttachmentUploads
+} from "./registeredAttachmentInputs";
 
 let activeConfig: ExtensionConfigResponse = DEFAULT_CONFIG;
 let watcher: ReturnType<typeof watchInputArea> | undefined;
@@ -54,9 +65,12 @@ export function buildPromptAnalyzeRequest(inputMethod: "CLICK" | "ENTER" | "UNKN
     filterConfigRevision(activeConfig),
     undefined,
     undefined,
-    collectAttachmentChipInputs(resolveAttachmentChipScope(candidate.element, document), {
-      attachment_chip: config?.selectors.attachment_chip ?? DEFAULT_CONFIG.ai_service_configs[0].selectors.attachment_chip
-    })
+    [
+      ...collectAttachmentChipInputs(resolveAttachmentChipScope(candidate.element, document), {
+        attachment_chip: config?.selectors.attachment_chip ?? DEFAULT_CONFIG.ai_service_configs[0].selectors.attachment_chip
+      }),
+      ...getRegisteredAttachmentInputs()
+    ]
   );
 }
 
@@ -70,14 +84,58 @@ function installPreflight(root: HTMLElement): void {
   preflightController = startPromptPreflightController({
     config: activeConfig,
     getContext: currentContext,
-    sendAnalyze: (payload: AnalyzeRequest) => chrome.runtime.sendMessage({ type: "PROMPT_ANALYZE_REQUEST", payload })
+    sendAnalyze: (payload: AnalyzeRequest) => chrome.runtime.sendMessage({ type: "PROMPT_ANALYZE_REQUEST", payload }),
+    getRegisteredAttachmentInputs,
+    getRegisteredAttachmentRequestId,
+    hasPendingRegisteredAttachmentUploads,
+    waitForRegisteredAttachmentUploads,
+    clearRegisteredAttachmentInputs
   });
   fileUploadController?.disconnect();
   fileUploadController = startFileUploadPreflightController({
     config: activeConfig,
     getContext: currentContext,
-    uploadFile: (payload) => chrome.runtime.sendMessage({ type: "TEMP_FILE_UPLOAD_REQUEST", payload }),
-    sendAnalyze: (payload) => chrome.runtime.sendMessage({ type: "FILES_ANALYZE_REQUEST", payload })
+    uploadFile: async ({ file, ...payload }) =>
+      chrome.runtime.sendMessage({
+        type: "TEMP_FILE_UPLOAD_REQUEST",
+        payload: {
+          ...payload,
+          file_bytes_base64: await fileToBase64(file),
+          size_bytes: file.size
+        }
+      }),
+    registerInputs: registerAttachmentInputs,
+    getUploadRequestId: getOrCreateRegisteredAttachmentRequestId,
+    beginUpload: beginRegisteredAttachmentUpload,
+    endUpload: endRegisteredAttachmentUpload
+  });
+}
+
+async function fileToBase64(file: File): Promise<string> {
+  const bytes = new Uint8Array(await readFileArrayBuffer(file));
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
+  }
+  return btoa(binary);
+}
+
+async function readFileArrayBuffer(file: File): Promise<ArrayBuffer> {
+  if (typeof file.arrayBuffer === "function") {
+    return file.arrayBuffer();
+  }
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error ?? new Error("Failed to read file for temp upload."));
+    reader.onload = () => {
+      if (reader.result instanceof ArrayBuffer) {
+        resolve(reader.result);
+        return;
+      }
+      reject(new Error("FileReader did not return an ArrayBuffer."));
+    };
+    reader.readAsArrayBuffer(file);
   });
 }
 
@@ -123,6 +181,7 @@ export function shutdownPromptGuardContentScript(): void {
   preflightController = undefined;
   fileUploadController?.disconnect();
   fileUploadController = undefined;
+  clearRegisteredAttachmentInputs();
 }
 
 if (typeof chrome !== "undefined" && chrome.runtime?.id) {

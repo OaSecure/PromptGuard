@@ -7,6 +7,7 @@ import { findBestInputCandidate } from "../../src/content/domDetector";
 import { initializePromptGuardContentScript, shutdownPromptGuardContentScript } from "../../src/content/contentScript";
 import { extractPromptText } from "../../src/content/promptExtractor";
 import type { AnalyzeRequest, DecisionAction } from "../../src/shared/types";
+import { pdfAttachment, pngAttachment, textAttachment } from "../fixtures/attachmentFixtures";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -52,7 +53,7 @@ describe("ChatGPT-like fixture", () => {
     });
 
     let promptRequests = 0;
-    let fileRequests = 0;
+    let tempUploads = 0;
     let capturedPromptRequest: AnalyzeRequest | undefined;
     vi.stubGlobal("chrome", {
       runtime: {
@@ -66,9 +67,10 @@ describe("ChatGPT-like fixture", () => {
             capturedPromptRequest = message.payload as AnalyzeRequest;
             return promptResponse("Allow", message.payload as AnalyzeRequest);
           }
-          if (message.type === "FILES_ANALYZE_REQUEST") {
-            fileRequests += 1;
-            return filesResponse("Allow", message.payload as AnalyzeRequest);
+          if (message.type === "TEMP_FILE_UPLOAD_REQUEST") {
+            tempUploads += 1;
+            const payload = message.payload as { fileKind: string; extension: string; mime: string };
+            return tempUploadResponse(tempUploads, payload);
           }
           return { code: "UNKNOWN_ERROR", message: "Unsupported test message." };
         })
@@ -80,24 +82,28 @@ describe("ChatGPT-like fixture", () => {
       uploadEvents += 1;
     });
     Object.defineProperty(fileInput, "files", {
-      value: fileListLike([new File(["hello"], "notes.txt", { type: "text/plain" })]),
+      value: fileListLike([textAttachment(), pngAttachment(), pdfAttachment()]),
       configurable: true
     });
 
     await initializePromptGuardContentScript(document.body);
+
+    fileInput.dispatchEvent(new Event("change", { bubbles: true, cancelable: true }));
+    await waitFor(() => tempUploads === 3);
+    expect(uploadEvents).toBe(1);
 
     sendButton.click();
     await waitFor(() => submits === 1);
     expect(promptRequests).toBe(1);
     expect(capturedPromptRequest?.inputs.some((input) => input.source === "attachment_chip")).toBe(true);
     expect(capturedPromptRequest?.inputs.filter((input) => input.source === "attachment_chip")).toHaveLength(1);
+    expect(capturedPromptRequest?.inputs.filter((input) => input.kind === "file_reference")).toHaveLength(3);
     expect(JSON.stringify(capturedPromptRequest)).not.toContain("customer-secret.png");
     expect(JSON.stringify(capturedPromptRequest)).not.toContain("stale-history.zip");
-
-    fileInput.dispatchEvent(new Event("change", { bubbles: true, cancelable: true }));
-    await waitFor(() => overlayDecision() === "error");
-    expect(uploadEvents).toBe(0);
-    expect(fileRequests).toBe(0);
+    expect(JSON.stringify(capturedPromptRequest)).not.toContain("fixture-notes.txt");
+    expect(JSON.stringify(capturedPromptRequest)).not.toContain("fixture-image.png");
+    expect(JSON.stringify(capturedPromptRequest)).not.toContain("fixture-document.pdf");
+    expect(overlayDecision()).toBeUndefined();
 
     shutdownPromptGuardContentScript();
     vi.unstubAllGlobals();
@@ -123,7 +129,7 @@ describe("ChatGPT-like fixture", () => {
 
     let resolveConfig: ((config: typeof DEFAULT_CONFIG) => void) | undefined;
     let promptRequests = 0;
-    let fileRequests = 0;
+    let tempUploads = 0;
     vi.stubGlobal("chrome", {
       runtime: {
         id: "test-extension",
@@ -137,9 +143,10 @@ describe("ChatGPT-like fixture", () => {
             promptRequests += 1;
             return promptResponse("Allow", message.payload as AnalyzeRequest);
           }
-          if (message.type === "FILES_ANALYZE_REQUEST") {
-            fileRequests += 1;
-            return filesResponse("Allow", message.payload as AnalyzeRequest);
+          if (message.type === "TEMP_FILE_UPLOAD_REQUEST") {
+            tempUploads += 1;
+            const payload = message.payload as { fileKind: string; extension: string; mime: string };
+            return tempUploadResponse(tempUploads, payload);
           }
           return { code: "UNKNOWN_ERROR", message: "Unsupported test message." };
         })
@@ -151,7 +158,7 @@ describe("ChatGPT-like fixture", () => {
       uploadEvents += 1;
     });
     Object.defineProperty(fileInput, "files", {
-      value: fileListLike([new File(["hello"], "notes.txt", { type: "text/plain" })]),
+      value: fileListLike([pngAttachment()]),
       configurable: true
     });
 
@@ -162,9 +169,9 @@ describe("ChatGPT-like fixture", () => {
     expect(promptRequests).toBe(1);
 
     fileInput.dispatchEvent(new Event("change", { bubbles: true, cancelable: true }));
-    await waitFor(() => overlayDecision() === "error");
-    expect(uploadEvents).toBe(0);
-    expect(fileRequests).toBe(0);
+    await waitFor(() => tempUploads === 1);
+    expect(uploadEvents).toBe(1);
+    expect(overlayDecision()).toBeUndefined();
 
     resolveConfig!(DEFAULT_CONFIG);
     await initialization;
@@ -264,31 +271,15 @@ function promptResponse(action: DecisionAction, request: AnalyzeRequest) {
   };
 }
 
-function filesResponse(action: DecisionAction, request: AnalyzeRequest) {
+function tempUploadResponse(index: number, payload: { fileKind: string; extension: string; mime: string }) {
   return {
-    event_id: "evt_files_fixture",
-    request_id: "req_files_fixture",
-    action,
-    checked_at: "2026-06-09T00:00:00Z",
-    risk_score: 1,
-    risk_level: "low",
-    user_message: "PromptGuard file decision",
-    allow_original_send: action === "Allow",
-    requires_user_confirmation: action === "Warn",
-    detections: [],
-    input_results: request.inputs.map((input, index) => ({
-      input_id: input.input_id,
-      input_index: index,
-      kind: input.kind,
-      source: input.source,
-      content_included: input.content_included,
-      content_scanned: input.kind === "text" && input.content_included,
-      decision_basis: input.kind === "attachment_metadata" ? "metadata_only" : "no_detection"
-    })),
-    content_unavailable_inputs: [],
-    business_context_matches: [],
-    client_request_id: request.client_request_id,
-    filter_config_revision: request.filter_config_revision
+    file_ref: `fref_${String(index).padStart(30, "a")}`,
+    temp_scope_id: `tscope_${String(index).padStart(30, "b")}`,
+    file_kind: payload.fileKind,
+    extension_hint: payload.extension,
+    mime_hint: payload.mime,
+    size_bucket: "tiny",
+    expires_at: "2026-06-25T00:00:00Z"
   };
 }
 

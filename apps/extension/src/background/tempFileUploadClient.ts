@@ -4,13 +4,13 @@ import { getSettings } from "./configStore";
 import { saveAuthTokens } from "./authStore";
 import { analyzeTimeoutMs } from "../shared/configAccessors";
 import { normalizeError, isNormalizedError } from "../shared/errors";
-import type { AnalyzeFileKind, AnalyzeSizeBucket, NormalizedError } from "../shared/types";
+import type { AnalyzeFileKind, AnalyzeSizeBucket, NormalizedError, TempFileUploadMessagePayload } from "../shared/types";
 
 /** Safe metadata returned after an encrypted temporary upload. */
 export interface TempUploadResult { file_ref: string; temp_scope_id: string; file_kind: AnalyzeFileKind; mime_hint?: string; extension_hint?: string; size_bucket: AnalyzeSizeBucket; expires_at: string }
 
 /** Uploads a file to the authenticated temporary-file boundary. */
-export async function uploadTempFile(payload: { file: File; requestId: string; fileKind: AnalyzeFileKind; extension: string; mime: string }): Promise<TempUploadResult | NormalizedError> {
+export async function uploadTempFile(payload: TempFileUploadMessagePayload): Promise<TempUploadResult | NormalizedError> {
   const settings = await getSettings();
   const auth = await getAuthState();
   const first = await uploadTempFileOnce(payload, settings.apiBaseUrl, auth.accessToken, analyzeTimeoutMs(settings.config));
@@ -33,20 +33,20 @@ export async function uploadTempFile(payload: { file: File; requestId: string; f
 }
 
 async function uploadTempFileOnce(
-  payload: { file: File; requestId: string; fileKind: AnalyzeFileKind; extension: string; mime: string },
+  payload: TempFileUploadMessagePayload,
   apiBaseUrl: string,
   accessToken: string | undefined,
   timeoutMs: number,
 ): Promise<TempUploadResult | NormalizedError> {
   const controller = new AbortController();
   const timeout = globalThis.setTimeout(() => controller.abort(), timeoutMs);
-  const form = new FormData();
-  form.append("file", new Blob([payload.file], { type: payload.file.type }), "upload.bin");
-  form.append("request_id", payload.requestId);
-  form.append("file_kind", payload.fileKind);
-  form.append("extension_hint", payload.extension.replace(/^\./, ""));
-  form.append("mime_hint", payload.mime || "application/octet-stream");
   try {
+    const form = new FormData();
+    form.append("file", base64ToBlob(payload.file_bytes_base64, payload.mime || "application/octet-stream"), "upload.bin");
+    form.append("request_id", payload.requestId);
+    form.append("file_kind", payload.fileKind);
+    form.append("extension_hint", payload.extension.replace(/^\./, ""));
+    form.append("mime_hint", payload.mime || "application/octet-stream");
     const response = await fetch(`${apiBaseUrl.replace(/\/+$/, "")}/files/temp`, {
       method: "POST",
       headers: {
@@ -67,6 +67,15 @@ async function uploadTempFileOnce(
   } finally {
     globalThis.clearTimeout(timeout);
   }
+}
+
+function base64ToBlob(value: string, mime: string): Blob {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return new Blob([bytes], { type: mime });
 }
 
 function isUnauthorized(value: unknown): value is NormalizedError {

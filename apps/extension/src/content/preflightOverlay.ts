@@ -1,5 +1,5 @@
 /** UI state names shown while a preflight decision is pending or applied. */
-export type OverlayDecision = "analyzing" | "warn" | "mask" | "block" | "error";
+export type OverlayDecision = "analyzing" | "warn" | "mask" | "mask_checking" | "mask_passed" | "mask_failed" | "block" | "error";
 
 /** Describes one button rendered in the preflight overlay. */
 export interface OverlayAction {
@@ -142,6 +142,12 @@ function titleForDecision(decision: OverlayDecision): string {
       return "주의: 검토 필요";
     case "mask":
       return "마스킹: 대체문 준비됨";
+    case "mask_checking":
+      return "마스킹본 검사 중";
+    case "mask_passed":
+      return "마스킹본 검사 통과";
+    case "mask_failed":
+      return "마스킹본 전송 불가";
     case "block":
       return "차단: 전송 중지";
     case "error":
@@ -155,6 +161,12 @@ function iconForDecision(decision: OverlayDecision): string {
       return "!";
     case "mask":
       return "◐";
+    case "mask_checking":
+      return "i";
+    case "mask_passed":
+      return "✓";
+    case "mask_failed":
+      return "×";
     case "block":
       return "×";
     case "error":
@@ -227,6 +239,27 @@ function toneForDecision(decision: OverlayDecision): DecisionTone {
         background: "#eff6ff",
         border: "#bfdbfe",
         foreground: "#1d4ed8"
+      };
+    case "mask_checking":
+      return {
+        accent: "#0ea5e9",
+        background: "#f0f9ff",
+        border: "#bae6fd",
+        foreground: "#0369a1"
+      };
+    case "mask_passed":
+      return {
+        accent: "#10b981",
+        background: "#ecfdf5",
+        border: "#a7f3d0",
+        foreground: "#047857"
+      };
+    case "mask_failed":
+      return {
+        accent: "#ef4444",
+        background: "#fef2f2",
+        border: "#fecaca",
+        foreground: "#b91c1c"
       };
     case "block":
       return {

@@ -22,7 +22,7 @@ export type AnalyzeDecisionBasis = "no_detection" | "detection" | "content_unava
 /** Coarse server-side file kind used without trusting client filenames. */
 export type AnalyzeFileKind = "plain_text" | "pdf" | "image" | "office_document" | "spreadsheet" | "slide" | "code" | "unknown";
 /** Coarse file size bucket; exact bytes remain runtime-only where possible. */
-export type AnalyzeSizeBucket = "empty" | "small" | "medium" | "large";
+export type AnalyzeSizeBucket = "empty" | "tiny" | "small" | "medium" | "large" | "huge" | "unknown";
 
 /** Metadata summary for one policy detection without raw detected values. */
 export interface AnalyzeDetection {
@@ -220,6 +220,16 @@ export interface AuthLoginResponse {
   refresh_token: string;
 }
 
+/** Serializable temp-file upload payload for Chrome runtime messaging. */
+export interface TempFileUploadMessagePayload {
+  file_bytes_base64: string;
+  requestId: string;
+  fileKind: AnalyzeFileKind;
+  extension: string;
+  mime: string;
+  size_bytes: number;
+}
+
 /** Prompt inspection lifecycle names used by tests and state documentation. */
 export type PromptInspectionState =
   | "IDLE"
@@ -253,7 +263,7 @@ export type ExtensionMessage =
   | { type: "PROMPT_ANALYZE_REQUEST"; payload: AnalyzeRequest }
   | { type: "PROMPT_ANALYZE_RESULT"; payload: AnalyzeResponse | NormalizedError }
   | { type: "FILES_ANALYZE_REQUEST"; payload: AnalyzeRequest }
-  | { type: "TEMP_FILE_UPLOAD_REQUEST"; payload: { file: File; requestId: string; fileKind: AnalyzeFileKind; extension: string; mime: string } }
+  | { type: "TEMP_FILE_UPLOAD_REQUEST"; payload: TempFileUploadMessagePayload }
   | { type: "FILES_ANALYZE_RESULT"; payload: AnalyzeResponse | NormalizedError }
   | { type: "AUTH_LOGIN_REQUEST"; payload: { login_id: string; password: string } }
   | { type: "AUTH_ME_REQUEST" }
