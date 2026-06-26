@@ -128,6 +128,15 @@ def test_detect_card_ignores_luhn_invalid_candidates(text: str) -> None:
     assert detect_card(text) == []
 
 
+@pytest.mark.parametrize("rrn", ["900101-1000006", "111111-2111111"])
+def test_detect_card_ignores_luhn_valid_rrn_overlap(rrn: str) -> None:
+    text = f"주민등록번호 {rrn}"
+
+    assert [item.detector_key for item in detect_rrn(text)] == ["RRN"]
+    assert detect_card(text) == []
+    assert [item.detector_key for item in detect_pii(text)] == ["RRN"]
+
+
 def test_detect_korean_bank_account_uses_bank_context_and_suppresses_card_overlap() -> None:
     text = "계좌 국민은행 482719-02-774182"
 
