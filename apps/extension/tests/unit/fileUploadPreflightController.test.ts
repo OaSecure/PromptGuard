@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_CONFIG } from "../../src/shared/constants";
 import { startFileUploadPreflightController } from "../../src/content/fileUploadPreflightController";
 import type { AnalyzeInput, ExtensionContext } from "../../src/shared/types";
-import { pdfAttachment, pngAttachment, textAttachment } from "../fixtures/attachmentFixtures";
+import { csvAttachment, pdfAttachment, pngAttachment, textAttachment } from "../fixtures/attachmentFixtures";
 
 const context: ExtensionContext = {
   ai_service: "CHATGPT",
@@ -122,7 +122,7 @@ describe("file upload preflight controller", () => {
     controller.disconnect();
   });
 
-  it("registers unavailable metadata when temp upload fails, then leaves final policy to prompt send inspection", async () => {
+  it("does not register stale unavailable metadata when temp upload fails", async () => {
     const page = setupFileInput([textAttachment()]);
     const registered: AnalyzeInput[][] = [];
     const controller = startFileUploadPreflightController({
@@ -133,22 +133,17 @@ describe("file upload preflight controller", () => {
     });
 
     const event = dispatchChange(page.input);
-    await waitFor(() => registered.length === 1);
+    await waitFor(() => page.uploads() === 1);
 
     expect(event.defaultPrevented).toBe(false);
     expect(page.uploads()).toBe(1);
-    expect(registered[0][0]).toMatchObject({
-      kind: "unsupported_attachment",
-      source: "attachment_chip",
-      content_included: false,
-      content_unavailable_reason: "unavailable"
-    });
+    expect(registered).toEqual([]);
     expect(overlayDecision()).toBeUndefined();
     controller.disconnect();
   });
 
-  it("registers real PDF attachments as server-side file_reference inputs", async () => {
-    const page = setupFileInput([pdfAttachment()]);
+  it("registers real PDF and CSV attachments as server-side file_reference inputs", async () => {
+    const page = setupFileInput([pdfAttachment(), csvAttachment()]);
     const registered: AnalyzeInput[][] = [];
     const controller = startFileUploadPreflightController({
       config: DEFAULT_CONFIG,
@@ -170,6 +165,7 @@ describe("file upload preflight controller", () => {
 
     expect(event.defaultPrevented).toBe(false);
     expect(page.uploads()).toBe(1);
+    expect(registered[0]).toHaveLength(2);
     expect(registered[0][0]).toMatchObject({
       kind: "file_reference",
       source: "attached_file",
@@ -178,7 +174,16 @@ describe("file upload preflight controller", () => {
       mime: "application/pdf",
       content_included: false
     });
-    expect(JSON.stringify(registered)).not.toContain("fixture-document.pdf");
+    expect(registered[0][1]).toMatchObject({
+      kind: "file_reference",
+      source: "attached_file",
+      file_kind: "spreadsheet",
+      extension: "csv",
+      mime: "text/csv",
+      content_included: false
+    });
+    expect(JSON.stringify(registered)).not.toContain("context-risk-business-brief.pdf");
+    expect(JSON.stringify(registered)).not.toContain("bulk-customer-pii.csv");
     controller.disconnect();
   });
 });

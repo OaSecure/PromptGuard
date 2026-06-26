@@ -89,28 +89,30 @@ export function startPromptPreflightController(options: PromptPreflightControlle
       overlay.show({ decision: "analyzing", message: "이미 검사 중입니다.", actions: [] });
       return;
     }
-    if (options.hasPendingRegisteredAttachmentUploads?.()) {
-      overlay.show({ decision: "analyzing", message: "파일 업로드가 끝나면 전송 전 검사를 시작합니다.", actions: [] });
-      try {
-        await options.waitForRegisteredAttachmentUploads?.();
-      } catch {
-        showFailClosed("파일 업로드 상태를 확인하지 못했습니다. 전송하지 않았습니다.", () => retryAttempt(attempt));
-        return;
-      }
-      if (options.hasPendingRegisteredAttachmentUploads?.()) {
-        return;
-      }
-    }
-
     const candidate = findBestInputCandidate(doc, { input: selectors.input });
     if (!candidate) {
       showFailClosed("전송 내용을 검사하지 못했습니다.", () => retryAttempt(attempt));
       return;
     }
+    if (options.hasPendingRegisteredAttachmentUploads?.()) {
+      if (shouldDropRegisteredAttachments(candidate.element)) {
+        options.clearRegisteredAttachmentInputs?.();
+      } else {
+        overlay.show({ decision: "analyzing", message: "파일 업로드가 끝나면 전송 전 검사를 시작합니다.", actions: [] });
+        try {
+          await options.waitForRegisteredAttachmentUploads?.();
+        } catch {
+          showFailClosed("파일 업로드 상태를 확인하지 못했습니다. 전송하지 않았습니다.", () => retryAttempt(attempt));
+          return;
+        }
+        if (options.hasPendingRegisteredAttachmentUploads?.()) {
+          return;
+        }
+      }
+    }
 
     const attachmentInputs = [
-      ...collectAttachmentChipInputs(resolveAttachmentChipScope(candidate.element, doc), { attachment_chip: selectors.attachment_chip }),
-      ...(options.getRegisteredAttachmentInputs?.() ?? [])
+      ...attachmentInputsForAttempt(candidate.element)
     ];
     const request = buildPromptAnalyzeRequest(
       candidate.element,
@@ -192,7 +194,7 @@ export function startPromptPreflightController(options: PromptPreflightControlle
                 replay(attempt);
               }
             },
-            { id: "cancel", label: "취소", variant: "secondary", onClick: overlay.hide }
+            { id: "cancel", label: "취소", variant: "secondary", onClick: dismissStoppedAttempt }
           ]
         });
         return;
@@ -215,7 +217,7 @@ export function startPromptPreflightController(options: PromptPreflightControlle
                 }
               }
             },
-            { id: "cancel", label: "취소", variant: "secondary", onClick: overlay.hide }
+            { id: "cancel", label: "취소", variant: "secondary", onClick: dismissStoppedAttempt }
           ]
         });
         return;
@@ -225,8 +227,8 @@ export function startPromptPreflightController(options: PromptPreflightControlle
           message: safeDecisionMessage(response),
           evidence: safeDecisionEvidence(response),
           actions: [
-            { id: "retry", label: "다시 시도", variant: "secondary", onClick: () => retryAttempt(attempt) },
-            { id: "cancel", label: "취소", variant: "danger", onClick: overlay.hide }
+            { id: "retry", label: "다시 시도", variant: "secondary", onClick: () => retryStoppedAttempt(attempt) },
+            { id: "cancel", label: "취소", variant: "danger", onClick: dismissStoppedAttempt }
           ]
         });
         return;
@@ -247,8 +249,7 @@ export function startPromptPreflightController(options: PromptPreflightControlle
       undefined,
       createClientRequestId("crq"),
       [
-        ...collectAttachmentChipInputs(resolveAttachmentChipScope(input, doc), { attachment_chip: selectors.attachment_chip }),
-        ...(options.getRegisteredAttachmentInputs?.() ?? [])
+        ...attachmentInputsForAttempt(input)
       ]
     );
     if (!hasInspectableInput(request.inputs)) {
@@ -298,7 +299,7 @@ export function startPromptPreflightController(options: PromptPreflightControlle
         evidence: safeDecisionEvidence(response),
         actions: [
           { id: "retry-masked-check", label: "다시 검사", variant: "secondary", onClick: () => void reinspectMaskedPrompt(input, attempt) },
-          { id: "cancel", label: "취소", variant: "danger", onClick: overlay.hide }
+          { id: "cancel", label: "취소", variant: "danger", onClick: dismissStoppedAttempt }
         ]
       });
       return;
@@ -314,7 +315,7 @@ export function startPromptPreflightController(options: PromptPreflightControlle
       evidence: safeDecisionEvidence(response),
       actions: [
         { id: "send-masked-prompt", label: "마스킹본 전송", variant: "primary", onClick: () => replay(attempt) },
-        { id: "cancel", label: "취소", variant: "secondary", onClick: overlay.hide }
+        { id: "cancel", label: "취소", variant: "secondary", onClick: dismissStoppedAttempt }
       ]
     });
   }
@@ -339,15 +340,45 @@ export function startPromptPreflightController(options: PromptPreflightControlle
       decision: "error",
       message,
       actions: [
-        { id: "retry", label: "다시 시도", variant: "secondary", onClick: retry },
-        { id: "cancel", label: "취소", variant: "danger", onClick: overlay.hide }
+        { id: "retry", label: "다시 시도", variant: "secondary", onClick: () => retryStoppedInspection(retry) },
+        { id: "cancel", label: "취소", variant: "danger", onClick: dismissStoppedAttempt }
       ]
     });
+  }
+
+  function dismissStoppedAttempt(): void {
+    options.clearRegisteredAttachmentInputs?.();
+    overlay.hide();
+  }
+
+  function retryStoppedAttempt(attempt: SendAttempt): void {
+    options.clearRegisteredAttachmentInputs?.();
+    retryAttempt(attempt);
+  }
+
+  function retryStoppedInspection(retry: () => void): void {
+    options.clearRegisteredAttachmentInputs?.();
+    retry();
   }
 
   function retryAttempt(attempt: SendAttempt): void {
     resetRequestIdForAttempt(attempt);
     void handleAttempt(attempt);
+  }
+
+  function attachmentInputsForAttempt(input: PromptInputElement): AnalyzeInput[] {
+    const chipInputs = collectAttachmentChipInputs(resolveAttachmentChipScope(input, doc), { attachment_chip: selectors.attachment_chip });
+    const registeredInputs = options.getRegisteredAttachmentInputs?.() ?? [];
+    if (registeredInputs.length > 0 && shouldDropRegisteredAttachments(input, chipInputs)) {
+      options.clearRegisteredAttachmentInputs?.();
+      return [];
+    }
+    return [...chipInputs, ...registeredInputs];
+  }
+
+  function shouldDropRegisteredAttachments(input: PromptInputElement, chipInputs?: AnalyzeInput[]): boolean {
+    const currentChipInputs = chipInputs ?? collectAttachmentChipInputs(resolveAttachmentChipScope(input, doc), { attachment_chip: selectors.attachment_chip });
+    return currentChipInputs.length === 0 && extractPromptText(input).trim().length > 0;
   }
 
   return {

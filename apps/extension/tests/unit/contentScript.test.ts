@@ -83,6 +83,7 @@ describe("content script request context", () => {
     document.body.innerHTML = `
       <form id="composer">
         <textarea id="prompt-textarea" aria-label="Prompt"></textarea>
+        ${attachmentChipMarkup(".pdf", "application/pdf", "8192", "file")}
         <input id="file-input" type="file" multiple />
         <button type="submit" data-testid="send-button">Send</button>
       </form>
@@ -155,6 +156,7 @@ describe("content script request context", () => {
     document.body.innerHTML = `
       <form id="composer">
         <textarea id="prompt-textarea" aria-label="Prompt"></textarea>
+        ${attachmentChipMarkup(".pdf", "application/pdf", "8192", "file")}
         <input id="file-input" type="file" multiple />
         <button type="submit" data-testid="send-button">Send</button>
       </form>
@@ -223,6 +225,9 @@ describe("content script request context", () => {
     document.body.innerHTML = `
       <form id="composer">
         <textarea id="prompt-textarea" aria-label="Prompt"></textarea>
+        ${attachmentChipMarkup(".txt", "text/plain", "4096", "file")}
+        ${attachmentChipMarkup(".png", "image/png", "2048", "image")}
+        ${attachmentChipMarkup(".pdf", "application/pdf", "8192", "file")}
         <input id="file-input" type="file" multiple />
         <button type="submit" data-testid="send-button">Send</button>
       </form>
@@ -300,6 +305,20 @@ function fileListLike(files: File[]): FileList {
     list[index] = file;
   });
   return list as FileList;
+}
+
+function attachmentChipMarkup(extension: string, mime: string, sizeBytes: string, kind: string): string {
+  return `
+    <div
+      data-promptguard-attachment-chip
+      data-promptguard-extension="${extension}"
+      data-promptguard-mime="${mime}"
+      data-promptguard-size-bytes="${sizeBytes}"
+      data-promptguard-attachment-kind="${kind}"
+    >
+      fixture-attachment
+    </div>
+  `;
 }
 
 function responseFor(request: AnalyzeRequest): AnalyzeResponse {

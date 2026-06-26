@@ -125,18 +125,7 @@ async function readFileArrayBuffer(file: File): Promise<ArrayBuffer> {
   if (typeof file.arrayBuffer === "function") {
     return file.arrayBuffer();
   }
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(reader.error ?? new Error("Failed to read file for temp upload."));
-    reader.onload = () => {
-      if (reader.result instanceof ArrayBuffer) {
-        resolve(reader.result);
-        return;
-      }
-      reject(new Error("FileReader did not return an ArrayBuffer."));
-    };
-    reader.readAsArrayBuffer(file);
-  });
+  return new Response(file).arrayBuffer();
 }
 
 async function loadConfig(): Promise<void> {

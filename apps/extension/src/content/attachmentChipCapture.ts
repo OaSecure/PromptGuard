@@ -41,10 +41,20 @@ function uniqueChipElements(root: ParentNode, selectors: string[]): HTMLElement[
   const seen = new Set<HTMLElement>();
   for (const selector of selectors) {
     for (const element of root.querySelectorAll<HTMLElement>(selector)) {
-      seen.add(element);
+      if (isActiveChipElement(element)) {
+        seen.add(element);
+      }
     }
   }
   return [...seen];
+}
+
+function isActiveChipElement(element: HTMLElement): boolean {
+  if (element.hidden || element.getAttribute("aria-hidden") === "true") {
+    return false;
+  }
+  const style = element.style;
+  return style.display !== "none" && style.visibility !== "hidden";
 }
 
 function buildAttachmentInput(element: HTMLElement, attachmentIndex: number): AnalyzeInput | null {

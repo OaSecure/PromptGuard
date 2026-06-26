@@ -109,6 +109,77 @@ describe("ChatGPT-like fixture", () => {
     vi.unstubAllGlobals();
   });
 
+  it("does not let a failed removed attachment poison the next text-only send", async () => {
+    const fixture = readFileSync(resolve(__dirname, "fixtures/chatgpt-like-page.html"), "utf8");
+    document.documentElement.innerHTML = fixture;
+
+    const input = document.querySelector<HTMLTextAreaElement>("#prompt-textarea")!;
+    const fileInput = document.querySelector<HTMLInputElement>("#file-input")!;
+    const sendButton = document.querySelector<HTMLButtonElement>("button[data-testid='send-button']")!;
+    const attachmentChip = document.querySelector<HTMLElement>("[data-testid='attachment-chip']")!;
+    const form = document.querySelector<HTMLFormElement>("#composer")!;
+    input.value = "";
+    mockRect(input);
+    input.focus();
+
+    let submits = 0;
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      submits += 1;
+    });
+
+    let promptRequests = 0;
+    let tempUploads = 0;
+    let capturedPromptRequest: AnalyzeRequest | undefined;
+    vi.stubGlobal("chrome", {
+      runtime: {
+        id: "test-extension",
+        sendMessage: vi.fn(async (message: { type: string; payload?: unknown }) => {
+          if (message.type === "GET_CONFIG_REQUEST") {
+            return DEFAULT_CONFIG;
+          }
+          if (message.type === "PROMPT_ANALYZE_REQUEST") {
+            promptRequests += 1;
+            capturedPromptRequest = message.payload as AnalyzeRequest;
+            return promptResponse("Allow", message.payload as AnalyzeRequest);
+          }
+          if (message.type === "TEMP_FILE_UPLOAD_REQUEST") {
+            tempUploads += 1;
+            return { code: "NETWORK_ERROR", message: "upload failed" };
+          }
+          return { code: "UNKNOWN_ERROR", message: "Unsupported test message." };
+        })
+      }
+    });
+
+    Object.defineProperty(fileInput, "files", {
+      value: fileListLike([pngAttachment()]),
+      configurable: true
+    });
+
+    await initializePromptGuardContentScript(document.body);
+    fileInput.dispatchEvent(new Event("change", { bubbles: true, cancelable: true }));
+    await waitFor(() => tempUploads === 1);
+
+    attachmentChip.remove();
+    input.value = "파일은 제거했고 이 텍스트만 보내줘";
+    sendButton.click();
+
+    await waitFor(() => submits === 1);
+    expect(promptRequests).toBe(1);
+    expect(capturedPromptRequest?.inputs.filter((item) => item.kind === "file_reference")).toHaveLength(0);
+    expect(capturedPromptRequest?.inputs.filter((item) => item.kind === "attachment_metadata")).toHaveLength(0);
+    expect(capturedPromptRequest?.inputs).toEqual(expect.arrayContaining([expect.objectContaining({
+      kind: "text",
+      source: "composer",
+      content: "파일은 제거했고 이 텍스트만 보내줘"
+    })]));
+    expect(overlayDecision()).toBeUndefined();
+
+    shutdownPromptGuardContentScript();
+    vi.unstubAllGlobals();
+  });
+
   it("installs default-config prompt and file hooks before config response resolves", async () => {
     const fixture = readFileSync(resolve(__dirname, "fixtures/chatgpt-like-page.html"), "utf8");
     document.documentElement.innerHTML = fixture;

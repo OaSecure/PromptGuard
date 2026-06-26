@@ -20,7 +20,7 @@ export interface FileUploadPreflightControllerOptions {
   config: ExtensionConfigResponse;
   getContext: () => ExtensionContext;
   uploadFile?: (payload: { file: File; requestId: string; fileKind: AnalyzeFileKind; extension: string; mime: string }) => Promise<TempUploadResult | NormalizedError>;
-  registerInputs?: (inputs: AnalyzeInput[]) => void;
+  registerInputs?: (inputs: AnalyzeInput[], requestId?: string) => void;
   getUploadRequestId?: () => string;
   beginUpload?: () => void;
   endUpload?: () => void;
@@ -89,7 +89,10 @@ export function startFileUploadPreflightController(options: FileUploadPreflightC
     try {
       const supportedFilesNeedingUpload = policyDecisions.some((decision) => decision.allowed);
       if (supportedFilesNeedingUpload && !options.uploadFile) {
-        options.registerInputs?.(fallbackUnavailableInputs(snapshots, policyDecisions));
+        const metadataOnlyInputs = buildMetadataOnlyInputs(snapshots, policyDecisions);
+        if (metadataOnlyInputs.length > 0) {
+          options.registerInputs?.(metadataOnlyInputs);
+        }
         return;
       }
 
@@ -100,17 +103,19 @@ export function startFileUploadPreflightController(options: FileUploadPreflightC
         const fileKind = kindFor(snapshot.file.type, decision.extension);
         const uploaded = await options.uploadFile({ file: snapshot.file, requestId, fileKind, extension: decision.extension, mime: snapshot.file.type });
         if (!("file_ref" in uploaded)) {
-          inputs.push(unavailableInput(snapshot, index, decision.extension));
           continue;
         }
         inputs.push(createFileReferenceInput({ fileRef: uploaded.file_ref, tempScopeId: uploaded.temp_scope_id, fileKind: uploaded.file_kind, extension: uploaded.extension_hint ?? decision.extension, mimeType: uploaded.mime_hint ?? snapshot.file.type, sizeBytes: snapshot.file.size, sizeBucket: uploaded.size_bucket }));
       }
       if (attemptId === currentAttemptId && inputs.length > 0) {
-        options.registerInputs?.(inputs);
+        options.registerInputs?.(inputs, requestId);
       }
     } catch {
       if (attemptId === currentAttemptId) {
-        options.registerInputs?.(fallbackUnavailableInputs(snapshots, policyDecisions));
+        const metadataOnlyInputs = buildMetadataOnlyInputs(snapshots, policyDecisions);
+        if (metadataOnlyInputs.length > 0) {
+          options.registerInputs?.(metadataOnlyInputs);
+        }
       }
     } finally {
       options.endUpload?.();
@@ -174,22 +179,5 @@ function buildMetadataOnlyInputs(
       ];
     }
     return [];
-  });
-}
-
-function fallbackUnavailableInputs(
-  snapshots: Array<{ file: File }>,
-  decisions: Array<{ allowed: boolean; extension: string; reason?: string }>
-): AnalyzeInput[] {
-  return snapshots.map((snapshot, index) => unavailableInput(snapshot, index, decisions[index]?.extension ?? ""));
-}
-
-function unavailableInput(snapshot: { file: File }, index: number, extension: string): AnalyzeInput {
-  return createUnsupportedAttachmentInput({
-    extension,
-    mimeType: snapshot.file.type,
-    sizeBytes: snapshot.file.size,
-    attachmentIndex: index,
-    reason: "unavailable"
   });
 }

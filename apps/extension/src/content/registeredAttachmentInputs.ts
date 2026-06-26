@@ -18,7 +18,10 @@ export function getRegisteredAttachmentRequestId(): string | undefined {
 }
 
 /** Stores transient file_reference inputs created from live File/Blob handles. */
-export function registerAttachmentInputs(inputs: AnalyzeInput[]): void {
+export function registerAttachmentInputs(inputs: AnalyzeInput[], requestId?: string): void {
+  if (requestId && registeredRequestId !== requestId) {
+    return;
+  }
   registeredInputs.push(...inputs);
 }
 
