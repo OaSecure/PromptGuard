@@ -221,6 +221,84 @@ describe("content script request context", () => {
     shutdownPromptGuardContentScript();
   });
 
+  it("keeps temp file refs after a blocked attachment send is canceled and resent", async () => {
+    document.body.innerHTML = `
+      <form id="composer">
+        <textarea id="prompt-textarea" aria-label="Prompt"></textarea>
+        ${attachmentChipMarkup(".pdf", "application/pdf", "8192", "file")}
+        <input id="file-input" type="file" multiple />
+        <button type="submit" data-testid="send-button">Send</button>
+      </form>
+    `;
+    document.querySelector<HTMLTextAreaElement>("#prompt-textarea")!.value = "ㅇㅇ";
+    let submitCount = 0;
+    document.querySelector<HTMLFormElement>("#composer")!.addEventListener("submit", (event) => {
+      event.preventDefault();
+      submitCount += 1;
+    });
+
+    const promptAnalyzes: AnalyzeRequest[] = [];
+    let tempUploadRequestId: string | undefined;
+    vi.stubGlobal("chrome", {
+      runtime: {
+        id: "promptguard-test",
+        sendMessage: vi.fn(async (message: { type: string; payload?: unknown }) => {
+          if (message.type === "GET_CONFIG_REQUEST") {
+            return DEFAULT_CONFIG;
+          }
+          if (message.type === "TEMP_FILE_UPLOAD_REQUEST") {
+            const payload = message.payload as { fileKind: string; extension: string; mime: string; requestId: string };
+            tempUploadRequestId = payload.requestId;
+            return {
+              file_ref: "fref_cancelcontentabcdefghijkl",
+              temp_scope_id: "tscope_cancelcontentabcdefghijkl",
+              file_kind: payload.fileKind,
+              extension_hint: payload.extension,
+              mime_hint: payload.mime,
+              size_bucket: "tiny",
+              expires_at: "2026-06-25T00:00:00Z"
+            };
+          }
+          if (message.type === "PROMPT_ANALYZE_REQUEST") {
+            const request = message.payload as AnalyzeRequest;
+            promptAnalyzes.push(request);
+            return {
+              ...responseFor(request),
+              action: "Block",
+              allow_original_send: false,
+              risk_score: 90,
+              risk_level: "high"
+            } satisfies AnalyzeResponse;
+          }
+          return {};
+        })
+      }
+    });
+
+    const { initializePromptGuardContentScript, shutdownPromptGuardContentScript } = await import("../../src/content/contentScript");
+    await initializePromptGuardContentScript(document.body);
+
+    const input = document.querySelector<HTMLInputElement>("#file-input")!;
+    Object.defineProperty(input, "files", {
+      value: fileListLike([pdfAttachment()]),
+      configurable: true
+    });
+    input.dispatchEvent(new Event("change", { bubbles: true, cancelable: true }));
+    await waitFor(() => tempUploadRequestId !== undefined);
+
+    document.querySelector<HTMLButtonElement>("button[type='submit']")!.click();
+    await waitFor(() => promptAnalyzes.length === 1);
+    await waitFor(() => document.querySelector<HTMLButtonElement>("#promptguard-preflight-overlay button[data-promptguard-action='cancel']") !== null);
+    clickOverlayAction("cancel");
+    document.querySelector<HTMLButtonElement>("button[type='submit']")!.click();
+    await waitFor(() => promptAnalyzes.length === 2);
+
+    expect(submitCount).toBe(0);
+    expect(promptAnalyzes.map((request) => request.client_request_id)).toEqual([tempUploadRequestId, tempUploadRequestId]);
+    expect(promptAnalyzes.every((request) => request.inputs.some((input) => input.kind === "file_reference"))).toBe(true);
+    shutdownPromptGuardContentScript();
+  });
+
   it("waits for pending temp upload when send is clicked before file registration finishes", async () => {
     document.body.innerHTML = `
       <form id="composer">
@@ -347,6 +425,10 @@ function responseFor(request: AnalyzeRequest): AnalyzeResponse {
     client_request_id: request.client_request_id,
     filter_config_revision: DEFAULT_POLICY_VERSION
   };
+}
+
+function clickOverlayAction(action: string): void {
+  document.querySelector<HTMLButtonElement>(`#promptguard-preflight-overlay button[data-promptguard-action='${action}']`)!.click();
 }
 
 async function waitFor(predicate: () => boolean): Promise<void> {

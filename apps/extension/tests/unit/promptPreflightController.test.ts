@@ -522,7 +522,57 @@ describe("prompt preflight controller", () => {
     controller.disconnect();
   });
 
-  it("does not reuse a blocked file reference after canceling and sending text again", async () => {
+  it("rescans the same registered attachment after a blocked send is canceled", async () => {
+    const page = setupComposer("file content should block", { attachmentChip: true });
+    const requests: AnalyzeRequest[] = [];
+    let cleared = false;
+    const fileInput: AnalyzeInput = {
+      input_id: "in_cancel_rescan_file_ref_test",
+      kind: "file_reference",
+      source: "attached_file",
+      size_bytes: 2048,
+      content_included: false,
+      file_ref: "fref_cancelrescanabcdefghijkl",
+      temp_scope_id: "tscope_cancelrescanabcdefghijkl",
+      file_kind: "pdf",
+      mime: "application/pdf",
+      extension: "pdf",
+      size_bucket: "small"
+    };
+    const controller = startPromptPreflightController({
+      config: DEFAULT_CONFIG,
+      getContext: () => context,
+      getRegisteredAttachmentInputs: () => [fileInput],
+      getRegisteredAttachmentRequestId: () => "crq_cancel_rescan_attachment_owner",
+      clearRegisteredAttachmentInputs: () => {
+        cleared = true;
+      },
+      sendAnalyze: async (request) => {
+        requests.push(request);
+        return responseFor("Block");
+      }
+    });
+
+    page.button.click();
+    await waitFor(() => overlayDecision() === "block");
+    clickOverlayAction("cancel");
+    page.textarea.value = "try again with same attachment";
+    page.button.click();
+    await waitFor(() => requests.length === 2);
+
+    expect(page.submits()).toBe(0);
+    expect(cleared).toBe(false);
+    expect(requests[0].client_request_id).toBe("crq_cancel_rescan_attachment_owner");
+    expect(requests[1].client_request_id).toBe("crq_cancel_rescan_attachment_owner");
+    expect(requests[1].inputs).toEqual(expect.arrayContaining([expect.objectContaining({
+      kind: "file_reference",
+      source: "attached_file",
+      file_ref: "fref_cancelrescanabcdefghijkl"
+    })]));
+    controller.disconnect();
+  });
+
+  it("does not reuse a blocked file reference after canceling, removing the attachment, and sending text again", async () => {
     const page = setupComposer("file content should block", { attachmentChip: true });
     const requests: AnalyzeRequest[] = [];
     let registeredInputs: AnalyzeInput[] = [{
@@ -556,6 +606,7 @@ describe("prompt preflight controller", () => {
     await waitFor(() => overlayDecision() === "block");
     clickOverlayAction("cancel");
     document.querySelector<HTMLElement>("[data-promptguard-attachment-chip]")!.style.display = "none";
+    registeredInputs = [];
     page.textarea.value = "hello after removing the attachment";
     page.button.click();
     await waitFor(() => page.submits() === 1);

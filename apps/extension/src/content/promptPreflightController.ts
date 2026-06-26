@@ -353,7 +353,6 @@ export function startPromptPreflightController(options: PromptPreflightControlle
   }
 
   function dismissStoppedAttempt(): void {
-    options.clearRegisteredAttachmentInputs?.();
     overlay.hide();
   }
 
