@@ -347,28 +347,36 @@ describe("prompt preflight controller", () => {
     controller.disconnect();
   });
 
-  it("drops stale registered attachments when the user removed the file chip before sending text", async () => {
-    const page = setupComposer("send text after removing attachment");
+  it.each([
+    ["image", "image/png", "png"],
+    ["pdf", "application/pdf", "pdf"],
+    ["spreadsheet", "text/csv", "csv"],
+    ["office_document", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "docx"],
+    ["slide", "application/vnd.openxmlformats-officedocument.presentationml.presentation", "pptx"],
+    ["code", "text/typescript", "ts"],
+    ["plain_text", "text/plain", "txt"]
+  ] as const)("keeps registered %s file_reference inputs even when the host attachment chip is not detectable", async (fileKind, mime, extension) => {
+    const page = setupComposer(`send text with ${fileKind} attachment`);
     let cleared = false;
     let captured: AnalyzeRequest | undefined;
-    const staleFileInput: AnalyzeInput = {
-      input_id: "in_removed_file_ref_test",
+    const fileInput: AnalyzeInput = {
+      input_id: `in_undetected_${fileKind}_file_ref_test`,
       kind: "file_reference",
       source: "attached_file",
       size_bytes: 2048,
       content_included: false,
-      file_ref: "fref_removedabcdefghijklmnopqrst",
-      temp_scope_id: "tscope_removedabcdefghijklmnop",
-      file_kind: "image",
-      mime: "image/png",
-      extension: "png",
+      file_ref: `fref_${fileKind.replace(/_/g, "")}undetectedchip`,
+      temp_scope_id: `tscope_${fileKind.replace(/_/g, "")}undetectedchip`,
+      file_kind: fileKind,
+      mime,
+      extension,
       size_bucket: "small"
     };
     const controller = startPromptPreflightController({
       config: DEFAULT_CONFIG,
       getContext: () => context,
-      getRegisteredAttachmentInputs: () => cleared ? [] : [staleFileInput],
-      getRegisteredAttachmentRequestId: () => cleared ? undefined : "crq_removed_attachment_owner",
+      getRegisteredAttachmentInputs: () => cleared ? [] : [fileInput],
+      getRegisteredAttachmentRequestId: () => cleared ? undefined : "crq_undetected_chip_owner",
       clearRegisteredAttachmentInputs: () => {
         cleared = true;
       },
@@ -382,29 +390,35 @@ describe("prompt preflight controller", () => {
     await waitFor(() => page.submits() === 1);
 
     expect(cleared).toBe(true);
-    expect(captured?.inputs.some((input) => input.kind === "file_reference")).toBe(false);
+    expect(captured?.client_request_id).toBe("crq_undetected_chip_owner");
+    expect(captured?.inputs).toEqual(expect.arrayContaining([expect.objectContaining({
+      kind: "file_reference",
+      source: "attached_file",
+      file_kind: fileKind,
+      mime,
+      extension
+    })]));
     expect(captured?.inputs).toEqual(expect.arrayContaining([expect.objectContaining({
       kind: "text",
       source: "composer",
-      content: "send text after removing attachment"
+      content: `send text with ${fileKind} attachment`
     })]));
-    expect(captured?.client_request_id).not.toBe("crq_removed_attachment_owner");
     controller.disconnect();
   });
 
-  it("does not wait on a pending upload when the file chip was removed before a text send", async () => {
-    const page = setupComposer("send text while removed upload is still pending");
-    let cleared = false;
+  it("waits for pending registered attachment uploads before sending text with a file", async () => {
+    const page = setupComposer("send text while image upload is still pending");
+    let pending = true;
     let waited = false;
     let captured: AnalyzeRequest | undefined;
-    const staleFileInput: AnalyzeInput = {
-      input_id: "in_pending_removed_file_ref_test",
+    const fileInput: AnalyzeInput = {
+      input_id: "in_pending_file_ref_test",
       kind: "file_reference",
       source: "attached_file",
       size_bytes: 2048,
       content_included: false,
-      file_ref: "fref_pendingremovedabcdefghijkl",
-      temp_scope_id: "tscope_pendingremovedabcdefghijkl",
+      file_ref: "fref_pendingfileabcdefghijklmnop",
+      temp_scope_id: "tscope_pendingfileabcdefghijkl",
       file_kind: "image",
       mime: "image/png",
       extension: "png",
@@ -413,14 +427,13 @@ describe("prompt preflight controller", () => {
     const controller = startPromptPreflightController({
       config: DEFAULT_CONFIG,
       getContext: () => context,
-      hasPendingRegisteredAttachmentUploads: () => !cleared,
+      hasPendingRegisteredAttachmentUploads: () => pending,
       waitForRegisteredAttachmentUploads: async () => {
         waited = true;
+        pending = false;
       },
-      getRegisteredAttachmentInputs: () => cleared ? [] : [staleFileInput],
-      clearRegisteredAttachmentInputs: () => {
-        cleared = true;
-      },
+      getRegisteredAttachmentInputs: () => [fileInput],
+      getRegisteredAttachmentRequestId: () => "crq_pending_file_owner",
       sendAnalyze: async (request) => {
         captured = request;
         return responseFor("Allow");
@@ -430,13 +443,17 @@ describe("prompt preflight controller", () => {
     page.button.click();
     await waitFor(() => page.submits() === 1);
 
-    expect(waited).toBe(false);
-    expect(cleared).toBe(true);
-    expect(captured?.inputs.some((input) => input.kind === "file_reference")).toBe(false);
+    expect(waited).toBe(true);
+    expect(captured?.client_request_id).toBe("crq_pending_file_owner");
+    expect(captured?.inputs).toEqual(expect.arrayContaining([expect.objectContaining({
+      kind: "file_reference",
+      source: "attached_file",
+      file_ref: "fref_pendingfileabcdefghijklmnop"
+    })]));
     expect(captured?.inputs).toEqual(expect.arrayContaining([expect.objectContaining({
       kind: "text",
       source: "composer",
-      content: "send text while removed upload is still pending"
+      content: "send text while image upload is still pending"
     })]));
     controller.disconnect();
   });
@@ -553,6 +570,51 @@ describe("prompt preflight controller", () => {
       kind: "text",
       source: "composer",
       content: "hello after removing the attachment"
+    })]));
+    controller.disconnect();
+  });
+
+  it("retries a blocked attachment inspection without dropping the registered file_reference", async () => {
+    const page = setupComposer("retry blocked file attachment", { attachmentChip: true });
+    const requests: AnalyzeRequest[] = [];
+    let registeredInputs: AnalyzeInput[] = [{
+      input_id: "in_retry_blocked_file_ref_test",
+      kind: "file_reference",
+      source: "attached_file",
+      size_bytes: 2048,
+      content_included: false,
+      file_ref: "fref_retryblockedabcdefghijkl",
+      temp_scope_id: "tscope_retryblockedabcdefghijkl",
+      file_kind: "pdf",
+      mime: "application/pdf",
+      extension: "pdf",
+      size_bucket: "small"
+    }];
+    const controller = startPromptPreflightController({
+      config: DEFAULT_CONFIG,
+      getContext: () => context,
+      getRegisteredAttachmentInputs: () => registeredInputs,
+      getRegisteredAttachmentRequestId: () => registeredInputs.length > 0 ? "crq_retry_blocked_attachment_owner" : undefined,
+      clearRegisteredAttachmentInputs: () => {
+        registeredInputs = [];
+      },
+      sendAnalyze: async (request) => {
+        requests.push(request);
+        return requests.length === 1 ? responseFor("Block") : responseFor("Allow");
+      }
+    });
+
+    page.button.click();
+    await waitFor(() => overlayDecision() === "block");
+    clickOverlayAction("retry");
+    await waitFor(() => page.submits() === 1);
+
+    expect(requests).toHaveLength(2);
+    expect(requests[0].inputs.some((input) => input.kind === "file_reference")).toBe(true);
+    expect(requests[1].inputs).toEqual(expect.arrayContaining([expect.objectContaining({
+      kind: "file_reference",
+      source: "attached_file",
+      file_ref: "fref_retryblockedabcdefghijkl"
     })]));
     controller.disconnect();
   });

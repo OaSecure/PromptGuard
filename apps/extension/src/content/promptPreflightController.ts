@@ -95,19 +95,15 @@ export function startPromptPreflightController(options: PromptPreflightControlle
       return;
     }
     if (options.hasPendingRegisteredAttachmentUploads?.()) {
-      if (shouldDropRegisteredAttachments(candidate.element)) {
-        options.clearRegisteredAttachmentInputs?.();
-      } else {
-        overlay.show({ decision: "analyzing", message: "파일 업로드가 끝나면 전송 전 검사를 시작합니다.", actions: [] });
-        try {
-          await options.waitForRegisteredAttachmentUploads?.();
-        } catch {
-          showFailClosed("파일 업로드 상태를 확인하지 못했습니다. 전송하지 않았습니다.", () => retryAttempt(attempt));
-          return;
-        }
-        if (options.hasPendingRegisteredAttachmentUploads?.()) {
-          return;
-        }
+      overlay.show({ decision: "analyzing", message: "파일 업로드가 끝나면 전송 전 검사를 시작합니다.", actions: [] });
+      try {
+        await options.waitForRegisteredAttachmentUploads?.();
+      } catch {
+        showFailClosed("파일 업로드 상태를 확인하지 못했습니다. 전송하지 않았습니다.", () => retryAttempt(attempt));
+        return;
+      }
+      if (options.hasPendingRegisteredAttachmentUploads?.()) {
+        return;
       }
     }
 
@@ -362,12 +358,10 @@ export function startPromptPreflightController(options: PromptPreflightControlle
   }
 
   function retryStoppedAttempt(attempt: SendAttempt): void {
-    options.clearRegisteredAttachmentInputs?.();
     retryAttempt(attempt);
   }
 
   function retryStoppedInspection(retry: () => void): void {
-    options.clearRegisteredAttachmentInputs?.();
     retry();
   }
 
@@ -379,16 +373,7 @@ export function startPromptPreflightController(options: PromptPreflightControlle
   function attachmentInputsForAttempt(input: PromptInputElement): AnalyzeInput[] {
     const chipInputs = collectAttachmentChipInputs(resolveAttachmentChipScope(input, doc), { attachment_chip: selectors.attachment_chip });
     const registeredInputs = options.getRegisteredAttachmentInputs?.() ?? [];
-    if (registeredInputs.length > 0 && shouldDropRegisteredAttachments(input, chipInputs)) {
-      options.clearRegisteredAttachmentInputs?.();
-      return [];
-    }
     return [...chipInputs, ...registeredInputs];
-  }
-
-  function shouldDropRegisteredAttachments(input: PromptInputElement, chipInputs?: AnalyzeInput[]): boolean {
-    const currentChipInputs = chipInputs ?? collectAttachmentChipInputs(resolveAttachmentChipScope(input, doc), { attachment_chip: selectors.attachment_chip });
-    return currentChipInputs.length === 0 && extractPromptText(input).trim().length > 0;
   }
 
   return {
