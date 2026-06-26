@@ -29,6 +29,11 @@ export interface PromptPreflightControllerOptions {
   config: ExtensionConfigResponse;
   getContext: () => ExtensionContext;
   sendAnalyze: PromptAnalyzeSender;
+  getRegisteredAttachmentInputs?: () => AnalyzeInput[];
+  getRegisteredAttachmentRequestId?: () => string | undefined;
+  hasPendingRegisteredAttachmentUploads?: () => boolean;
+  waitForRegisteredAttachmentUploads?: () => Promise<void>;
+  clearRegisteredAttachmentInputs?: () => void;
   overlay?: PreflightOverlay;
 }
 
@@ -84,26 +89,44 @@ export function startPromptPreflightController(options: PromptPreflightControlle
       overlay.show({ decision: "analyzing", message: "이미 검사 중입니다.", actions: [] });
       return;
     }
-
     const candidate = findBestInputCandidate(doc, { input: selectors.input });
     if (!candidate) {
       showFailClosed("전송 내용을 검사하지 못했습니다.", () => retryAttempt(attempt));
       return;
     }
+    if (options.hasPendingRegisteredAttachmentUploads?.()) {
+      overlay.show({ decision: "analyzing", message: "파일 업로드가 끝나면 전송 전 검사를 시작합니다.", actions: [] });
+      try {
+        await options.waitForRegisteredAttachmentUploads?.();
+      } catch {
+        showFailClosed("파일 업로드 상태를 확인하지 못했습니다. 전송하지 않았습니다.", () => retryAttempt(attempt));
+        return;
+      }
+      if (options.hasPendingRegisteredAttachmentUploads?.()) {
+        return;
+      }
+    }
 
+    const attachmentInputs = [
+      ...attachmentInputsForAttempt(candidate.element)
+    ];
+    if (hasUninspectableCurrentAttachment(attachmentInputs)) {
+      recordPromptStatus(doc, "error", "missing-file-reference");
+      showFailClosed("첨부파일 검사 준비가 끝나지 않았습니다. 파일을 다시 첨부한 뒤 전송해 주세요.", () => retryAttempt(attempt));
+      return;
+    }
     const request = buildPromptAnalyzeRequest(
       candidate.element,
       attempt.method,
       options.getContext(),
       filterConfigRevision(options.config),
       convertedPasteText,
-      requestIdForAttempt(attempt),
-      collectAttachmentChipInputs(resolveAttachmentChipScope(candidate.element, doc), { attachment_chip: selectors.attachment_chip })
+      options.getRegisteredAttachmentRequestId?.() ?? requestIdForAttempt(attempt),
+      attachmentInputs
     );
     convertedPasteText = undefined;
     recordPromptAttempt(doc, request, "inspecting");
-    const composerInput = request.inputs.find((item) => item.source === "composer");
-    if (!composerInput || composerInput.size_bytes === 0) {
+    if (!hasInspectableInput(request.inputs)) {
       recordPromptStatus(doc, "error", "empty-prompt");
       showFailClosed("프롬프트를 읽지 못했습니다. 전송하지 않았습니다.", () => retryAttempt(attempt));
       return;
@@ -172,7 +195,7 @@ export function startPromptPreflightController(options: PromptPreflightControlle
                 replay(attempt);
               }
             },
-            { id: "cancel", label: "취소", variant: "secondary", onClick: overlay.hide }
+            { id: "cancel", label: "취소", variant: "secondary", onClick: dismissStoppedAttempt }
           ]
         });
         return;
@@ -184,7 +207,7 @@ export function startPromptPreflightController(options: PromptPreflightControlle
           actions: [
             {
               id: "apply-mask",
-              label: "마스킹 적용",
+              label: "마스킹 적용 후 검사",
               variant: "primary",
               onClick: () => {
                 const result = applyMaskedPrompt(input, response.masked_prompt);
@@ -195,7 +218,7 @@ export function startPromptPreflightController(options: PromptPreflightControlle
                 }
               }
             },
-            { id: "cancel", label: "취소", variant: "secondary", onClick: overlay.hide }
+            { id: "cancel", label: "취소", variant: "secondary", onClick: dismissStoppedAttempt }
           ]
         });
         return;
@@ -205,8 +228,8 @@ export function startPromptPreflightController(options: PromptPreflightControlle
           message: safeDecisionMessage(response),
           evidence: safeDecisionEvidence(response),
           actions: [
-            { id: "retry", label: "다시 시도", variant: "secondary", onClick: () => retryAttempt(attempt) },
-            { id: "cancel", label: "취소", variant: "danger", onClick: overlay.hide }
+            { id: "retry", label: "다시 시도", variant: "secondary", onClick: () => retryStoppedAttempt(attempt) },
+            { id: "cancel", label: "취소", variant: "danger", onClick: dismissStoppedAttempt }
           ]
         });
         return;
@@ -226,10 +249,16 @@ export function startPromptPreflightController(options: PromptPreflightControlle
       filterConfigRevision(options.config),
       undefined,
       createClientRequestId("crq"),
-      collectAttachmentChipInputs(resolveAttachmentChipScope(input, doc), { attachment_chip: selectors.attachment_chip })
+      [
+        ...attachmentInputsForAttempt(input)
+      ]
     );
-    const composerInput = request.inputs.find((item) => item.source === "composer");
-    if (!composerInput || composerInput.size_bytes === 0) {
+    if (hasUninspectableCurrentAttachment(request.inputs)) {
+      recordPromptStatus(doc, "error", "missing-file-reference");
+      showFailClosed("첨부파일 검사 준비가 끝나지 않았습니다. 파일을 다시 첨부한 뒤 전송해 주세요.", () => retryAttempt(attempt));
+      return;
+    }
+    if (!hasInspectableInput(request.inputs)) {
       recordPromptStatus(doc, "error", "empty-masked-prompt");
       showFailClosed("마스킹된 프롬프트를 읽지 못했습니다. 전송하지 않았습니다.", () => retryAttempt(attempt));
       return;
@@ -238,7 +267,11 @@ export function startPromptPreflightController(options: PromptPreflightControlle
     const attemptId = ++currentAttemptId;
     analyzing = true;
     recordPromptAttempt(doc, request, "reinspecting-masked");
-    const cancelAnalyzingOverlay = scheduleAnalyzingOverlay("마스킹본을 다시 검사 중입니다.");
+    overlay.show({
+      decision: "mask_checking",
+      message: "대체된 내용을 서버에서 다시 확인하고 있습니다.",
+      actions: []
+    });
 
     try {
       const response = await withTimeout(options.sendAnalyze(request), analyzeTimeoutMs(options.config));
@@ -257,7 +290,6 @@ export function startPromptPreflightController(options: PromptPreflightControlle
         showFailClosed("마스킹본 검사가 실패하거나 시간 초과되었습니다.", () => retryAttempt(attempt));
       }
     } finally {
-      cancelAnalyzingOverlay();
       if (attemptId === currentAttemptId) {
         analyzing = false;
       }
@@ -266,7 +298,16 @@ export function startPromptPreflightController(options: PromptPreflightControlle
 
   function handleMaskedDecision(response: AnalyzeResponse, input: PromptInputElement, attempt: SendAttempt): void {
     if (response.action !== "Allow") {
-      handleDecision(response, input, attempt);
+      recordPromptStatus(doc, "mask_failed");
+      overlay.show({
+        decision: "mask_failed",
+        message: "대체된 내용에서도 민감한 항목이 감지됐습니다.",
+        evidence: safeDecisionEvidence(response),
+        actions: [
+          { id: "retry-masked-check", label: "다시 검사", variant: "secondary", onClick: () => void reinspectMaskedPrompt(input, attempt) },
+          { id: "cancel", label: "취소", variant: "danger", onClick: dismissStoppedAttempt }
+        ]
+      });
       return;
     }
     if (response.allow_original_send === false) {
@@ -275,12 +316,12 @@ export function startPromptPreflightController(options: PromptPreflightControlle
     }
     recordPromptStatus(doc, "allow");
     overlay.show({
-      decision: "mask",
-      message: "마스킹본 검사가 완료되었습니다.",
+      decision: "mask_passed",
+      message: "대체된 내용으로 전송할 수 있습니다.",
       evidence: safeDecisionEvidence(response),
       actions: [
         { id: "send-masked-prompt", label: "마스킹본 전송", variant: "primary", onClick: () => replay(attempt) },
-        { id: "cancel", label: "취소", variant: "secondary", onClick: overlay.hide }
+        { id: "cancel", label: "취소", variant: "secondary", onClick: dismissStoppedAttempt }
       ]
     });
   }
@@ -294,7 +335,9 @@ export function startPromptPreflightController(options: PromptPreflightControlle
     replaying = false;
     if (!replayed) {
       showFailClosed("페이지 전송 동작을 다시 실행하지 못했습니다.", () => undefined);
+      return;
     }
+    options.clearRegisteredAttachmentInputs?.();
   }
 
   function showFailClosed(message: string, retry: () => void): void {
@@ -303,15 +346,33 @@ export function startPromptPreflightController(options: PromptPreflightControlle
       decision: "error",
       message,
       actions: [
-        { id: "retry", label: "다시 시도", variant: "secondary", onClick: retry },
-        { id: "cancel", label: "취소", variant: "danger", onClick: overlay.hide }
+        { id: "retry", label: "다시 시도", variant: "secondary", onClick: () => retryStoppedInspection(retry) },
+        { id: "cancel", label: "취소", variant: "danger", onClick: dismissStoppedAttempt }
       ]
     });
+  }
+
+  function dismissStoppedAttempt(): void {
+    overlay.hide();
+  }
+
+  function retryStoppedAttempt(attempt: SendAttempt): void {
+    retryAttempt(attempt);
+  }
+
+  function retryStoppedInspection(retry: () => void): void {
+    retry();
   }
 
   function retryAttempt(attempt: SendAttempt): void {
     resetRequestIdForAttempt(attempt);
     void handleAttempt(attempt);
+  }
+
+  function attachmentInputsForAttempt(input: PromptInputElement): AnalyzeInput[] {
+    const chipInputs = collectAttachmentChipInputs(resolveAttachmentChipScope(input, doc), { attachment_chip: selectors.attachment_chip });
+    const registeredInputs = options.getRegisteredAttachmentInputs?.() ?? [];
+    return [...chipInputs, ...registeredInputs];
   }
 
   return {
@@ -344,6 +405,23 @@ function recordPromptAttempt(doc: Document, request: AnalyzeRequest, status: str
   root.dataset.promptguardLastInputMethod = String(composerInput?.metadata?.input_method ?? "UNKNOWN");
 }
 
+function hasInspectableInput(inputs: AnalyzeInput[]): boolean {
+  return inputs.some((item) => {
+    if (item.kind === "text") {
+      return item.content_included && item.size_bytes > 0;
+    }
+    return item.kind === "file_reference" || item.kind === "attachment_metadata" || item.kind === "unsupported_attachment";
+  });
+}
+
+function hasUninspectableCurrentAttachment(inputs: AnalyzeInput[]): boolean {
+  const hasCurrentAttachmentChip = inputs.some((item) => item.kind === "attachment_metadata" && item.source === "attachment_chip");
+  if (!hasCurrentAttachmentChip) {
+    return false;
+  }
+  return !inputs.some((item) => item.kind === "file_reference" || item.kind === "unsupported_attachment");
+}
+
 function recordPromptStatus(doc: Document, status: string, reason?: string): void {
   doc.documentElement.dataset.promptguardLastStatus = status;
   if (reason) {
@@ -356,7 +434,7 @@ function safeDecisionMessage(response: AnalyzeResponse): string {
     case "Warn":
       return "전송 전 확인하세요.";
     case "Mask":
-      return "마스킹 후 전송하세요.";
+      return "민감한 항목을 대체한 뒤 다시 검사합니다.";
     case "Block":
       return "민감한 내용을 제거한 뒤 다시 시도하세요.";
     case "Allow":
@@ -381,7 +459,11 @@ export function buildPromptAnalyzeRequest(
   attachmentChipInputs: AnalyzeInput[] = []
 ): AnalyzeRequest {
   const text = extractPromptText(input);
-  const inputs = [createComposerInput({ text, inputMethod }), ...attachmentChipInputs];
+  const inputs: AnalyzeInput[] = [];
+  if (text.trim().length > 0 || attachmentChipInputs.length === 0) {
+    inputs.push(createComposerInput({ text, inputMethod }));
+  }
+  inputs.push(...attachmentChipInputs);
   if (convertedPaste && !text.includes(convertedPaste)) {
     inputs.push(createConvertedPasteInput({ text: convertedPaste }));
   }

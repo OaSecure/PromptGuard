@@ -20,7 +20,15 @@ export function isExtensionMessage(value: unknown): value is ExtensionMessage {
     case "FILES_ANALYZE_REQUEST":
       return isAnalyzeRequest(value.payload);
     case "TEMP_FILE_UPLOAD_REQUEST":
-      return isRecord(value.payload) && value.payload.file instanceof File && isNonEmptyString(value.payload.requestId) && isAnalyzeFileKind(value.payload.fileKind);
+      return (
+        isRecord(value.payload) &&
+        typeof value.payload.file_bytes_base64 === "string" &&
+        isNonNegativeFiniteNumber(value.payload.size_bytes) &&
+        isNonEmptyString(value.payload.requestId) &&
+        isAnalyzeFileKind(value.payload.fileKind) &&
+        typeof value.payload.extension === "string" &&
+        typeof value.payload.mime === "string"
+      );
     case "FILES_ANALYZE_RESULT":
     case "CONFIG_SYNC_RESULT":
     case "GET_CONFIG_RESULT":
@@ -116,7 +124,7 @@ function isAnalyzeFileKind(value: unknown): boolean {
 }
 
 function isAnalyzeSizeBucket(value: unknown): boolean {
-  return value === "empty" || value === "small" || value === "medium" || value === "large";
+  return value === "empty" || value === "tiny" || value === "small" || value === "medium" || value === "large" || value === "huge" || value === "unknown";
 }
 
 function isSafeFileReference(value: unknown): value is string {

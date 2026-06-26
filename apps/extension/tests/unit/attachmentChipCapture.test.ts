@@ -42,6 +42,24 @@ describe("attachment chip capture", () => {
     expect(JSON.stringify(inputs)).not.toContain("financial-report.pdf");
   });
 
+  it("ignores hidden attachment chips left behind by the host page", () => {
+    document.body.innerHTML = `
+      <div
+        data-promptguard-attachment-chip
+        data-promptguard-extension=".pdf"
+        data-promptguard-mime="application/pdf"
+        data-promptguard-size-bytes="2048"
+        style="display: none"
+      >
+        removed-report.pdf
+      </div>
+    `;
+
+    const inputs = collectAttachmentChipInputs(document, { attachment_chip: ["[data-promptguard-attachment-chip]"] });
+
+    expect(inputs).toEqual([]);
+  });
+
   it("captures image chips that expose an image signal without leaking labels", () => {
     document.body.innerHTML = `
       <div data-testid="attachment-item">
