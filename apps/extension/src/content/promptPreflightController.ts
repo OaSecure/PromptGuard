@@ -114,6 +114,11 @@ export function startPromptPreflightController(options: PromptPreflightControlle
     const attachmentInputs = [
       ...attachmentInputsForAttempt(candidate.element)
     ];
+    if (hasUninspectableCurrentAttachment(attachmentInputs)) {
+      recordPromptStatus(doc, "error", "missing-file-reference");
+      showFailClosed("첨부파일 검사 준비가 끝나지 않았습니다. 파일을 다시 첨부한 뒤 전송해 주세요.", () => retryAttempt(attempt));
+      return;
+    }
     const request = buildPromptAnalyzeRequest(
       candidate.element,
       attempt.method,
@@ -252,6 +257,11 @@ export function startPromptPreflightController(options: PromptPreflightControlle
         ...attachmentInputsForAttempt(input)
       ]
     );
+    if (hasUninspectableCurrentAttachment(request.inputs)) {
+      recordPromptStatus(doc, "error", "missing-file-reference");
+      showFailClosed("첨부파일 검사 준비가 끝나지 않았습니다. 파일을 다시 첨부한 뒤 전송해 주세요.", () => retryAttempt(attempt));
+      return;
+    }
     if (!hasInspectableInput(request.inputs)) {
       recordPromptStatus(doc, "error", "empty-masked-prompt");
       showFailClosed("마스킹된 프롬프트를 읽지 못했습니다. 전송하지 않았습니다.", () => retryAttempt(attempt));
@@ -418,6 +428,14 @@ function hasInspectableInput(inputs: AnalyzeInput[]): boolean {
     }
     return item.kind === "file_reference" || item.kind === "attachment_metadata" || item.kind === "unsupported_attachment";
   });
+}
+
+function hasUninspectableCurrentAttachment(inputs: AnalyzeInput[]): boolean {
+  const hasCurrentAttachmentChip = inputs.some((item) => item.kind === "attachment_metadata" && item.source === "attachment_chip");
+  if (!hasCurrentAttachmentChip) {
+    return false;
+  }
+  return !inputs.some((item) => item.kind === "file_reference" || item.kind === "unsupported_attachment");
 }
 
 function recordPromptStatus(doc: Document, status: string, reason?: string): void {

@@ -188,6 +188,7 @@ describe("ChatGPT-like fixture", () => {
     const fileInput = document.querySelector<HTMLInputElement>("#file-input")!;
     const sendButton = document.querySelector<HTMLButtonElement>("button[data-testid='send-button']")!;
     const form = document.querySelector<HTMLFormElement>("#composer")!;
+    document.querySelector("[data-testid='attachment-chip']")?.remove();
     input.value = "Send before config";
     mockRect(input);
     input.focus();
@@ -274,6 +275,7 @@ describe("ChatGPT-like fixture", () => {
     await initializePromptGuardContentScript(document.body);
     await waitFor(() => document.documentElement.dataset.promptguardInputDetected === "true");
     document.documentElement.dataset.promptguardInputDetected = "stale";
+    document.querySelector("[data-testid='attachment-chip']")?.remove();
     rerenderPromptComposer();
 
     const replacementInput = document.querySelector<HTMLTextAreaElement>("#prompt-textarea-rerendered")!;

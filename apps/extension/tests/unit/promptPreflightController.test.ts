@@ -482,6 +482,29 @@ describe("prompt preflight controller", () => {
     controller.disconnect();
   });
 
+  it("fails closed when a current attachment chip has no file reference for inspection", async () => {
+    const page = setupComposer("ㅇㅇ", { attachmentChip: true });
+    let analyzeCount = 0;
+    const controller = startPromptPreflightController({
+      config: DEFAULT_CONFIG,
+      getContext: () => context,
+      getRegisteredAttachmentInputs: () => [],
+      getRegisteredAttachmentRequestId: () => undefined,
+      sendAnalyze: async () => {
+        analyzeCount += 1;
+        return responseFor("Allow");
+      }
+    });
+
+    page.button.click();
+    await waitFor(() => overlayDecision() === "error");
+
+    expect(analyzeCount).toBe(0);
+    expect(page.submits()).toBe(0);
+    expect(document.documentElement.dataset.promptguardLastFailure).toBe("missing-file-reference");
+    controller.disconnect();
+  });
+
   it("does not reuse a blocked file reference after canceling and sending text again", async () => {
     const page = setupComposer("file content should block", { attachmentChip: true });
     const requests: AnalyzeRequest[] = [];
