@@ -125,6 +125,7 @@ def detect_rrn(text: str) -> list[Detection]:
 
 def detect_card(text: str) -> list[Detection]:
     bank_accounts = detect_korean_bank_account(text)
+    rrns = detect_rrn(text)
     return [
         Detection(
             detector_key="CARD",
@@ -137,6 +138,7 @@ def detect_card(text: str) -> list[Detection]:
         for match in CARD_PATTERN.finditer(text)
         if is_valid_luhn(match.group(0))
         and not any(_ranges_overlap(match.start(), match.end(), account.start, account.end) for account in bank_accounts)
+        and not any(_ranges_overlap(match.start(), match.end(), rrn.start, rrn.end) for rrn in rrns)
     ]
 
 

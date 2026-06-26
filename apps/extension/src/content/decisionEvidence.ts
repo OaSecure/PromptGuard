@@ -16,11 +16,26 @@ const CONTEXT_RISK_LABELS: Record<string, string> = {
   CUSTOMER_DATA_CONTEXT: "고객 또는 계정 정보"
 };
 
+const DETECTION_LABELS: Record<string, string> = {
+  API_SECRET: "API 키 또는 인증 토큰",
+  BANK_ACCOUNT: "계좌번호",
+  CARD: "카드번호",
+  EMAIL: "이메일 주소",
+  PAYMENT: "결제 정보",
+  PHONE: "전화번호",
+  PII: "개인정보",
+  RRN: "주민등록번호",
+  SECRET: "인증 정보"
+};
+
 /** Builds user-facing decision evidence without exposing internal label codes. */
 export function safeDecisionEvidence(response: AnalyzeResponse): string[] {
   const evidence: string[] = [];
   if (response.context_risk_evidence && response.context_risk_evidence.status !== "disabled" && response.context_risk_evidence.status !== "no_candidate") {
-    evidence.push(contextRiskEvidenceLine(response.context_risk_evidence));
+    const line = contextRiskEvidenceLine(response.context_risk_evidence);
+    if (line) {
+      evidence.push(line);
+    }
   }
   for (const detection of response.detections.slice(0, 3)) {
     evidence.push(`탐지: ${readableDetection(detection)}`);
@@ -39,7 +54,7 @@ export function safeDecisionEvidence(response: AnalyzeResponse): string[] {
 
 type ContextRiskEvidenceView = NonNullable<AnalyzeResponse["context_risk_evidence"]>;
 
-function contextRiskEvidenceLine(evidence: ContextRiskEvidenceView): string {
+function contextRiskEvidenceLine(evidence: ContextRiskEvidenceView): string | null {
   const labelText = readableLabels(evidence.labels);
   if (evidence.status === "timeout") {
     return "검사 시간이 초과되었습니다. 다시 시도해 주세요.";
@@ -47,10 +62,11 @@ function contextRiskEvidenceLine(evidence: ContextRiskEvidenceView): string {
   if (evidence.status === "failed") {
     return "검사를 완료하지 못했습니다. 다시 시도해 주세요.";
   }
+  if (!labelText) {
+    return null;
+  }
   const prefix = evidence.status === "verified" ? "탐지" : "주의";
-  return labelText
-    ? `${prefix}: ${labelText}`
-    : `${prefix}: 민감한 맥락`;
+  return `${prefix}: ${labelText}`;
 }
 
 function readableLabels(labels: string[]): string {
@@ -66,10 +82,11 @@ function readableContextLabel(label: string): string {
 }
 
 function readableDetection(detection: AnalyzeResponse["detections"][number]): string {
-  if (detection.type === "BANK_ACCOUNT") {
-    return "계좌번호";
-  }
-  return readablePhrase(detection.category || detection.type);
+  return readableDetectionToken(detection.type)
+    ?? readableDetectionToken(detection.placeholder)
+    ?? readableDetectionToken(detection.detector_id || "")
+    ?? readableDetectionToken(detection.category)
+    ?? readablePhrase(detection.category || detection.type);
 }
 
 function readableContentUnavailableReason(reason: string): string {
@@ -95,11 +112,7 @@ function readablePhrase(value: string): string {
     .join(" ");
 }
 
-function humanizeToken(value: string): string {
-  return value
-    .toLowerCase()
-    .split(/[_\s-]+/)
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
+function readableDetectionToken(value: string): string | null {
+  const normalized = value.trim().toUpperCase().replace(/[\s-]+/g, "_");
+  return DETECTION_LABELS[normalized] ?? null;
 }
