@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 from fastapi import FastAPI, HTTPException, status
@@ -106,6 +106,10 @@ def _event(user: SimpleNamespace, action: str, created_at: datetime) -> SimpleNa
         action=action,
         created_at=created_at,
     )
+
+
+def _json_utc(value: datetime) -> str:
+    return value.isoformat().replace("+00:00", "Z")
 
 
 def _client(
@@ -286,15 +290,21 @@ def test_list_and_detail_return_safe_metadata() -> None:
 def test_dashboard_users_aggregates_event_counts() -> None:
     alpha = _user(role="USER", login_id="alpha")
     beta = _user(role="USER", login_id="beta")
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    alpha_blocked_at = now - timedelta(hours=4)
+    alpha_masked_at = now - timedelta(hours=3)
+    alpha_warned_at = now - timedelta(hours=2)
+    alpha_allowed_at = now - timedelta(hours=1)
+    beta_masked_at = now - timedelta(minutes=30)
     fake_session = _FakeSession(
         [alpha, beta],
         events=[
-            _event(alpha, "BLOCK", datetime(2026, 5, 29, 9, 0, tzinfo=timezone.utc)),
-            _event(alpha, "MASK", datetime(2026, 5, 29, 10, 0, tzinfo=timezone.utc)),
-            _event(alpha, "WARN", datetime(2026, 5, 29, 11, 0, tzinfo=timezone.utc)),
-            _event(alpha, "ALLOW", datetime(2026, 5, 29, 12, 0, tzinfo=timezone.utc)),
-            _event(alpha, "BLOCK", datetime(2026, 4, 1, 12, 0, tzinfo=timezone.utc)),
-            _event(beta, "MASK", datetime(2026, 5, 29, 13, 0, tzinfo=timezone.utc)),
+            _event(alpha, "BLOCK", alpha_blocked_at),
+            _event(alpha, "MASK", alpha_masked_at),
+            _event(alpha, "WARN", alpha_warned_at),
+            _event(alpha, "ALLOW", alpha_allowed_at),
+            _event(alpha, "BLOCK", now - timedelta(days=45)),
+            _event(beta, "MASK", beta_masked_at),
         ],
     )
     client = _client(fake_session)
@@ -307,12 +317,12 @@ def test_dashboard_users_aggregates_event_counts() -> None:
     assert rows["alpha"]["blocked_count"] == 1
     assert rows["alpha"]["masked_count"] == 1
     assert rows["alpha"]["warned_count"] == 1
-    assert rows["alpha"]["last_event_at"] == "2026-05-29T12:00:00Z"
+    assert rows["alpha"]["last_event_at"] == _json_utc(alpha_allowed_at)
     assert rows["beta"]["event_count"] == 1
     assert rows["beta"]["blocked_count"] == 0
     assert rows["beta"]["masked_count"] == 1
     assert rows["beta"]["warned_count"] == 0
-    assert rows["beta"]["last_event_at"] == "2026-05-29T13:00:00Z"
+    assert rows["beta"]["last_event_at"] == _json_utc(beta_masked_at)
     for row in rows.values():
         _assert_no_sensitive_user_payload(row)
 
